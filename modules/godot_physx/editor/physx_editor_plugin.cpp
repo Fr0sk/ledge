@@ -44,12 +44,12 @@
 #endif
 
 #include "core/object/callable_mp.h"
+#include "editor/editor_node.h"
 #include "editor/editor_undo_redo_manager.h"
 #include "editor/scene/3d/node_3d_editor_plugin.h"
 #include "editor/settings/editor_settings.h"
 #include "scene/3d/physics/area_3d.h"
 #ifdef GODOT_PHYSX_BLAST
-#include "editor/editor_node.h"
 #include "editor/editor_string_names.h"
 #include "editor/inspector/editor_context_menu_plugin.h"
 #endif

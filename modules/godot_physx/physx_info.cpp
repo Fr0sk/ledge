@@ -53,7 +53,7 @@ static GodotPhysXJoint3D *_drive_joint(const RID &p_joint) {
 	GodotPhysXJoint3D *joint = GodotPhysXServer3D::get_singleton()->get_joint(p_joint);
 	ERR_FAIL_NULL_V_MSG(joint, nullptr, "PhysX: not a joint RID.");
 	// A joint not made yet keeps the settings for when it is (a Joint3D node makes it once its bodies are in the tree).
-	ERR_FAIL_COND_V_MSG(joint->get_type() == PhysicsServer3D::JOINT_TYPE_SLIDER, nullptr, "PhysX: a slider joint has no drives (pin, hinge, cone twist and Generic6DOF joints do).");
+	ERR_FAIL_COND_V_MSG(joint->get_type() == PS3DE::JOINT_TYPE_SLIDER, nullptr, "PhysX: a slider joint has no drives (pin, hinge, cone twist and Generic6DOF joints do).");
 	return joint;
 }
 

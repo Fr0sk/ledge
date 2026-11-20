@@ -40,6 +40,7 @@
 #include "editor/editor_node.h"
 #include "editor/editor_undo_redo_manager.h"
 #include "editor/scene/3d/node_3d_editor_plugin.h"
+#include "editor/scene/3d/node_3d_editor_viewport.h"
 #include "scene/3d/mesh_instance_3d.h"
 #include "scene/gui/box_container.h"
 #include "scene/gui/button.h"

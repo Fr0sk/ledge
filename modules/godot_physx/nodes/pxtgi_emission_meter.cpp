@@ -337,11 +337,11 @@ void PXTGIEmissionMeter::_frame_shine() {
 		const Color sky = added(shine_sums, i, SCALE);
 		Color albedo(0, 0, 0, 1);
 		for (int c = 0; c < 3; c++) {
-			const float d = share(diffuse.components[c], white.components[c]);
-			const float sky_diffuse = sky_white.components[c] - sky_black.components[c];
-			const float reflected = sky.components[c] - d * sky_diffuse - sky_black.components[c];
+			const float d = share(diffuse[c], white[c]);
+			const float sky_diffuse = sky_white[c] - sky_black[c];
+			const float reflected = sky[c] - d * sky_diffuse - sky_black[c];
 			const float s = share(reflected, sky_diffuse);
-			albedo.components[c] = CLAMP(d + MAX(s, 0.0f), 0.0f, 1.0f);
+			albedo[c] = CLAMP(d + MAX(s, 0.0f), 0.0f, 1.0f);
 		}
 		Dictionary result;
 		result["material"] = batch[i];

@@ -74,14 +74,14 @@ void GodotPhysXJoint3D::clear() {
 	}
 	body_a = nullptr;
 	body_b = nullptr;
-	type = JointType::JOINT_TYPE_MAX;
+	type = PS3DE::JointType::JOINT_TYPE_MAX;
 }
 
 bool GodotPhysXJoint3D::has_running_motor() const {
-	if (type == JointType::JOINT_TYPE_HINGE) {
+	if (type == PS3DE::JointType::JOINT_TYPE_HINGE) {
 		return hinge_motor && hinge_motor_velocity != 0.0;
 	}
-	if (type == JointType::JOINT_TYPE_6DOF) {
+	if (type == PS3DE::JointType::JOINT_TYPE_6DOF) {
 		for (const Axis6DOF &ax : axis6) {
 			if ((ax.lin_motor && ax.lin_motor_target != 0.0) || (ax.ang_motor && ax.ang_motor_target != 0.0)) {
 				return true;
@@ -120,7 +120,7 @@ PxJoint *GodotPhysXJoint3D::_create() const {
 	}
 
 	switch (type) {
-		case JointType::JOINT_TYPE_PIN: {
+		case PS3DE::JointType::JOINT_TYPE_PIN: {
 			// A D6 with the three linear axes locked and all rotation free is
 			// kinematically a ball joint, but PhysX's D6 solver path holds a
 			// chain of them together far better than PxSphericalJoint under
@@ -129,7 +129,7 @@ PxJoint *GodotPhysXJoint3D::_create() const {
 					actor_a, PxTransform(to_px(frame_a.origin)),
 					actor_b, PxTransform(to_px(frame_b.origin)));
 		}
-		case JointType::JOINT_TYPE_HINGE: {
+		case PS3DE::JointType::JOINT_TYPE_HINGE: {
 			if (hinge_d6) {
 				// A D6 with only the twist free can drive the hinge angle toward a target (an active ragdoll's knees
 				// and elbows); the revolute joint's drive is a velocity motor only.
@@ -141,13 +141,13 @@ PxJoint *GodotPhysXJoint3D::_create() const {
 					actor_a, PxTransform(to_px(frame_a)) * PxTransform(HINGE_Z_TO_X),
 					actor_b, PxTransform(to_px(frame_b)) * PxTransform(HINGE_Z_TO_X));
 		}
-		case JointType::JOINT_TYPE_SLIDER: {
+		case PS3DE::JointType::JOINT_TYPE_SLIDER: {
 			return PxPrismaticJointCreate(*physics,
 					actor_a, PxTransform(to_px(frame_a)),
 					actor_b, PxTransform(to_px(frame_b)));
 		}
-		case JointType::JOINT_TYPE_CONE_TWIST:
-		case JointType::JOINT_TYPE_6DOF: {
+		case PS3DE::JointType::JOINT_TYPE_CONE_TWIST:
+		case PS3DE::JointType::JOINT_TYPE_6DOF: {
 			return PxD6JointCreate(*physics,
 					actor_a, PxTransform(to_px(frame_a)),
 					actor_b, PxTransform(to_px(frame_b)));
@@ -186,7 +186,7 @@ void GodotPhysXJoint3D::_apply_params() {
 	motor_ang_axes = 0;
 
 	switch (type) {
-		case JointType::JOINT_TYPE_PIN: {
+		case PS3DE::JointType::JOINT_TYPE_PIN: {
 			PxD6Joint *j = static_cast<PxD6Joint *>(px_joint);
 			j->setMotion(PxD6Axis::eX, PxD6Motion::eLOCKED);
 			j->setMotion(PxD6Axis::eY, PxD6Motion::eLOCKED);
@@ -196,7 +196,7 @@ void GodotPhysXJoint3D::_apply_params() {
 			j->setMotion(PxD6Axis::eSWING2, PxD6Motion::eFREE);
 		} break;
 
-		case JointType::JOINT_TYPE_HINGE: {
+		case PS3DE::JointType::JOINT_TYPE_HINGE: {
 			if (d6) {
 				d6->setMotion(PxD6Axis::eX, PxD6Motion::eLOCKED);
 				d6->setMotion(PxD6Axis::eY, PxD6Motion::eLOCKED);
@@ -238,7 +238,7 @@ void GodotPhysXJoint3D::_apply_params() {
 			}
 		} break;
 
-		case JointType::JOINT_TYPE_SLIDER: {
+		case PS3DE::JointType::JOINT_TYPE_SLIDER: {
 			PxPrismaticJoint *j = static_cast<PxPrismaticJoint *>(px_joint);
 			const bool limited = slider_upper > slider_lower;
 			j->setPrismaticJointFlag(PxPrismaticJointFlag::eLIMIT_ENABLED, limited);
@@ -247,7 +247,7 @@ void GodotPhysXJoint3D::_apply_params() {
 			}
 		} break;
 
-		case JointType::JOINT_TYPE_CONE_TWIST: {
+		case PS3DE::JointType::JOINT_TYPE_CONE_TWIST: {
 			PxD6Joint *j = static_cast<PxD6Joint *>(px_joint);
 			j->setMotion(PxD6Axis::eX, PxD6Motion::eLOCKED);
 			j->setMotion(PxD6Axis::eY, PxD6Motion::eLOCKED);
@@ -259,7 +259,7 @@ void GodotPhysXJoint3D::_apply_params() {
 			j->setSwingLimit(PxJointLimitCone((PxReal)cone_swing, (PxReal)cone_swing));
 		} break;
 
-		case JointType::JOINT_TYPE_6DOF: {
+		case PS3DE::JointType::JOINT_TYPE_6DOF: {
 			PxD6Joint *j = static_cast<PxD6Joint *>(px_joint);
 			const PxD6Axis::Enum lin_axes[3] = { PxD6Axis::eX, PxD6Axis::eY, PxD6Axis::eZ };
 			const PxD6Axis::Enum ang_axes[3] = { PxD6Axis::eTWIST, PxD6Axis::eSWING1, PxD6Axis::eSWING2 };
@@ -355,7 +355,7 @@ void GodotPhysXJoint3D::_apply_params() {
 	}
 
 	if (d6) {
-		if (slerp_drive && type != JointType::JOINT_TYPE_HINGE) {
+		if (slerp_drive && type != PS3DE::JointType::JOINT_TYPE_HINGE) {
 			d6->setAngularDriveConfig(PxD6AngularDriveConfig::eSLERP);
 			d6->setDrive(PxD6Drive::eSLERP, PxD6JointDrive((PxReal)slerp_stiffness, (PxReal)slerp_damping, _drive_limit(slerp_torque_limit), drive_acceleration));
 		}
@@ -372,8 +372,8 @@ void GodotPhysXJoint3D::_send_drive_velocity() {
 	// The target's velocity (body B's relative to body A, in A's joint frame) in PhysX's drive convention: the linear
 	// and SLERP rows take B's velocity relative to A, the per-axis twist / swing rows A's relative to B.
 	Vector3 lin = drive_lin_vel;
-	Vector3 ang = (slerp_drive && type != JointType::JOINT_TYPE_HINGE) ? drive_ang_vel : -drive_ang_vel;
-	if (type == JointType::JOINT_TYPE_HINGE) {
+	Vector3 ang = (slerp_drive && type != PS3DE::JointType::JOINT_TYPE_HINGE) ? drive_ang_vel : -drive_ang_vel;
+	if (type == PS3DE::JointType::JOINT_TYPE_HINGE) {
 		const Basis z_to_x(to_godot(HINGE_Z_TO_X)); // the hinge's PhysX frames (see _create())
 		lin = z_to_x.xform_inv(lin);
 		ang = z_to_x.xform_inv(ang);
@@ -390,16 +390,16 @@ void GodotPhysXJoint3D::_send_drive_velocity() {
 }
 
 bool GodotPhysXJoint3D::has_drives() const {
-	return type == JointType::JOINT_TYPE_PIN || type == JointType::JOINT_TYPE_HINGE || type == JointType::JOINT_TYPE_CONE_TWIST || type == JointType::JOINT_TYPE_6DOF;
+	return type == PS3DE::JointType::JOINT_TYPE_PIN || type == PS3DE::JointType::JOINT_TYPE_HINGE || type == PS3DE::JointType::JOINT_TYPE_CONE_TWIST || type == PS3DE::JointType::JOINT_TYPE_6DOF;
 }
 
 bool GodotPhysXJoint3D::_is_px_d6() const {
-	return has_drives() && (type != JointType::JOINT_TYPE_HINGE || hinge_d6);
+	return has_drives() && (type != PS3DE::JointType::JOINT_TYPE_HINGE || hinge_d6);
 }
 
 Transform3D GodotPhysXJoint3D::_px_drive_target() const {
 	const Transform3D target = get_drive_target();
-	if (type == JointType::JOINT_TYPE_HINGE) {
+	if (type == PS3DE::JointType::JOINT_TYPE_HINGE) {
 		// The hinge's PhysX frames are turned so its axis is X (see _create()).
 		const Transform3D z_to_x(Basis(to_godot(HINGE_Z_TO_X)));
 		return z_to_x.affine_inverse() * target * z_to_x;
@@ -409,7 +409,7 @@ Transform3D GodotPhysXJoint3D::_px_drive_target() const {
 
 Transform3D GodotPhysXJoint3D::_equilibrium_target() const {
 	Transform3D target;
-	if (type != JointType::JOINT_TYPE_6DOF) {
+	if (type != PS3DE::JointType::JOINT_TYPE_6DOF) {
 		return target;
 	}
 	const Vector3 axes[3] = { Vector3(1, 0, 0), Vector3(0, 1, 0), Vector3(0, 0, 1) };
@@ -428,11 +428,11 @@ Transform3D GodotPhysXJoint3D::_equilibrium_target() const {
 }
 
 void GodotPhysXJoint3D::rebuild() {
-	if (type == JointType::JOINT_TYPE_MAX) {
+	if (type == PS3DE::JointType::JOINT_TYPE_MAX) {
 		return;
 	}
 	_destroy();
-	if (type == JointType::JOINT_TYPE_HINGE && slerp_drive) {
+	if (type == PS3DE::JointType::JOINT_TYPE_HINGE && slerp_drive) {
 		hinge_d6 = true; // for good: a hinge that was driven once stays a D6
 	}
 	px_joint = _create();
@@ -452,7 +452,7 @@ void GodotPhysXJoint3D::set_collisions_disabled(bool p_disabled) {
 
 void GodotPhysXJoint3D::make_pin(GodotPhysXBody3D *p_a, const Vector3 &p_local_a, GodotPhysXBody3D *p_b, const Vector3 &p_local_b) {
 	clear();
-	type = JointType::JOINT_TYPE_PIN;
+	type = PS3DE::JointType::JOINT_TYPE_PIN;
 	body_a = p_a;
 	body_b = p_b;
 	frame_a = Transform3D(Basis(), p_local_a);
@@ -468,7 +468,7 @@ void GodotPhysXJoint3D::make_pin(GodotPhysXBody3D *p_a, const Vector3 &p_local_a
 
 void GodotPhysXJoint3D::make_hinge(GodotPhysXBody3D *p_a, const Transform3D &p_frame_a, GodotPhysXBody3D *p_b, const Transform3D &p_frame_b) {
 	clear();
-	type = JointType::JOINT_TYPE_HINGE;
+	type = PS3DE::JointType::JOINT_TYPE_HINGE;
 	body_a = p_a;
 	body_b = p_b;
 	frame_a = p_frame_a;
@@ -484,7 +484,7 @@ void GodotPhysXJoint3D::make_hinge(GodotPhysXBody3D *p_a, const Transform3D &p_f
 
 void GodotPhysXJoint3D::make_slider(GodotPhysXBody3D *p_a, const Transform3D &p_frame_a, GodotPhysXBody3D *p_b, const Transform3D &p_frame_b) {
 	clear();
-	type = JointType::JOINT_TYPE_SLIDER;
+	type = PS3DE::JointType::JOINT_TYPE_SLIDER;
 	body_a = p_a;
 	body_b = p_b;
 	frame_a = p_frame_a;
@@ -500,7 +500,7 @@ void GodotPhysXJoint3D::make_slider(GodotPhysXBody3D *p_a, const Transform3D &p_
 
 void GodotPhysXJoint3D::make_cone_twist(GodotPhysXBody3D *p_a, const Transform3D &p_frame_a, GodotPhysXBody3D *p_b, const Transform3D &p_frame_b) {
 	clear();
-	type = JointType::JOINT_TYPE_CONE_TWIST;
+	type = PS3DE::JointType::JOINT_TYPE_CONE_TWIST;
 	body_a = p_a;
 	body_b = p_b;
 	frame_a = p_frame_a;
@@ -516,7 +516,7 @@ void GodotPhysXJoint3D::make_cone_twist(GodotPhysXBody3D *p_a, const Transform3D
 
 void GodotPhysXJoint3D::make_6dof(GodotPhysXBody3D *p_a, const Transform3D &p_frame_a, GodotPhysXBody3D *p_b, const Transform3D &p_frame_b) {
 	clear();
-	type = JointType::JOINT_TYPE_6DOF;
+	type = PS3DE::JointType::JOINT_TYPE_6DOF;
 	body_a = p_a;
 	body_b = p_b;
 	frame_a = p_frame_a;
@@ -544,25 +544,25 @@ void GodotPhysXJoint3D::set_pin_local_b(const Vector3 &p_b) {
 
 /* --- hinge ----------------------------------------------------------------- */
 
-void GodotPhysXJoint3D::set_hinge_param(PhysicsServer3D::HingeJointParam p_param, real_t p_value) {
+void GodotPhysXJoint3D::set_hinge_param(PS3DE::HingeJointParam p_param, real_t p_value) {
 	switch (p_param) {
-		case PhysicsServer3D::HINGE_JOINT_LIMIT_LOWER:
+		case PS3DE::HINGE_JOINT_LIMIT_LOWER:
 			hinge_lower = p_value;
 			break;
-		case PhysicsServer3D::HINGE_JOINT_LIMIT_UPPER:
+		case PS3DE::HINGE_JOINT_LIMIT_UPPER:
 			hinge_upper = p_value;
 			break;
-		case PhysicsServer3D::HINGE_JOINT_MOTOR_TARGET_VELOCITY:
+		case PS3DE::HINGE_JOINT_MOTOR_TARGET_VELOCITY:
 			hinge_motor_velocity = p_value;
 			break;
-		case PhysicsServer3D::HINGE_JOINT_MOTOR_MAX_IMPULSE:
+		case PS3DE::HINGE_JOINT_MOTOR_MAX_IMPULSE:
 			hinge_motor_max_impulse = p_value;
 			break;
 		default: {
 			// Bullet-era bias / softness / relaxation -- unsupported here, as in
 			// Jolt. Only worth a warning when set away from its default: joint
 			// nodes and PhysicalBone3D send the defaults every time.
-			const real_t def = p_param == PhysicsServer3D::HINGE_JOINT_LIMIT_SOFTNESS ? 0.9 : (p_param == PhysicsServer3D::HINGE_JOINT_LIMIT_RELAXATION ? 1.0 : 0.3);
+			const real_t def = p_param == PS3DE::HINGE_JOINT_LIMIT_SOFTNESS ? 0.9 : (p_param == PS3DE::HINGE_JOINT_LIMIT_RELAXATION ? 1.0 : 0.3);
 			if (!Math::is_equal_approx(p_value, def)) {
 				WARN_PRINT_ONCE("PhysX: this hinge joint parameter is not supported and will be ignored.");
 			}
@@ -571,35 +571,35 @@ void GodotPhysXJoint3D::set_hinge_param(PhysicsServer3D::HingeJointParam p_param
 	_apply_params();
 }
 
-real_t GodotPhysXJoint3D::get_hinge_param(PhysicsServer3D::HingeJointParam p_param) const {
+real_t GodotPhysXJoint3D::get_hinge_param(PS3DE::HingeJointParam p_param) const {
 	switch (p_param) {
-		case PhysicsServer3D::HINGE_JOINT_LIMIT_LOWER:
+		case PS3DE::HINGE_JOINT_LIMIT_LOWER:
 			return hinge_lower;
-		case PhysicsServer3D::HINGE_JOINT_LIMIT_UPPER:
+		case PS3DE::HINGE_JOINT_LIMIT_UPPER:
 			return hinge_upper;
-		case PhysicsServer3D::HINGE_JOINT_MOTOR_TARGET_VELOCITY:
+		case PS3DE::HINGE_JOINT_MOTOR_TARGET_VELOCITY:
 			return hinge_motor_velocity;
-		case PhysicsServer3D::HINGE_JOINT_MOTOR_MAX_IMPULSE:
+		case PS3DE::HINGE_JOINT_MOTOR_MAX_IMPULSE:
 			return hinge_motor_max_impulse;
 		default:
 			return 0.0;
 	}
 }
 
-void GodotPhysXJoint3D::set_hinge_flag(PhysicsServer3D::HingeJointFlag p_flag, bool p_enabled) {
-	if (p_flag == PhysicsServer3D::HINGE_JOINT_FLAG_USE_LIMIT) {
+void GodotPhysXJoint3D::set_hinge_flag(PS3DE::HingeJointFlag p_flag, bool p_enabled) {
+	if (p_flag == PS3DE::HINGE_JOINT_FLAG_USE_LIMIT) {
 		hinge_use_limit = p_enabled;
-	} else if (p_flag == PhysicsServer3D::HINGE_JOINT_FLAG_ENABLE_MOTOR) {
+	} else if (p_flag == PS3DE::HINGE_JOINT_FLAG_ENABLE_MOTOR) {
 		hinge_motor = p_enabled;
 	}
 	_apply_params();
 }
 
-bool GodotPhysXJoint3D::get_hinge_flag(PhysicsServer3D::HingeJointFlag p_flag) const {
-	if (p_flag == PhysicsServer3D::HINGE_JOINT_FLAG_USE_LIMIT) {
+bool GodotPhysXJoint3D::get_hinge_flag(PS3DE::HingeJointFlag p_flag) const {
+	if (p_flag == PS3DE::HINGE_JOINT_FLAG_USE_LIMIT) {
 		return hinge_use_limit;
 	}
-	if (p_flag == PhysicsServer3D::HINGE_JOINT_FLAG_ENABLE_MOTOR) {
+	if (p_flag == PS3DE::HINGE_JOINT_FLAG_ENABLE_MOTOR) {
 		return hinge_motor;
 	}
 	return false;
@@ -607,10 +607,10 @@ bool GodotPhysXJoint3D::get_hinge_flag(PhysicsServer3D::HingeJointFlag p_flag) c
 
 /* --- slider -------------------------------------------------------------- */
 
-void GodotPhysXJoint3D::set_slider_param(PhysicsServer3D::SliderJointParam p_param, real_t p_value) {
-	if (p_param == PhysicsServer3D::SLIDER_JOINT_LINEAR_LIMIT_LOWER) {
+void GodotPhysXJoint3D::set_slider_param(PS3DE::SliderJointParam p_param, real_t p_value) {
+	if (p_param == PS3DE::SLIDER_JOINT_LINEAR_LIMIT_LOWER) {
 		slider_lower = p_value;
-	} else if (p_param == PhysicsServer3D::SLIDER_JOINT_LINEAR_LIMIT_UPPER) {
+	} else if (p_param == PS3DE::SLIDER_JOINT_LINEAR_LIMIT_UPPER) {
 		slider_upper = p_value;
 	} else {
 		// Bullet-era softness / restitution / damping -- unsupported here, as in Jolt.
@@ -619,11 +619,11 @@ void GodotPhysXJoint3D::set_slider_param(PhysicsServer3D::SliderJointParam p_par
 	_apply_params();
 }
 
-real_t GodotPhysXJoint3D::get_slider_param(PhysicsServer3D::SliderJointParam p_param) const {
-	if (p_param == PhysicsServer3D::SLIDER_JOINT_LINEAR_LIMIT_LOWER) {
+real_t GodotPhysXJoint3D::get_slider_param(PS3DE::SliderJointParam p_param) const {
+	if (p_param == PS3DE::SLIDER_JOINT_LINEAR_LIMIT_LOWER) {
 		return slider_lower;
 	}
-	if (p_param == PhysicsServer3D::SLIDER_JOINT_LINEAR_LIMIT_UPPER) {
+	if (p_param == PS3DE::SLIDER_JOINT_LINEAR_LIMIT_UPPER) {
 		return slider_upper;
 	}
 	return 0.0;
@@ -631,15 +631,15 @@ real_t GodotPhysXJoint3D::get_slider_param(PhysicsServer3D::SliderJointParam p_p
 
 /* --- cone twist ---------------------------------------------------------- */
 
-void GodotPhysXJoint3D::set_cone_twist_param(PhysicsServer3D::ConeTwistJointParam p_param, real_t p_value) {
-	if (p_param == PhysicsServer3D::CONE_TWIST_JOINT_SWING_SPAN) {
+void GodotPhysXJoint3D::set_cone_twist_param(PS3DE::ConeTwistJointParam p_param, real_t p_value) {
+	if (p_param == PS3DE::CONE_TWIST_JOINT_SWING_SPAN) {
 		cone_swing = CLAMP(p_value, (real_t)0.01, (real_t)Math::PI);
-	} else if (p_param == PhysicsServer3D::CONE_TWIST_JOINT_TWIST_SPAN) {
+	} else if (p_param == PS3DE::CONE_TWIST_JOINT_TWIST_SPAN) {
 		cone_twist = CLAMP(p_value, (real_t)0.01, (real_t)Math::PI);
 	} else {
 		// Bullet-era bias / softness / relaxation -- unsupported here, as in
 		// Jolt; a warning only when set away from the default (see the hinge).
-		const real_t def = p_param == PhysicsServer3D::CONE_TWIST_JOINT_SOFTNESS ? 0.8 : (p_param == PhysicsServer3D::CONE_TWIST_JOINT_RELAXATION ? 1.0 : 0.3);
+		const real_t def = p_param == PS3DE::CONE_TWIST_JOINT_SOFTNESS ? 0.8 : (p_param == PS3DE::CONE_TWIST_JOINT_RELAXATION ? 1.0 : 0.3);
 		if (!Math::is_equal_approx(p_value, def)) {
 			WARN_PRINT_ONCE("PhysX: this cone-twist joint parameter is not supported and will be ignored.");
 		}
@@ -647,11 +647,11 @@ void GodotPhysXJoint3D::set_cone_twist_param(PhysicsServer3D::ConeTwistJointPara
 	_apply_params();
 }
 
-real_t GodotPhysXJoint3D::get_cone_twist_param(PhysicsServer3D::ConeTwistJointParam p_param) const {
-	if (p_param == PhysicsServer3D::CONE_TWIST_JOINT_SWING_SPAN) {
+real_t GodotPhysXJoint3D::get_cone_twist_param(PS3DE::ConeTwistJointParam p_param) const {
+	if (p_param == PS3DE::CONE_TWIST_JOINT_SWING_SPAN) {
 		return cone_swing;
 	}
-	if (p_param == PhysicsServer3D::CONE_TWIST_JOINT_TWIST_SPAN) {
+	if (p_param == PS3DE::CONE_TWIST_JOINT_TWIST_SPAN) {
 		return cone_twist;
 	}
 	return 0.0;
@@ -659,51 +659,51 @@ real_t GodotPhysXJoint3D::get_cone_twist_param(PhysicsServer3D::ConeTwistJointPa
 
 /* --- generic 6dof ------------------------------------------------------------ */
 
-void GodotPhysXJoint3D::set_6dof_param(Vector3::Axis p_axis, PhysicsServer3D::G6DOFJointAxisParam p_param, real_t p_value) {
+void GodotPhysXJoint3D::set_6dof_param(Vector3::Axis p_axis, PS3DE::G6DOFJointAxisParam p_param, real_t p_value) {
 	Axis6DOF &ax = axis6[p_axis];
 	switch (p_param) {
-		case PhysicsServer3D::G6DOF_JOINT_LINEAR_LOWER_LIMIT:
+		case PS3DE::G6DOF_JOINT_LINEAR_LOWER_LIMIT:
 			ax.lin_lower = p_value;
 			break;
-		case PhysicsServer3D::G6DOF_JOINT_LINEAR_UPPER_LIMIT:
+		case PS3DE::G6DOF_JOINT_LINEAR_UPPER_LIMIT:
 			ax.lin_upper = p_value;
 			break;
-		case PhysicsServer3D::G6DOF_JOINT_ANGULAR_LOWER_LIMIT:
+		case PS3DE::G6DOF_JOINT_ANGULAR_LOWER_LIMIT:
 			ax.ang_lower = p_value;
 			break;
-		case PhysicsServer3D::G6DOF_JOINT_ANGULAR_UPPER_LIMIT:
+		case PS3DE::G6DOF_JOINT_ANGULAR_UPPER_LIMIT:
 			ax.ang_upper = p_value;
 			break;
-		case PhysicsServer3D::G6DOF_JOINT_LINEAR_MOTOR_TARGET_VELOCITY:
+		case PS3DE::G6DOF_JOINT_LINEAR_MOTOR_TARGET_VELOCITY:
 			ax.lin_motor_target = p_value;
 			break;
-		case PhysicsServer3D::G6DOF_JOINT_LINEAR_MOTOR_FORCE_LIMIT:
+		case PS3DE::G6DOF_JOINT_LINEAR_MOTOR_FORCE_LIMIT:
 			ax.lin_motor_force = p_value;
 			break;
-		case PhysicsServer3D::G6DOF_JOINT_ANGULAR_MOTOR_TARGET_VELOCITY:
+		case PS3DE::G6DOF_JOINT_ANGULAR_MOTOR_TARGET_VELOCITY:
 			ax.ang_motor_target = p_value;
 			break;
-		case PhysicsServer3D::G6DOF_JOINT_ANGULAR_MOTOR_FORCE_LIMIT:
+		case PS3DE::G6DOF_JOINT_ANGULAR_MOTOR_FORCE_LIMIT:
 			ax.ang_motor_force = p_value;
 			break;
-		case PhysicsServer3D::G6DOF_JOINT_LINEAR_SPRING_STIFFNESS:
+		case PS3DE::G6DOF_JOINT_LINEAR_SPRING_STIFFNESS:
 			ax.lin_spring_stiffness = p_value;
 			break;
-		case PhysicsServer3D::G6DOF_JOINT_LINEAR_SPRING_DAMPING:
+		case PS3DE::G6DOF_JOINT_LINEAR_SPRING_DAMPING:
 			ax.lin_spring_damping = p_value;
 			break;
-		case PhysicsServer3D::G6DOF_JOINT_LINEAR_SPRING_EQUILIBRIUM_POINT:
+		case PS3DE::G6DOF_JOINT_LINEAR_SPRING_EQUILIBRIUM_POINT:
 			// A new equilibrium point takes over from a drive target (the joint nodes resend the same value).
 			has_drive_target = has_drive_target && ax.lin_spring_eq == p_value;
 			ax.lin_spring_eq = p_value;
 			break;
-		case PhysicsServer3D::G6DOF_JOINT_ANGULAR_SPRING_STIFFNESS:
+		case PS3DE::G6DOF_JOINT_ANGULAR_SPRING_STIFFNESS:
 			ax.ang_spring_stiffness = p_value;
 			break;
-		case PhysicsServer3D::G6DOF_JOINT_ANGULAR_SPRING_DAMPING:
+		case PS3DE::G6DOF_JOINT_ANGULAR_SPRING_DAMPING:
 			ax.ang_spring_damping = p_value;
 			break;
-		case PhysicsServer3D::G6DOF_JOINT_ANGULAR_SPRING_EQUILIBRIUM_POINT:
+		case PS3DE::G6DOF_JOINT_ANGULAR_SPRING_EQUILIBRIUM_POINT:
 			has_drive_target = has_drive_target && ax.ang_spring_eq == p_value;
 			ax.ang_spring_eq = p_value;
 			break;
@@ -712,16 +712,16 @@ void GodotPhysXJoint3D::set_6dof_param(Vector3::Axis p_axis, PhysicsServer3D::G6
 			// set away from Godot's default (the node sends every parameter when it builds the joint).
 			real_t def = 0.0;
 			switch (p_param) {
-				case PhysicsServer3D::G6DOF_JOINT_LINEAR_LIMIT_SOFTNESS:
+				case PS3DE::G6DOF_JOINT_LINEAR_LIMIT_SOFTNESS:
 					def = 0.7;
 					break;
-				case PhysicsServer3D::G6DOF_JOINT_LINEAR_RESTITUTION:
-				case PhysicsServer3D::G6DOF_JOINT_ANGULAR_LIMIT_SOFTNESS:
-				case PhysicsServer3D::G6DOF_JOINT_ANGULAR_ERP:
+				case PS3DE::G6DOF_JOINT_LINEAR_RESTITUTION:
+				case PS3DE::G6DOF_JOINT_ANGULAR_LIMIT_SOFTNESS:
+				case PS3DE::G6DOF_JOINT_ANGULAR_ERP:
 					def = 0.5;
 					break;
-				case PhysicsServer3D::G6DOF_JOINT_LINEAR_DAMPING:
-				case PhysicsServer3D::G6DOF_JOINT_ANGULAR_DAMPING:
+				case PS3DE::G6DOF_JOINT_LINEAR_DAMPING:
+				case PS3DE::G6DOF_JOINT_ANGULAR_DAMPING:
 					def = 1.0;
 					break;
 				default:
@@ -735,53 +735,53 @@ void GodotPhysXJoint3D::set_6dof_param(Vector3::Axis p_axis, PhysicsServer3D::G6
 	_apply_params();
 }
 
-real_t GodotPhysXJoint3D::get_6dof_param(Vector3::Axis p_axis, PhysicsServer3D::G6DOFJointAxisParam p_param) const {
+real_t GodotPhysXJoint3D::get_6dof_param(Vector3::Axis p_axis, PS3DE::G6DOFJointAxisParam p_param) const {
 	const Axis6DOF &ax = axis6[p_axis];
 	switch (p_param) {
-		case PhysicsServer3D::G6DOF_JOINT_LINEAR_LOWER_LIMIT:
+		case PS3DE::G6DOF_JOINT_LINEAR_LOWER_LIMIT:
 			return ax.lin_lower;
-		case PhysicsServer3D::G6DOF_JOINT_LINEAR_UPPER_LIMIT:
+		case PS3DE::G6DOF_JOINT_LINEAR_UPPER_LIMIT:
 			return ax.lin_upper;
-		case PhysicsServer3D::G6DOF_JOINT_ANGULAR_LOWER_LIMIT:
+		case PS3DE::G6DOF_JOINT_ANGULAR_LOWER_LIMIT:
 			return ax.ang_lower;
-		case PhysicsServer3D::G6DOF_JOINT_ANGULAR_UPPER_LIMIT:
+		case PS3DE::G6DOF_JOINT_ANGULAR_UPPER_LIMIT:
 			return ax.ang_upper;
-		case PhysicsServer3D::G6DOF_JOINT_LINEAR_SPRING_STIFFNESS:
+		case PS3DE::G6DOF_JOINT_LINEAR_SPRING_STIFFNESS:
 			return ax.lin_spring_stiffness;
-		case PhysicsServer3D::G6DOF_JOINT_LINEAR_SPRING_DAMPING:
+		case PS3DE::G6DOF_JOINT_LINEAR_SPRING_DAMPING:
 			return ax.lin_spring_damping;
-		case PhysicsServer3D::G6DOF_JOINT_LINEAR_SPRING_EQUILIBRIUM_POINT:
+		case PS3DE::G6DOF_JOINT_LINEAR_SPRING_EQUILIBRIUM_POINT:
 			return ax.lin_spring_eq;
-		case PhysicsServer3D::G6DOF_JOINT_ANGULAR_SPRING_STIFFNESS:
+		case PS3DE::G6DOF_JOINT_ANGULAR_SPRING_STIFFNESS:
 			return ax.ang_spring_stiffness;
-		case PhysicsServer3D::G6DOF_JOINT_ANGULAR_SPRING_DAMPING:
+		case PS3DE::G6DOF_JOINT_ANGULAR_SPRING_DAMPING:
 			return ax.ang_spring_damping;
-		case PhysicsServer3D::G6DOF_JOINT_ANGULAR_SPRING_EQUILIBRIUM_POINT:
+		case PS3DE::G6DOF_JOINT_ANGULAR_SPRING_EQUILIBRIUM_POINT:
 			return ax.ang_spring_eq;
 		default:
 			return 0.0;
 	}
 }
 
-void GodotPhysXJoint3D::set_6dof_flag(Vector3::Axis p_axis, PhysicsServer3D::G6DOFJointAxisFlag p_flag, bool p_enable) {
+void GodotPhysXJoint3D::set_6dof_flag(Vector3::Axis p_axis, PS3DE::G6DOFJointAxisFlag p_flag, bool p_enable) {
 	Axis6DOF &ax = axis6[p_axis];
 	switch (p_flag) {
-		case PhysicsServer3D::G6DOF_JOINT_FLAG_ENABLE_LINEAR_LIMIT:
+		case PS3DE::G6DOF_JOINT_FLAG_ENABLE_LINEAR_LIMIT:
 			ax.lin_limit = p_enable;
 			break;
-		case PhysicsServer3D::G6DOF_JOINT_FLAG_ENABLE_ANGULAR_LIMIT:
+		case PS3DE::G6DOF_JOINT_FLAG_ENABLE_ANGULAR_LIMIT:
 			ax.ang_limit = p_enable;
 			break;
-		case PhysicsServer3D::G6DOF_JOINT_FLAG_ENABLE_LINEAR_MOTOR:
+		case PS3DE::G6DOF_JOINT_FLAG_ENABLE_LINEAR_MOTOR:
 			ax.lin_motor = p_enable;
 			break;
-		case PhysicsServer3D::G6DOF_JOINT_FLAG_ENABLE_MOTOR:
+		case PS3DE::G6DOF_JOINT_FLAG_ENABLE_MOTOR:
 			ax.ang_motor = p_enable;
 			break;
-		case PhysicsServer3D::G6DOF_JOINT_FLAG_ENABLE_LINEAR_SPRING:
+		case PS3DE::G6DOF_JOINT_FLAG_ENABLE_LINEAR_SPRING:
 			ax.lin_spring = p_enable;
 			break;
-		case PhysicsServer3D::G6DOF_JOINT_FLAG_ENABLE_ANGULAR_SPRING:
+		case PS3DE::G6DOF_JOINT_FLAG_ENABLE_ANGULAR_SPRING:
 			ax.ang_spring = p_enable;
 			break;
 		default:
@@ -790,20 +790,20 @@ void GodotPhysXJoint3D::set_6dof_flag(Vector3::Axis p_axis, PhysicsServer3D::G6D
 	_apply_params();
 }
 
-bool GodotPhysXJoint3D::get_6dof_flag(Vector3::Axis p_axis, PhysicsServer3D::G6DOFJointAxisFlag p_flag) const {
+bool GodotPhysXJoint3D::get_6dof_flag(Vector3::Axis p_axis, PS3DE::G6DOFJointAxisFlag p_flag) const {
 	const Axis6DOF &ax = axis6[p_axis];
 	switch (p_flag) {
-		case PhysicsServer3D::G6DOF_JOINT_FLAG_ENABLE_LINEAR_LIMIT:
+		case PS3DE::G6DOF_JOINT_FLAG_ENABLE_LINEAR_LIMIT:
 			return ax.lin_limit;
-		case PhysicsServer3D::G6DOF_JOINT_FLAG_ENABLE_ANGULAR_LIMIT:
+		case PS3DE::G6DOF_JOINT_FLAG_ENABLE_ANGULAR_LIMIT:
 			return ax.ang_limit;
-		case PhysicsServer3D::G6DOF_JOINT_FLAG_ENABLE_LINEAR_MOTOR:
+		case PS3DE::G6DOF_JOINT_FLAG_ENABLE_LINEAR_MOTOR:
 			return ax.lin_motor;
-		case PhysicsServer3D::G6DOF_JOINT_FLAG_ENABLE_MOTOR:
+		case PS3DE::G6DOF_JOINT_FLAG_ENABLE_MOTOR:
 			return ax.ang_motor;
-		case PhysicsServer3D::G6DOF_JOINT_FLAG_ENABLE_LINEAR_SPRING:
+		case PS3DE::G6DOF_JOINT_FLAG_ENABLE_LINEAR_SPRING:
 			return ax.lin_spring;
-		case PhysicsServer3D::G6DOF_JOINT_FLAG_ENABLE_ANGULAR_SPRING:
+		case PS3DE::G6DOF_JOINT_FLAG_ENABLE_ANGULAR_SPRING:
 			return ax.ang_spring;
 		default:
 			return false;
@@ -828,7 +828,7 @@ void GodotPhysXJoint3D::set_slerp_drive(bool p_enabled, real_t p_stiffness, real
 	slerp_stiffness = MAX(p_stiffness, (real_t)0.0);
 	slerp_damping = MAX(p_damping, (real_t)0.0);
 	slerp_torque_limit = p_torque_limit;
-	if (slerp_drive && type == JointType::JOINT_TYPE_HINGE && !hinge_d6) {
+	if (slerp_drive && type == PS3DE::JointType::JOINT_TYPE_HINGE && !hinge_d6) {
 		rebuild(); // as a D6
 		return;
 	}
