@@ -21,7 +21,7 @@
 /*                                                                        */
 /* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,        */
 /* EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF     */
-/* MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. */
+/* MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. */
 /* IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY   */
 /* CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,   */
 /* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE      */
@@ -97,7 +97,7 @@ private:
 
 	// chunk_points[chunk_index] holds that chunk's render-mesh triangle-soup
 	// vertex positions (object-local space, straight from the authoring
-	// dump) -- fed directly to PS3DE::shape_set_data() to cook a
+	// dump) -- fed directly to PhysicsServer3D::shape_set_data() to cook a
 	// real convex hull on demand. Blast's own authored CollisionHull data
 	// (from NvBlastExtAuthoringProcessFracture) is never consumed here.
 	LocalVector<PackedVector3Array> chunk_points;

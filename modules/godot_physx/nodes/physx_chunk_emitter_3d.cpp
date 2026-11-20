@@ -174,7 +174,7 @@ void PhysXChunkEmitter3D::_spawn_one(const Vector3 &p_world_pos, const Vector3 &
 	rand_basis.rotate(Vector3(Math::randf(), Math::randf(), Math::randf()).normalized(), Math::random(0.0f, (float)Math::TAU));
 
 	RID body = ps->body_create();
-	ps->body_set_mode(body, PS3DE::BODY_MODE_RIGID);
+	ps->body_set_mode(body, PhysicsServer3D::BODY_MODE_RIGID);
 	ps->body_set_collision_layer(body, collision_layer);
 	ps->body_set_collision_mask(body, collision_mask);
 
@@ -192,15 +192,15 @@ void PhysXChunkEmitter3D::_spawn_one(const Vector3 &p_world_pos, const Vector3 &
 	ps->body_add_shape(body, shape);
 
 	const real_t mass = MAX(density * volume, (real_t)0.001);
-	ps->body_set_param(body, PS3DE::BODY_PARAM_MASS, mass);
-	ps->body_set_param(body, PS3DE::BODY_PARAM_FRICTION, friction);
-	ps->body_set_param(body, PS3DE::BODY_PARAM_BOUNCE, bounce);
-	ps->body_set_param(body, PS3DE::BODY_PARAM_LINEAR_DAMP, linear_damp);
-	ps->body_set_param(body, PS3DE::BODY_PARAM_ANGULAR_DAMP, angular_damp);
-	ps->body_set_state(body, PS3DE::BODY_STATE_TRANSFORM, Transform3D(rand_basis, p_world_pos));
-	ps->body_set_state(body, PS3DE::BODY_STATE_LINEAR_VELOCITY, p_dir * speed);
+	ps->body_set_param(body, PhysicsServer3D::BODY_PARAM_MASS, mass);
+	ps->body_set_param(body, PhysicsServer3D::BODY_PARAM_FRICTION, friction);
+	ps->body_set_param(body, PhysicsServer3D::BODY_PARAM_BOUNCE, bounce);
+	ps->body_set_param(body, PhysicsServer3D::BODY_PARAM_LINEAR_DAMP, linear_damp);
+	ps->body_set_param(body, PhysicsServer3D::BODY_PARAM_ANGULAR_DAMP, angular_damp);
+	ps->body_set_state(body, PhysicsServer3D::BODY_STATE_TRANSFORM, Transform3D(rand_basis, p_world_pos));
+	ps->body_set_state(body, PhysicsServer3D::BODY_STATE_LINEAR_VELOCITY, p_dir * speed);
 	Vector3 spin = Vector3(Math::random(-1.0f, 1.0f), Math::random(-1.0f, 1.0f), Math::random(-1.0f, 1.0f)) * spin_impulse;
-	ps->body_set_state(body, PS3DE::BODY_STATE_ANGULAR_VELOCITY, spin);
+	ps->body_set_state(body, PhysicsServer3D::BODY_STATE_ANGULAR_VELOCITY, spin);
 	ps->body_set_space(body, p_space);
 
 	Chunk chunk;
@@ -431,7 +431,7 @@ void PhysXChunkEmitter3D::_bind_methods() {
 	ADD_GROUP("Motion", "");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "impulse_min", PROPERTY_HINT_RANGE, "0,40,0.1"), "set_impulse_min", "get_impulse_min");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "impulse_max", PROPERTY_HINT_RANGE, "0,40,0.1"), "set_impulse_max", "get_impulse_max");
-	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "spread_degrees", PROPERTY_HINT_RANGE, "0,180,0.5,radians_as_degrees"), "set_spread_degrees", "get_spread_degrees");
+	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "spread_degrees", PROPERTY_HINT_RANGE, "0,180,0.5,degrees"), "set_spread_degrees", "get_spread_degrees");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "spin_impulse", PROPERTY_HINT_RANGE, "0,30,0.1"), "set_spin_impulse", "get_spin_impulse");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "density", PROPERTY_HINT_RANGE, "1,20000,1,suffix:kg/m³"), "set_density", "get_density");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "friction", PROPERTY_HINT_RANGE, "0,3,0.01,or_greater"), "set_friction", "get_friction");

@@ -30,9 +30,12 @@
 
 #pragma once
 
+#include "core/os/thread.h"
 #include "core/templates/hash_map.h"
 #include "core/templates/hash_set.h"
 #include "core/templates/rid_owner.h"
+#include "core/templates/safe_refcount.h"
+#include "core/variant/callable.h"
 #include "servers/physics_3d/physics_server_3d_dummy.h"
 
 namespace physx {
@@ -50,6 +53,30 @@ class GodotPhysXJoint3D;
 class GodotPhysXParticleFluid3D;
 class GodotPhysXCloth3D;
 class GodotPhysXSoftBody3D;
+
+// A call queued for the physics thread (GodotPhysXServer3D::run_on_physics_thread).
+template <typename F>
+class GodotPhysXQueuedCall : public CallableCustom {
+	mutable F func;
+
+	static bool _compare_equal(const CallableCustom *p_a, const CallableCustom *p_b) { return p_a == p_b; }
+	static bool _compare_less(const CallableCustom *p_a, const CallableCustom *p_b) { return p_a < p_b; }
+
+public:
+	virtual uint32_t hash() const override { return hash_murmur3_one_64((uint64_t)this); }
+	virtual String get_as_text() const override { return "GodotPhysXQueuedCall"; }
+	virtual CompareEqualFunc get_compare_equal_func() const override { return _compare_equal; }
+	virtual CompareLessFunc get_compare_less_func() const override { return _compare_less; }
+	virtual bool is_valid() const override { return true; }
+	virtual ObjectID get_object() const override { return ObjectID(); }
+	virtual void call(const Variant **p_arguments, int p_argcount, Variant &r_return_value, Callable::CallError &r_call_error) const override {
+		func();
+		r_call_error.error = Callable::CallError::CALL_OK;
+	}
+
+	GodotPhysXQueuedCall(const F &p_func) :
+			func(p_func) {}
+};
 
 // PhysX 5 implementation of PhysicsServer3D, built on top of PhysicsServer3DDummy
 // so that only the methods the backend actually implements need to be overridden;
@@ -80,7 +107,17 @@ class GodotPhysXServer3D : public PhysicsServer3DDummy {
 	bool flushing_queries = false;
 	int active_objects = 0;
 
-	RID _shape_create(PhysicsServer3DEnums::ShapeType p_type);
+	// With physics/3d/run_on_separate_thread the server runs on its own thread; the main thread may touch the scenes
+	// only between sync() and end_sync(), while that thread is parked (physics process).
+	Thread::ID server_thread = Thread::MAIN_ID;
+	bool syncing = false;
+	// Carries run_on_physics_thread()'s calls through PhysicsServer3DWrapMT's command queue (a body in no space).
+	RID dispatch_body;
+
+	RID _shape_create(PhysicsServer3D::ShapeType p_type);
+
+	SafeNumeric<uint32_t> background_jobs;
+	SafeFlag finishing;
 
 public:
 	static GodotPhysXServer3D *get_singleton() { return singleton; }
@@ -88,12 +125,43 @@ public:
 	// Lookups for the direct space state (scene queries).
 	GodotPhysXShape3D *get_shape(RID p_rid) const { return shape_owner.get_or_null(p_rid); }
 	GodotPhysXBody3D *get_body(RID p_rid) const { return body_owner.get_or_null(p_rid); }
+	GodotPhysXJoint3D *get_joint(RID p_rid) const { return joint_owner.get_or_null(p_rid); }
 	// Lets code inside this module (e.g. the PxVehicle2 probe) reach a space's
 	// real PxScene/PxPhysics directly, same access level get_body() already
 	// gives to a body's PxRigidActor.
 	GodotPhysXSpace3D *get_space(RID p_rid) const { return space_owner.get_or_null(p_rid); }
 
 	physx::PxPhysics *get_px_physics() const { return px_physics; }
+
+	// Work on another thread that uses get_px_physics() (a background Blast fracture) holds a job: finish() asks it to
+	// stop (is_finishing()) and waits for it before releasing PhysX. begin_background_job() is false once finishing.
+	bool begin_background_job();
+	void end_background_job() { background_jobs.decrement(); }
+	bool is_finishing() const { return finishing.is_set(); }
+
+	// Whether this thread may touch the PhysX scenes now: the physics thread, or the main thread while that thread
+	// is parked (physics process) or when physics doesn't run on its own thread. The module's nodes reach PhysX
+	// directly (vehicles, fluids, cloth), so anything they do outside physics process goes through
+	// run_on_physics_thread().
+	static bool can_touch_scene() {
+		return singleton == nullptr || Thread::get_caller_id() == singleton->server_thread || (Thread::is_main_thread() && singleton->syncing);
+	}
+	// Runs p_func where the scenes may be touched: right away if this thread may (see can_touch_scene()), else queued
+	// in order behind the physics thread's other commands. p_wait waits for it to have run -- a sync with the physics
+	// thread, as any PhysicsServer3D getter called outside physics process. p_func mustn't touch the scene tree or
+	// wait on the main thread (it may run on the physics thread while the main thread waits for it).
+	template <typename F>
+	static void run_on_physics_thread(const F &p_func, bool p_wait = false) {
+		if (can_touch_scene() || !singleton->dispatch_body.is_valid()) {
+			p_func();
+			return;
+		}
+		PhysicsServer3D *wrapper = PhysicsServer3D::get_singleton();
+		wrapper->body_set_state_sync_callback(singleton->dispatch_body, Callable(memnew(GodotPhysXQueuedCall<F>(p_func))));
+		if (p_wait) {
+			wrapper->body_get_space(singleton->dispatch_body); // returns once the queue has run up to it
+		}
+	}
 
 	/* SHAPE API */
 	virtual RID world_boundary_shape_create() override;
@@ -110,15 +178,15 @@ public:
 	virtual void shape_set_data(RID p_shape, const Variant &p_data) override;
 	virtual void shape_set_margin(RID p_shape, real_t p_margin) override;
 	virtual real_t shape_get_margin(RID p_shape) const override;
-	virtual PhysicsServer3DEnums::ShapeType shape_get_type(RID p_shape) const override;
+	virtual ShapeType shape_get_type(RID p_shape) const override;
 	virtual Variant shape_get_data(RID p_shape) const override;
 
 	/* SPACE API */
 	virtual RID space_create() override;
 	virtual void space_set_active(RID p_space, bool p_active) override;
 	virtual bool space_is_active(RID p_space) const override;
-	virtual void space_set_param(RID p_space, PhysicsServer3DEnums::SpaceParameter p_param, real_t p_value) override;
-	virtual real_t space_get_param(RID p_space, PhysicsServer3DEnums::SpaceParameter p_param) const override;
+	virtual void space_set_param(RID p_space, SpaceParameter p_param, real_t p_value) override;
+	virtual real_t space_get_param(RID p_space, SpaceParameter p_param) const override;
 	virtual PhysicsDirectSpaceState3D *space_get_direct_state(RID p_space) override;
 
 	/* AREA API (minimal: the space RID doubles as its default area for gravity) */
@@ -136,15 +204,16 @@ public:
 	virtual void area_set_shape_disabled(RID p_area, int p_shape_idx, bool p_disabled) override;
 	virtual void area_attach_object_instance_id(RID p_area, ObjectID p_id) override;
 	virtual ObjectID area_get_object_instance_id(RID p_area) const override;
-	virtual void area_set_param(RID p_area, PhysicsServer3DEnums::AreaParameter p_param, const Variant &p_value) override;
+	virtual void area_set_param(RID p_area, AreaParameter p_param, const Variant &p_value) override;
 	virtual void area_set_transform(RID p_area, const Transform3D &p_transform) override;
-	virtual Variant area_get_param(RID p_area, PhysicsServer3DEnums::AreaParameter p_param) const override;
+	virtual Variant area_get_param(RID p_area, AreaParameter p_param) const override;
 	virtual Transform3D area_get_transform(RID p_area) const override;
 	virtual void area_set_collision_layer(RID p_area, uint32_t p_layer) override;
 	virtual uint32_t area_get_collision_layer(RID p_area) const override;
 	virtual void area_set_collision_mask(RID p_area, uint32_t p_mask) override;
 	virtual uint32_t area_get_collision_mask(RID p_area) const override;
 	virtual void area_set_monitorable(RID p_area, bool p_monitorable) override;
+	virtual void area_set_ray_pickable(RID p_area, bool p_enable) override;
 	virtual void area_set_monitor_callback(RID p_area, const Callable &p_callback) override;
 	virtual void area_set_area_monitor_callback(RID p_area, const Callable &p_callback) override;
 
@@ -152,8 +221,8 @@ public:
 	virtual RID body_create() override;
 	virtual void body_set_space(RID p_body, RID p_space) override;
 	virtual RID body_get_space(RID p_body) const override;
-	virtual void body_set_mode(RID p_body, PhysicsServer3DEnums::BodyMode p_mode) override;
-	virtual PhysicsServer3DEnums::BodyMode body_get_mode(RID p_body) const override;
+	virtual void body_set_mode(RID p_body, BodyMode p_mode) override;
+	virtual BodyMode body_get_mode(RID p_body) const override;
 
 	virtual void body_add_shape(RID p_body, RID p_shape, const Transform3D &p_transform = Transform3D(), bool p_disabled = false) override;
 	virtual void body_set_shape(RID p_body, int p_shape_idx, RID p_shape) override;
@@ -176,19 +245,36 @@ public:
 	virtual void body_set_enable_continuous_collision_detection(RID p_body, bool p_enable) override;
 	virtual bool body_is_continuous_collision_detection_enabled(RID p_body) const override;
 
-	virtual void body_set_param(RID p_body, PhysicsServer3DEnums::BodyParameter p_param, const Variant &p_value) override;
-	virtual Variant body_get_param(RID p_body, PhysicsServer3DEnums::BodyParameter p_param) const override;
+	virtual void body_set_ray_pickable(RID p_body, bool p_enable) override;
 
-	virtual void body_set_state(RID p_body, PhysicsServer3DEnums::BodyState p_state, const Variant &p_variant) override;
-	virtual Variant body_get_state(RID p_body, PhysicsServer3DEnums::BodyState p_state) const override;
+	virtual void body_set_param(RID p_body, BodyParameter p_param, const Variant &p_value) override;
+	virtual Variant body_get_param(RID p_body, BodyParameter p_param) const override;
+
+	virtual void body_set_state(RID p_body, BodyState p_state, const Variant &p_variant) override;
+	virtual Variant body_get_state(RID p_body, BodyState p_state) const override;
 
 	virtual void body_apply_central_impulse(RID p_body, const Vector3 &p_impulse) override;
 	virtual void body_apply_impulse(RID p_body, const Vector3 &p_impulse, const Vector3 &p_position = Vector3()) override;
 	virtual void body_apply_torque_impulse(RID p_body, const Vector3 &p_impulse) override;
 	virtual void body_apply_central_force(RID p_body, const Vector3 &p_force) override;
+	virtual void body_apply_force(RID p_body, const Vector3 &p_force, const Vector3 &p_position = Vector3()) override;
+	virtual void body_apply_torque(RID p_body, const Vector3 &p_torque) override;
 
-	virtual void body_set_axis_lock(RID p_body, PhysicsServer3DEnums::BodyAxis p_axis, bool p_lock) override;
-	virtual bool body_is_axis_locked(RID p_body, PhysicsServer3DEnums::BodyAxis p_axis) const override;
+	virtual void body_add_constant_central_force(RID p_body, const Vector3 &p_force) override;
+	virtual void body_add_constant_force(RID p_body, const Vector3 &p_force, const Vector3 &p_position = Vector3()) override;
+	virtual void body_add_constant_torque(RID p_body, const Vector3 &p_torque) override;
+
+	virtual void body_set_constant_force(RID p_body, const Vector3 &p_force) override;
+	virtual Vector3 body_get_constant_force(RID p_body) const override;
+
+	virtual void body_set_constant_torque(RID p_body, const Vector3 &p_torque) override;
+	virtual Vector3 body_get_constant_torque(RID p_body) const override;
+
+	virtual void body_set_axis_velocity(RID p_body, const Vector3 &p_axis_velocity) override;
+	virtual void body_reset_mass_properties(RID p_body) override;
+
+	virtual void body_set_axis_lock(RID p_body, BodyAxis p_axis, bool p_lock) override;
+	virtual bool body_is_axis_locked(RID p_body, BodyAxis p_axis) const override;
 
 	virtual void body_set_max_contacts_reported(RID p_body, int p_contacts) override;
 	virtual int body_get_max_contacts_reported(RID p_body) const override;
@@ -200,20 +286,20 @@ public:
 	virtual void body_set_force_integration_callback(RID p_body, const Callable &p_callable, const Variant &p_udata = Variant()) override;
 	virtual PhysicsDirectBodyState3D *body_get_direct_state(RID p_body) override;
 
-	virtual bool body_test_motion(RID p_body, const PS3DT::MotionParameters &p_parameters, PS3DT::MotionResult *r_result = nullptr) override;
+	virtual bool body_test_motion(RID p_body, const MotionParameters &p_parameters, MotionResult *r_result = nullptr) override;
 
 	/* JOINT API */
 	virtual RID joint_create() override;
 	virtual void joint_clear(RID p_joint) override;
-	virtual PhysicsServer3DEnums::JointType joint_get_type(RID p_joint) const override;
+	virtual JointType joint_get_type(RID p_joint) const override;
 	virtual void joint_set_solver_priority(RID p_joint, int p_priority) override;
 	virtual int joint_get_solver_priority(RID p_joint) const override;
 	virtual void joint_disable_collisions_between_bodies(RID p_joint, bool p_disable) override;
 	virtual bool joint_is_disabled_collisions_between_bodies(RID p_joint) const override;
 
 	virtual void joint_make_pin(RID p_joint, RID p_body_A, const Vector3 &p_local_A, RID p_body_B, const Vector3 &p_local_B) override;
-	virtual void pin_joint_set_param(RID p_joint, PhysicsServer3DEnums::PinJointParam p_param, real_t p_value) override;
-	virtual real_t pin_joint_get_param(RID p_joint, PhysicsServer3DEnums::PinJointParam p_param) const override;
+	virtual void pin_joint_set_param(RID p_joint, PinJointParam p_param, real_t p_value) override;
+	virtual real_t pin_joint_get_param(RID p_joint, PinJointParam p_param) const override;
 	virtual void pin_joint_set_local_a(RID p_joint, const Vector3 &p_A) override;
 	virtual Vector3 pin_joint_get_local_a(RID p_joint) const override;
 	virtual void pin_joint_set_local_b(RID p_joint, const Vector3 &p_B) override;
@@ -221,24 +307,24 @@ public:
 
 	virtual void joint_make_hinge(RID p_joint, RID p_body_A, const Transform3D &p_hinge_A, RID p_body_B, const Transform3D &p_hinge_B) override;
 	virtual void joint_make_hinge_simple(RID p_joint, RID p_body_A, const Vector3 &p_pivot_A, const Vector3 &p_axis_A, RID p_body_B, const Vector3 &p_pivot_B, const Vector3 &p_axis_B) override;
-	virtual void hinge_joint_set_param(RID p_joint, PhysicsServer3DEnums::HingeJointParam p_param, real_t p_value) override;
-	virtual real_t hinge_joint_get_param(RID p_joint, PhysicsServer3DEnums::HingeJointParam p_param) const override;
-	virtual void hinge_joint_set_flag(RID p_joint, PhysicsServer3DEnums::HingeJointFlag p_flag, bool p_enabled) override;
-	virtual bool hinge_joint_get_flag(RID p_joint, PhysicsServer3DEnums::HingeJointFlag p_flag) const override;
+	virtual void hinge_joint_set_param(RID p_joint, HingeJointParam p_param, real_t p_value) override;
+	virtual real_t hinge_joint_get_param(RID p_joint, HingeJointParam p_param) const override;
+	virtual void hinge_joint_set_flag(RID p_joint, HingeJointFlag p_flag, bool p_enabled) override;
+	virtual bool hinge_joint_get_flag(RID p_joint, HingeJointFlag p_flag) const override;
 
 	virtual void joint_make_slider(RID p_joint, RID p_body_A, const Transform3D &p_local_frame_A, RID p_body_B, const Transform3D &p_local_frame_B) override;
-	virtual void slider_joint_set_param(RID p_joint, PhysicsServer3DEnums::SliderJointParam p_param, real_t p_value) override;
-	virtual real_t slider_joint_get_param(RID p_joint, PhysicsServer3DEnums::SliderJointParam p_param) const override;
+	virtual void slider_joint_set_param(RID p_joint, SliderJointParam p_param, real_t p_value) override;
+	virtual real_t slider_joint_get_param(RID p_joint, SliderJointParam p_param) const override;
 
 	virtual void joint_make_cone_twist(RID p_joint, RID p_body_A, const Transform3D &p_local_frame_A, RID p_body_B, const Transform3D &p_local_frame_B) override;
-	virtual void cone_twist_joint_set_param(RID p_joint, PhysicsServer3DEnums::ConeTwistJointParam p_param, real_t p_value) override;
-	virtual real_t cone_twist_joint_get_param(RID p_joint, PhysicsServer3DEnums::ConeTwistJointParam p_param) const override;
+	virtual void cone_twist_joint_set_param(RID p_joint, ConeTwistJointParam p_param, real_t p_value) override;
+	virtual real_t cone_twist_joint_get_param(RID p_joint, ConeTwistJointParam p_param) const override;
 
 	virtual void joint_make_generic_6dof(RID p_joint, RID p_body_A, const Transform3D &p_local_frame_A, RID p_body_B, const Transform3D &p_local_frame_B) override;
-	virtual void generic_6dof_joint_set_param(RID p_joint, Vector3::Axis p_axis, PhysicsServer3DEnums::G6DOFJointAxisParam p_param, real_t p_value) override;
-	virtual real_t generic_6dof_joint_get_param(RID p_joint, Vector3::Axis p_axis, PhysicsServer3DEnums::G6DOFJointAxisParam p_param) const override;
-	virtual void generic_6dof_joint_set_flag(RID p_joint, Vector3::Axis p_axis, PhysicsServer3DEnums::G6DOFJointAxisFlag p_flag, bool p_enable) override;
-	virtual bool generic_6dof_joint_get_flag(RID p_joint, Vector3::Axis p_axis, PhysicsServer3DEnums::G6DOFJointAxisFlag p_flag) const override;
+	virtual void generic_6dof_joint_set_param(RID p_joint, Vector3::Axis p_axis, G6DOFJointAxisParam p_param, real_t p_value) override;
+	virtual real_t generic_6dof_joint_get_param(RID p_joint, Vector3::Axis p_axis, G6DOFJointAxisParam p_param) const override;
+	virtual void generic_6dof_joint_set_flag(RID p_joint, Vector3::Axis p_axis, G6DOFJointAxisFlag p_flag, bool p_enable) override;
+	virtual bool generic_6dof_joint_get_flag(RID p_joint, Vector3::Axis p_axis, G6DOFJointAxisFlag p_flag) const override;
 
 	/* PARTICLE FLUID (module extension -- not part of PhysicsServer3D) */
 	// Called by PhysXParticleFluid3D via GodotPhysXServer3D::get_singleton().
@@ -278,6 +364,7 @@ public:
 	bool cloth_is_ready(RID p_cloth) const;
 	int cloth_get_mesh(RID p_cloth, PackedVector3Array &r_positions, PackedInt32Array &r_indices, uint32_t &r_version) const;
 	bool has_gpu() const { return px_cuda != nullptr; }
+	String get_gpu_device_name() const; // the CUDA device GPU dynamics runs on, or empty without one
 
 	/* SOFT BODY */
 	// Backs the stock SoftBody3D node with the module's CPU XPBD solver.
@@ -292,11 +379,15 @@ public:
 	virtual uint32_t soft_body_get_collision_layer(RID p_body) const override;
 	virtual void soft_body_set_collision_mask(RID p_body, uint32_t p_mask) override;
 	virtual uint32_t soft_body_get_collision_mask(RID p_body) const override;
+	virtual void body_add_collision_exception(RID p_body, RID p_body_b) override;
+	virtual void body_remove_collision_exception(RID p_body, RID p_body_b) override;
+	virtual void body_get_collision_exceptions(RID p_body, List<RID> *p_exceptions) override;
+
 	virtual void soft_body_add_collision_exception(RID p_body, RID p_body_b) override;
 	virtual void soft_body_remove_collision_exception(RID p_body, RID p_body_b) override;
 	virtual void soft_body_get_collision_exceptions(RID p_body, List<RID> *p_exceptions) override;
-	virtual void soft_body_set_state(RID p_body, PhysicsServer3DEnums::BodyState p_state, const Variant &p_variant) override;
-	virtual Variant soft_body_get_state(RID p_body, PhysicsServer3DEnums::BodyState p_state) const override;
+	virtual void soft_body_set_state(RID p_body, BodyState p_state, const Variant &p_variant) override;
+	virtual Variant soft_body_get_state(RID p_body, BodyState p_state) const override;
 	virtual void soft_body_set_transform(RID p_body, const Transform3D &p_transform) override;
 	virtual void soft_body_set_ray_pickable(RID p_body, bool p_enable) override;
 	virtual void soft_body_set_simulation_precision(RID p_body, int p_simulation_precision) override;
@@ -328,10 +419,12 @@ public:
 	virtual void set_active(bool p_active) override;
 	virtual void init() override;
 	virtual void step(real_t p_step) override;
+	virtual void sync() override;
 	virtual void flush_queries() override;
+	virtual void end_sync() override;
 	virtual void finish() override;
 	virtual bool is_flushing_queries() const override { return flushing_queries; }
-	virtual int get_process_info(PhysicsServer3DEnums::ProcessInfo p_info) override;
+	virtual int get_process_info(ProcessInfo p_info) override;
 
 	GodotPhysXServer3D();
 	virtual ~GodotPhysXServer3D() override;

@@ -36,15 +36,37 @@ def configure(env):
 
 def get_doc_classes():
     return [
+        "PhysX",
         "PhysXParticleFluid3D",
+        "PhysXGranular3D",
         "PhysXCloth3D",
+        "PhysXSkinnedCloth3D",
         "PhysXChunkEmitter3D",
+        "PhysXGroom",
+        "PhysXGroom3D",
         "PhysXDestructible3D",
         "PhysXBlastAsset",
+        "PhysXBlastAuthoring",
+        "PhysXBlastFractureTask",
+        "PhysXFlow3D",
+        "PhysXFlowEmitter3D",
+        "PhysXFlowRenderEffect",
+        "PhysXLensDirt3D",
+        "PhysXLensFlare3D",
+        "PhysXLensFlareSettings",
+        "PhysXLightShafts3D",
+        "PXTGI3D",
+        "PXTGIEmissionMeter",
+        "PhysXShaderOptimizer",
         "PhysXVehicle3D",
         "PhysXVehicleWheel3D",
         "PhysXMotorcycle3D",
         "PhysXTank3D",
+        "PhysXWaterSurface3D",
+        "PhysXBuoyancy3D",
+        "PhysXBoat3D",
+        "PhysXWaterWake3D",
+        "PhysXWaterSpray3D",
     ]
 
 

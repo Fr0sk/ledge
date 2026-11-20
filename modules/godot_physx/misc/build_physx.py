@@ -6,32 +6,39 @@ This script clones NVIDIA's PhysX repository at a pinned revision, drops in a
 build preset tuned to match Godot, runs PhysX's own project generation and
 CMake build, and prints the path to pass to scons as physx_sdk=.
 
-    python modules/godot_physx/misc/build_physx.py [--gpu] [--blast]
-    scons platform=windows target=editor physx_sdk=<printed path> [physx_gpu=yes] [blast_sdk=<printed path>]
+    python modules/godot_physx/misc/build_physx.py [--gpu] [--blast] [--flow] [--alembic]
+    scons platform=windows target=editor physx_sdk=<printed path> [physx_gpu=yes] [blast_sdk=<printed path>] [flow_sdk=<printed path>] [alembic_sdk=<printed path>]
 
-The GPU build additionally needs the CUDA Toolkit installed (CUDA_PATH set).
-PhysXGpu_64.dll must sit next to the Godot binary at runtime -- on Windows,
-SCsub copies it there automatically as part of the scons build printed below
-(a real SCons dependency, not a one-time thing you have to remember); on
-Linux this is still unverified/manual, see README.md's Linux section.
+The GPU build also needs the CUDA Toolkit (CUDA_PATH set or nvcc on PATH).
+SCsub copies the GPU library next to the Godot binary for you.
 
 --blast additionally builds the Blast SDK (runtime mesh fracture/destruction,
 NvBlast + extensions, backing PhysXDestructible3D and its in-editor fracture
 dialog) from this same checkout's blast/ subdirectory -- it's version-locked
 to the same NVIDIA-Omniverse/PhysX release train as PhysX itself, so no
-separate clone or ref pin is needed. Unlike PhysX, Blast ships as DLLs, not
-static libs; on Windows, SCsub copies all four next to the Godot binary
-automatically too, same mechanism as PhysXGpu_64.dll -- on Linux this is
-also still unverified/manual.
+separate clone or ref pin is needed. SCsub copies its libraries next to the
+Godot binary too.
+
+--flow additionally builds NVIDIA Flow (sparse-grid smoke / fire / dust,
+backing PhysXFlow3D) from the same checkout's flow/ subdirectory, with its own
+build.bat / build.sh. flow_sdk= is that flow/ directory itself. Nothing is
+linked -- nvflow / nvflowext are loaded at run time, and SCsub copies both
+next to the Godot binary.
+
+--alembic additionally builds Alembic and Imath (static, Ogawa only, the
+static CRT on Windows as Godot links it), cloned at pinned tags into an
+'alembic-sdk' directory beside the PhysX checkout. Only the editor links them,
+for PhysXGroom's .abc importer; alembic_sdk= is their install directory.
+
+The last thing printed is the scons command for everything built.
 
 Run this script on the machine you're building the module for -- --platform
-defaults to the host OS (windows / linuxbsd). The Linux GPU preset
-(linux64-godot-gpu.xml) is UNVERIFIED -- see its header comment and
-README.md's Linux section.
+defaults to the host OS (windows / linuxbsd).
 """
 
 import argparse
 import os
+import platform
 import shutil
 import subprocess
 import sys
@@ -39,6 +46,12 @@ import sys
 # Pinned so a given godot_physx revision always builds against the same SDK.
 PHYSX_REPO = "https://github.com/NVIDIA-Omniverse/PhysX.git"
 PHYSX_REF = "ovphysx-0.5.11"  # PhysX SDK 5.10.0
+
+# Alembic and Imath for the editor's groom importer (--alembic), pinned the same way.
+ALEMBIC_REPO = "https://github.com/alembic/alembic.git"
+ALEMBIC_REF = "1.8.12"
+IMATH_REPO = "https://github.com/AcademySoftwareFoundation/Imath.git"
+IMATH_REF = "v3.2.3"
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 PRESET_DIR = os.path.join(HERE, "physx_presets")
@@ -50,6 +63,50 @@ def run(cmd, cwd):
     subprocess.check_call(cmd, cwd=cwd)
 
 
+def build_alembic(base, jobs):
+    """Clones and builds static Imath + Alembic under base, installed to base/install. Returns the install path."""
+    install = os.path.join(base, "install")
+    os.makedirs(base, exist_ok=True)
+    for name, repo, ref in (("imath", IMATH_REPO, IMATH_REF), ("alembic", ALEMBIC_REPO, ALEMBIC_REF)):
+        if not os.path.isdir(os.path.join(base, name, ".git")):
+            run(["git", "clone", "--depth", "1", "--branch", ref, repo, name], cwd=base)
+        else:
+            print("using existing %s checkout: %s" % (name, os.path.join(base, name)))
+    common = [
+        "-DCMAKE_BUILD_TYPE=Release",
+        "-DCMAKE_INSTALL_PREFIX=" + install,
+        "-DCMAKE_PREFIX_PATH=" + install,
+        # Godot links the static CRT on Windows, and builds position-independent code on Linux.
+        "-DCMAKE_POLICY_DEFAULT_CMP0091=NEW",
+        "-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded",
+        "-DCMAKE_POSITION_INDEPENDENT_CODE=ON",
+    ]
+    projects = (
+        ("imath", ["-DBUILD_SHARED_LIBS=OFF", "-DBUILD_TESTING=OFF", "-DPYTHON=OFF"]),
+        (
+            "alembic",
+            [
+                "-DALEMBIC_SHARED_LIBS=OFF",
+                "-DUSE_HDF5=OFF",
+                "-DUSE_TESTS=OFF",
+                "-DUSE_BINARIES=OFF",
+                "-DUSE_ARNOLD=OFF",
+                "-DUSE_MAYA=OFF",
+                "-DUSE_PRMAN=OFF",
+                "-DUSE_PYALEMBIC=OFF",
+                "-DImath_DIR=" + os.path.join(install, "lib", "cmake", "Imath"),
+            ],
+        ),
+    )
+    for name, options in projects:
+        build = os.path.join(base, "build", name)
+        run(["cmake", "-S", os.path.join(base, name), "-B", build] + common + options, cwd=base)
+        run(["cmake", "--build", build, "--config", "Release", "--target", "install", "--parallel", str(jobs)], cwd=base)
+    if not os.path.isdir(os.path.join(install, "include", "Alembic")):
+        sys.exit("Alembic build finished but no SDK at " + install)
+    return install
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--gpu", action="store_true", help="also build the CUDA GPU projects (needs the CUDA Toolkit)")
@@ -57,6 +114,16 @@ def main():
         "--blast",
         action="store_true",
         help="also build the Blast SDK (NvBlast + extensions) from this same checkout's blast/ subdirectory",
+    )
+    ap.add_argument(
+        "--flow",
+        action="store_true",
+        help="also build NVIDIA Flow (nvflow + nvflowext) from this same checkout's flow/ subdirectory",
+    )
+    ap.add_argument(
+        "--alembic",
+        action="store_true",
+        help="also build Alembic + Imath (static) for the editor's .abc groom importer",
     )
     ap.add_argument(
         "--platform",
@@ -79,12 +146,6 @@ def main():
     preset_file = os.path.join(PRESET_DIR, preset + ".xml")
     if not os.path.isfile(preset_file):
         sys.exit("missing preset: " + preset_file)
-    if args.platform == "linuxbsd" and args.gpu:
-        print(
-            "NOTE: the %s preset is unverified -- no Linux GPU build of this module has "
-            "been run yet. See its header comment and README.md's Linux section." % preset
-        )
-
     if args.gpu and not (os.environ.get("CUDA_PATH") or shutil.which("nvcc")):
         sys.exit("--gpu needs the CUDA Toolkit (set CUDA_PATH or put nvcc on PATH)")
 
@@ -144,28 +205,20 @@ def main():
     if not os.path.isdir(os.path.join(sdk, "include")):
         sys.exit("build finished but no SDK at " + sdk)
 
+    # Extra scons options from each optional SDK, printed as one command at the end.
+    scons_args = ["physx_sdk=" + sdk.replace("\\", "/")]
+    if args.gpu:
+        scons_args.append("physx_gpu=yes")
+
     print()
     print("PhysX SDK ready:")
     print("    " + sdk)
-    print()
-    print("Build the module with:")
-    print(
-        "    scons platform=%s target=editor physx_sdk=%s%s"
-        % (args.platform, sdk.replace("\\", "/"), " physx_gpu=yes" if args.gpu else "")
-    )
     if args.gpu:
-        if args.platform == "windows":
-            print()
-            print("SCsub copies PhysXGpu_64.dll next to the Godot binary automatically -- nothing more to do.")
-        else:
-            # UNVERIFIED whether Linux even needs a copied .so the way Windows
-            # needs the DLL (vs. an rpath/LD_LIBRARY_PATH entry, or a pure
-            # dlopen with no on-disk convention to match) -- SCsub does not
-            # auto-copy anything here yet.
-            so = os.path.join(sdk, "bin", "linux.x86_64", args.config, "libPhysXGpu_64.so")
-            print()
-            print("Then copy the GPU runtime next to the Godot binary (unverified -- see README.md's Linux section):")
-            print("    cp %s bin/" % so)
+        print()
+        print(
+            "SCsub copies %s next to the Godot binary, nothing else to do."
+            % ("PhysXGpu_64.dll" if args.platform == "windows" else "libPhysXGpu_64.so")
+        )
 
     if args.blast:
         # Blast lives in the SAME checkout as PhysX (NVIDIA-Omniverse/PhysX's
@@ -181,40 +234,76 @@ def main():
         blast_script = os.path.join(blast_dir, "build.bat" if is_windows else "build.sh")
         if not os.path.isfile(blast_script):
             sys.exit("no Blast build script at " + blast_script)
-        run([blast_script] if is_windows else ["bash", blast_script], cwd=blast_dir)
+        if is_windows:
+            run([blast_script], cwd=blast_dir)
+        else:
+            # Use our own compiler instead of NVIDIA's build container (patch 0005).
+            blast_cmd = ["bash", blast_script, "--no-docker"]
+            # Parallel codegen sometimes leaves a half written header, a rerun fixes it.
+            if subprocess.call(blast_cmd, cwd=blast_dir) != 0:
+                print("Blast build failed, retrying once")
+                run(blast_cmd, cwd=blast_dir)
 
         blast_platform = "windows-x86_64" if is_windows else "linux-x86_64"
         blast_sdk = os.path.join(blast_dir, "_build", blast_platform, "release", "blast-sdk")
         if not os.path.isdir(os.path.join(blast_sdk, "include")):
             sys.exit("Blast build finished but no SDK at " + blast_sdk)
 
+        scons_args.append("blast_sdk=" + blast_sdk.replace("\\", "/"))
+
         print()
         print("Blast SDK ready:")
         print("    " + blast_sdk)
-        print()
-        print("Build the module with blast_sdk= added:")
-        print(
-            "    scons platform=%s target=editor physx_sdk=%s blast_sdk=%s%s"
-            % (
-                args.platform,
-                sdk.replace("\\", "/"),
-                blast_sdk.replace("\\", "/"),
-                " physx_gpu=yes" if args.gpu else "",
-            )
-        )
-        print()
+        print("SCsub copies Blast's libraries next to the Godot binary.")
+
+    if args.flow:
+        # Flow lives in the same checkout too (its flow/ subdirectory), with its
+        # own premake5-based build. Its scripts must run from the flow/
+        # directory. MSVC 14.44 turns warning C4756 (overflow in constant
+        # arithmetic, in Flow's float-limit constants) into an error under
+        # Flow's warnings-as-errors; CL=/wd4756 silences just that one.
+        flow_dir = os.path.join(src, "flow")
+        if not os.path.isdir(flow_dir):
+            sys.exit("--flow needs a flow/ directory in the checkout at " + src)
         if is_windows:
-            print("Blast ships as DLLs (not static libs, unlike PhysX) -- SCsub copies all four next to")
-            print("the Godot binary automatically (NvBlast, NvBlastGlobals, NvBlastExtAuthoring,")
-            print("NvBlastExtShaders) -- nothing more to do.")
+            flow_script = os.path.join(flow_dir, "build.bat")
         else:
-            # UNVERIFIED, same as the GPU .so case above -- SCsub does not
-            # auto-copy anything on Linux yet.
-            print("Blast ships as DLLs (not static libs, unlike PhysX) -- copy these next to the Godot binary too:")
-            blast_bin = os.path.join(blast_sdk, "bin")
-            for name in ("NvBlast", "NvBlastGlobals", "NvBlastExtAuthoring", "NvBlastExtShaders"):
-                runtime = os.path.join(blast_bin, name + ".so")
-                print("    cp %s bin/" % runtime)
+            # ARM Linux has its own script.
+            flow_script = os.path.join(flow_dir, "build_aarch64.sh" if platform.machine() == "aarch64" else "build.sh")
+        if not os.path.isfile(flow_script):
+            sys.exit("no Flow build script at " + flow_script)
+        flow_env = os.environ.copy()
+        if is_windows:
+            flow_env["CL"] = (flow_env.get("CL", "") + " /wd4756").strip()
+        print("+ %s  (in %s)" % (flow_script, flow_dir))
+        subprocess.check_call([flow_script] if is_windows else ["bash", flow_script], cwd=flow_dir, env=flow_env)
+
+        flow_platform = "windows-x86_64" if is_windows else "linux-" + platform.machine()
+        flow_bin = os.path.join(flow_dir, "_build", flow_platform, "release")
+        flow_libs = ("nvflow.dll", "nvflowext.dll") if is_windows else ("libnvflow.so", "libnvflowext.so")
+        missing = [name for name in flow_libs if not os.path.isfile(os.path.join(flow_bin, name))]
+        if missing:
+            sys.exit("Flow build finished but %s missing from %s" % (", ".join(missing), flow_bin))
+        scons_args.append("flow_sdk=" + flow_dir.replace("\\", "/"))
+
+        print()
+        print("Flow ready:")
+        print("    " + flow_dir)
+        print("SCsub copies %s and %s next to the Godot binary automatically." % flow_libs)
+
+    if args.alembic:
+        # Beside the PhysX checkout: its own small tree, independent of PhysX's build.
+        alembic_sdk = build_alembic(os.path.join(os.path.dirname(src), "alembic-sdk"), args.jobs)
+        scons_args.append("alembic_sdk=" + alembic_sdk.replace("\\", "/"))
+
+        print()
+        print("Alembic + Imath ready (linked by editor builds only):")
+        print("    " + alembic_sdk)
+        print("SCsub copies their license notice, ALEMBIC-LICENSE.md, next to the editor.")
+
+    print()
+    print("Build the module with:")
+    print("    scons platform=%s target=editor %s" % (args.platform, " ".join(scons_args)))
 
 
 if __name__ == "__main__":

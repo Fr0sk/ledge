@@ -9,8 +9,12 @@
 // per-vertex normals come from the density gradient. This replaces a CPU march
 // over the whole grid -- the only readback is the emitted geometry.
 
-layout(set = 1, binding = 0, std430) restrict buffer MeshVerts { vec4 mverts[]; };
-layout(set = 1, binding = 1, std430) restrict buffer MeshNorms { vec4 mnorms[]; };
+layout(set = 1, binding = 0, std430) restrict buffer MeshVerts {
+	vec4 mverts[];
+};
+layout(set = 1, binding = 1, std430) restrict buffer MeshNorms {
+	vec4 mnorms[];
+};
 layout(set = 1, binding = 2, std430) restrict buffer MeshCount {
 	uint tri_count;
 	uint tri_budget;
@@ -66,7 +70,9 @@ void write_tri(vec3 p0, vec3 p1, vec3 p2) {
 	}
 	vec3 fn = cross(p1 - p0, p2 - p0);
 	vec3 outn = dnormal((p0 + p1 + p2) * (1.0 / 3.0));
-	if (dot(fn, outn) < 0.0) {
+	// Godot's front faces wind CLOCKWISE seen from outside: cross(p1 - p0, p2 - p0) must point INTO the
+	// fluid, so a back-face-culled material shows the outside and DO_SIDE_CHECK keeps the outward normal.
+	if (dot(fn, outn) > 0.0) {
 		vec3 t = p1;
 		p1 = p2;
 		p2 = t;

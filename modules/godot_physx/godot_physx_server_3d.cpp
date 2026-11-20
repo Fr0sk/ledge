@@ -50,6 +50,8 @@
 
 #include <PxPhysicsAPI.h>
 
+#include <cstring>
+
 using namespace physx;
 
 namespace {
@@ -58,7 +60,15 @@ PxDefaultAllocator px_allocator;
 
 class GodotPxErrorCallback : public PxErrorCallback {
 public:
+	// Set when PhysX reports it couldn't load the GPU module (PhysXGpu_64.dll /
+	// libPhysXGpu_64.so) -- so the CPU-fallback warning can name the real cause
+	// (a library missing next to an exported game) instead of blaming the GPU.
+	bool gpu_module_load_failed = false;
+
 	virtual void reportError(PxErrorCode::Enum p_code, const char *p_message, const char *p_file, int p_line) override {
+		if (p_message && strstr(p_message, "PhysXGpu") && strstr(p_message, "load")) {
+			gpu_module_load_failed = true;
+		}
 		const String msg = vformat("PhysX: %s (%s:%d)", p_message, p_file, p_line);
 		if (p_code & (PxErrorCode::eABORT | PxErrorCode::eINTERNAL_ERROR | PxErrorCode::eINVALID_OPERATION | PxErrorCode::eINVALID_PARAMETER | PxErrorCode::eOUT_OF_MEMORY)) {
 			ERR_PRINT(msg);
@@ -74,6 +84,14 @@ GodotPxErrorCallback px_error_callback;
 
 GodotPhysXServer3D *GodotPhysXServer3D::singleton = nullptr;
 
+// The module's nodes call these extensions straight on this server, not through PhysicsServer3DWrapMT: one called
+// from outside physics process is queued for the physics thread, as a PhysicsServer3D call would be.
+#define QUEUE_UNLESS_SAFE(m_call) \
+	if (!can_touch_scene()) { \
+		run_on_physics_thread([=]() { m_call; }); \
+		return; \
+	}
+
 GodotPhysXServer3D::GodotPhysXServer3D() {
 	singleton = this;
 }
@@ -86,7 +104,7 @@ GodotPhysXServer3D::~GodotPhysXServer3D() {
 
 /* SHAPE API */
 
-RID GodotPhysXServer3D::_shape_create(PhysicsServer3DEnums::ShapeType p_type) {
+RID GodotPhysXServer3D::_shape_create(PhysicsServer3D::ShapeType p_type) {
 	GodotPhysXShape3D *shape = memnew(GodotPhysXShape3D);
 	shape->set_type(p_type);
 	RID rid = shape_owner.make_rid(shape);
@@ -95,57 +113,66 @@ RID GodotPhysXServer3D::_shape_create(PhysicsServer3DEnums::ShapeType p_type) {
 }
 
 RID GodotPhysXServer3D::world_boundary_shape_create() {
-	return _shape_create(PhysicsServer3DEnums::SHAPE_WORLD_BOUNDARY);
+	return _shape_create(SHAPE_WORLD_BOUNDARY);
 }
 
 RID GodotPhysXServer3D::sphere_shape_create() {
-	return _shape_create(PhysicsServer3DEnums::SHAPE_SPHERE);
+	return _shape_create(SHAPE_SPHERE);
 }
 
 RID GodotPhysXServer3D::box_shape_create() {
-	return _shape_create(PhysicsServer3DEnums::SHAPE_BOX);
+	return _shape_create(SHAPE_BOX);
 }
 
 RID GodotPhysXServer3D::capsule_shape_create() {
-	return _shape_create(PhysicsServer3DEnums::SHAPE_CAPSULE);
+	return _shape_create(SHAPE_CAPSULE);
 }
 
 RID GodotPhysXServer3D::convex_polygon_shape_create() {
-	return _shape_create(PhysicsServer3DEnums::SHAPE_CONVEX_POLYGON);
+	return _shape_create(SHAPE_CONVEX_POLYGON);
 }
 
 RID GodotPhysXServer3D::concave_polygon_shape_create() {
-	return _shape_create(PhysicsServer3DEnums::SHAPE_CONCAVE_POLYGON);
+	return _shape_create(SHAPE_CONCAVE_POLYGON);
 }
 
 RID GodotPhysXServer3D::cylinder_shape_create() {
-	return _shape_create(PhysicsServer3DEnums::SHAPE_CYLINDER);
+	return _shape_create(SHAPE_CYLINDER);
 }
 
 RID GodotPhysXServer3D::separation_ray_shape_create() {
-	return _shape_create(PhysicsServer3DEnums::SHAPE_SEPARATION_RAY);
+	return _shape_create(SHAPE_SEPARATION_RAY);
 }
 
 RID GodotPhysXServer3D::heightmap_shape_create() {
-	return _shape_create(PhysicsServer3DEnums::SHAPE_HEIGHTMAP);
+	return _shape_create(SHAPE_HEIGHTMAP);
 }
 
 RID GodotPhysXServer3D::custom_shape_create() {
-	return _shape_create(PhysicsServer3DEnums::SHAPE_CUSTOM);
+	return _shape_create(SHAPE_CUSTOM);
 }
 
 void GodotPhysXServer3D::shape_set_data(RID p_shape, const Variant &p_data) {
 	GodotPhysXShape3D *shape = shape_owner.get_or_null(p_shape);
 	ERR_FAIL_NULL(shape);
-	shape->set_data(p_data);
+	if (!shape->set_data(p_data)) {
+		return;
+	}
 
-	// Rebuild any body currently using this shape.
-	LocalVector<RID> body_rids = body_owner.get_owned_list();
-	for (const RID &body_rid : body_rids) {
-		GodotPhysXBody3D *body = body_owner.get_or_null(body_rid);
-		if (body) {
-			body->shape_changed(shape);
-		}
+	// Update the bodies + areas using this shape (in place: see GodotPhysXBody3D::_edit_shape_in_place).
+	LocalVector<GodotPhysXBody3D *> bodies;
+	for (const KeyValue<GodotPhysXBody3D *, int> &E : shape->get_body_owners()) {
+		bodies.push_back(E.key);
+	}
+	for (GodotPhysXBody3D *body : bodies) {
+		body->shape_changed(shape);
+	}
+	LocalVector<GodotPhysXArea3D *> areas;
+	for (const KeyValue<GodotPhysXArea3D *, int> &E : shape->get_area_owners()) {
+		areas.push_back(E.key);
+	}
+	for (GodotPhysXArea3D *area : areas) {
+		area->shape_changed(shape);
 	}
 }
 
@@ -161,9 +188,9 @@ real_t GodotPhysXServer3D::shape_get_margin(RID p_shape) const {
 	return shape->get_margin();
 }
 
-PhysicsServer3DEnums::ShapeType GodotPhysXServer3D::shape_get_type(RID p_shape) const {
+PhysicsServer3D::ShapeType GodotPhysXServer3D::shape_get_type(RID p_shape) const {
 	GodotPhysXShape3D *shape = shape_owner.get_or_null(p_shape);
-	ERR_FAIL_NULL_V(shape, PhysicsServer3DEnums::SHAPE_CUSTOM);
+	ERR_FAIL_NULL_V(shape, SHAPE_CUSTOM);
 	return shape->get_type();
 }
 
@@ -199,13 +226,13 @@ bool GodotPhysXServer3D::space_is_active(RID p_space) const {
 	return active_spaces.has(space);
 }
 
-void GodotPhysXServer3D::space_set_param(RID p_space, PhysicsServer3DEnums::SpaceParameter p_param, real_t p_value) {
+void GodotPhysXServer3D::space_set_param(RID p_space, SpaceParameter p_param, real_t p_value) {
 	GodotPhysXSpace3D *space = space_owner.get_or_null(p_space);
 	ERR_FAIL_NULL(space);
 	space->set_param(p_param, p_value);
 }
 
-real_t GodotPhysXServer3D::space_get_param(RID p_space, PhysicsServer3DEnums::SpaceParameter p_param) const {
+real_t GodotPhysXServer3D::space_get_param(RID p_space, SpaceParameter p_param) const {
 	GodotPhysXSpace3D *space = space_owner.get_or_null(p_space);
 	ERR_FAIL_NULL_V(space, 0.0);
 	return space->get_param(p_param);
@@ -351,6 +378,12 @@ void GodotPhysXServer3D::area_set_monitorable(RID p_area, bool p_monitorable) {
 	area->set_monitorable(p_monitorable);
 }
 
+void GodotPhysXServer3D::area_set_ray_pickable(RID p_area, bool p_enable) {
+	GodotPhysXArea3D *area = area_owner.get_or_null(p_area);
+	ERR_FAIL_NULL(area);
+	area->set_ray_pickable(p_enable);
+}
+
 void GodotPhysXServer3D::area_set_monitor_callback(RID p_area, const Callable &p_callback) {
 	GodotPhysXArea3D *area = area_owner.get_or_null(p_area);
 	ERR_FAIL_NULL(area);
@@ -363,15 +396,19 @@ void GodotPhysXServer3D::area_set_area_monitor_callback(RID p_area, const Callab
 	area->set_area_monitor_callback(p_callback);
 }
 
-void GodotPhysXServer3D::area_set_param(RID p_area, PhysicsServer3DEnums::AreaParameter p_param, const Variant &p_value) {
+void GodotPhysXServer3D::area_set_param(RID p_area, AreaParameter p_param, const Variant &p_value) {
 	// The scene tree writes default gravity to the space RID, which doubles as
 	// the space's default area.
 	GodotPhysXSpace3D *space = space_owner.get_or_null(p_area);
 	if (space) {
-		if (p_param == PhysicsServer3DEnums::AREA_PARAM_GRAVITY) {
+		if (p_param == AREA_PARAM_GRAVITY) {
 			space->set_gravity_magnitude(p_value);
-		} else if (p_param == PhysicsServer3DEnums::AREA_PARAM_GRAVITY_VECTOR) {
+		} else if (p_param == AREA_PARAM_GRAVITY_VECTOR) {
 			space->set_gravity_direction(p_value);
+		} else if (p_param == AREA_PARAM_LINEAR_DAMP) {
+			space->set_default_damping(p_value, space->get_default_angular_damp());
+		} else if (p_param == AREA_PARAM_ANGULAR_DAMP) {
+			space->set_default_damping(space->get_default_linear_damp(), p_value);
 		}
 		return;
 	}
@@ -380,13 +417,17 @@ void GodotPhysXServer3D::area_set_param(RID p_area, PhysicsServer3DEnums::AreaPa
 	area->set_param(p_param, p_value);
 }
 
-Variant GodotPhysXServer3D::area_get_param(RID p_area, PhysicsServer3DEnums::AreaParameter p_param) const {
+Variant GodotPhysXServer3D::area_get_param(RID p_area, AreaParameter p_param) const {
 	GodotPhysXSpace3D *space = space_owner.get_or_null(p_area);
 	if (space) {
-		if (p_param == PhysicsServer3DEnums::AREA_PARAM_GRAVITY) {
+		if (p_param == AREA_PARAM_GRAVITY) {
 			return space->get_gravity().length();
-		} else if (p_param == PhysicsServer3DEnums::AREA_PARAM_GRAVITY_VECTOR) {
+		} else if (p_param == AREA_PARAM_GRAVITY_VECTOR) {
 			return space->get_gravity().normalized();
+		} else if (p_param == AREA_PARAM_LINEAR_DAMP) {
+			return space->get_default_linear_damp();
+		} else if (p_param == AREA_PARAM_ANGULAR_DAMP) {
+			return space->get_default_angular_damp();
 		}
 		return Variant();
 	}
@@ -417,15 +458,15 @@ RID GodotPhysXServer3D::body_get_space(RID p_body) const {
 	return space ? space->get_self() : RID();
 }
 
-void GodotPhysXServer3D::body_set_mode(RID p_body, PhysicsServer3DEnums::BodyMode p_mode) {
+void GodotPhysXServer3D::body_set_mode(RID p_body, BodyMode p_mode) {
 	GodotPhysXBody3D *body = body_owner.get_or_null(p_body);
 	ERR_FAIL_NULL(body);
 	body->set_mode(p_mode);
 }
 
-PhysicsServer3DEnums::BodyMode GodotPhysXServer3D::body_get_mode(RID p_body) const {
+PhysicsServer3D::BodyMode GodotPhysXServer3D::body_get_mode(RID p_body) const {
 	GodotPhysXBody3D *body = body_owner.get_or_null(p_body);
-	ERR_FAIL_NULL_V(body, PhysicsServer3DEnums::BODY_MODE_STATIC);
+	ERR_FAIL_NULL_V(body, BODY_MODE_STATIC);
 	return body->get_mode();
 }
 
@@ -546,25 +587,31 @@ bool GodotPhysXServer3D::body_is_continuous_collision_detection_enabled(RID p_bo
 	return body->is_ccd_enabled();
 }
 
-void GodotPhysXServer3D::body_set_param(RID p_body, PhysicsServer3DEnums::BodyParameter p_param, const Variant &p_value) {
+void GodotPhysXServer3D::body_set_ray_pickable(RID p_body, bool p_enable) {
+	GodotPhysXBody3D *body = body_owner.get_or_null(p_body);
+	ERR_FAIL_NULL(body);
+	body->set_ray_pickable(p_enable);
+}
+
+void GodotPhysXServer3D::body_set_param(RID p_body, BodyParameter p_param, const Variant &p_value) {
 	GodotPhysXBody3D *body = body_owner.get_or_null(p_body);
 	ERR_FAIL_NULL(body);
 	body->set_param(p_param, p_value);
 }
 
-Variant GodotPhysXServer3D::body_get_param(RID p_body, PhysicsServer3DEnums::BodyParameter p_param) const {
+Variant GodotPhysXServer3D::body_get_param(RID p_body, BodyParameter p_param) const {
 	GodotPhysXBody3D *body = body_owner.get_or_null(p_body);
 	ERR_FAIL_NULL_V(body, Variant());
 	return body->get_param(p_param);
 }
 
-void GodotPhysXServer3D::body_set_state(RID p_body, PhysicsServer3DEnums::BodyState p_state, const Variant &p_variant) {
+void GodotPhysXServer3D::body_set_state(RID p_body, BodyState p_state, const Variant &p_variant) {
 	GodotPhysXBody3D *body = body_owner.get_or_null(p_body);
 	ERR_FAIL_NULL(body);
 	body->set_state(p_state, p_variant);
 }
 
-Variant GodotPhysXServer3D::body_get_state(RID p_body, PhysicsServer3DEnums::BodyState p_state) const {
+Variant GodotPhysXServer3D::body_get_state(RID p_body, BodyState p_state) const {
 	GodotPhysXBody3D *body = body_owner.get_or_null(p_body);
 	ERR_FAIL_NULL_V(body, Variant());
 	return body->get_state(p_state);
@@ -594,13 +641,79 @@ void GodotPhysXServer3D::body_apply_central_force(RID p_body, const Vector3 &p_f
 	body->apply_central_force(p_force);
 }
 
-void GodotPhysXServer3D::body_set_axis_lock(RID p_body, PhysicsServer3DEnums::BodyAxis p_axis, bool p_lock) {
+void GodotPhysXServer3D::body_apply_force(RID p_body, const Vector3 &p_force, const Vector3 &p_position) {
+	GodotPhysXBody3D *body = body_owner.get_or_null(p_body);
+	ERR_FAIL_NULL(body);
+	body->apply_force(p_force, p_position);
+}
+
+void GodotPhysXServer3D::body_apply_torque(RID p_body, const Vector3 &p_torque) {
+	GodotPhysXBody3D *body = body_owner.get_or_null(p_body);
+	ERR_FAIL_NULL(body);
+	body->apply_torque(p_torque);
+}
+
+void GodotPhysXServer3D::body_add_constant_central_force(RID p_body, const Vector3 &p_force) {
+	GodotPhysXBody3D *body = body_owner.get_or_null(p_body);
+	ERR_FAIL_NULL(body);
+	body->add_constant_central_force(p_force);
+}
+
+void GodotPhysXServer3D::body_add_constant_force(RID p_body, const Vector3 &p_force, const Vector3 &p_position) {
+	GodotPhysXBody3D *body = body_owner.get_or_null(p_body);
+	ERR_FAIL_NULL(body);
+	body->add_constant_force(p_force, p_position);
+}
+
+void GodotPhysXServer3D::body_add_constant_torque(RID p_body, const Vector3 &p_torque) {
+	GodotPhysXBody3D *body = body_owner.get_or_null(p_body);
+	ERR_FAIL_NULL(body);
+	body->add_constant_torque(p_torque);
+}
+
+void GodotPhysXServer3D::body_set_constant_force(RID p_body, const Vector3 &p_force) {
+	GodotPhysXBody3D *body = body_owner.get_or_null(p_body);
+	ERR_FAIL_NULL(body);
+	body->set_constant_force(p_force);
+}
+
+Vector3 GodotPhysXServer3D::body_get_constant_force(RID p_body) const {
+	const GodotPhysXBody3D *body = body_owner.get_or_null(p_body);
+	ERR_FAIL_NULL_V(body, Vector3());
+	return body->get_constant_force();
+}
+
+void GodotPhysXServer3D::body_set_constant_torque(RID p_body, const Vector3 &p_torque) {
+	GodotPhysXBody3D *body = body_owner.get_or_null(p_body);
+	ERR_FAIL_NULL(body);
+	body->set_constant_torque(p_torque);
+}
+
+Vector3 GodotPhysXServer3D::body_get_constant_torque(RID p_body) const {
+	const GodotPhysXBody3D *body = body_owner.get_or_null(p_body);
+	ERR_FAIL_NULL_V(body, Vector3());
+	return body->get_constant_torque();
+}
+
+void GodotPhysXServer3D::body_set_axis_velocity(RID p_body, const Vector3 &p_axis_velocity) {
+	GodotPhysXBody3D *body = body_owner.get_or_null(p_body);
+	ERR_FAIL_NULL(body);
+	body->set_axis_velocity(p_axis_velocity);
+}
+
+void GodotPhysXServer3D::body_reset_mass_properties(RID p_body) {
+	GodotPhysXBody3D *body = body_owner.get_or_null(p_body);
+	ERR_FAIL_NULL(body);
+	body->reset_mass_properties();
+}
+
+void GodotPhysXServer3D::body_set_axis_lock(RID p_body, BodyAxis p_axis, bool p_lock) {
 	GodotPhysXBody3D *body = body_owner.get_or_null(p_body);
 	ERR_FAIL_NULL(body);
 	body->set_axis_lock(p_axis, p_lock);
 }
 
-bool GodotPhysXServer3D::body_is_axis_locked(RID p_body, PhysicsServer3DEnums::BodyAxis p_axis) const {
+bool GodotPhysXServer3D::body_is_axis_locked(RID p_body, BodyAxis p_axis) const {
 	GodotPhysXBody3D *body = body_owner.get_or_null(p_body);
 	ERR_FAIL_NULL_V(body, false);
 	return body->is_axis_locked(p_axis);
@@ -631,6 +744,10 @@ bool GodotPhysXServer3D::body_is_omitting_force_integration(RID p_body) const {
 }
 
 void GodotPhysXServer3D::body_set_state_sync_callback(RID p_body, const Callable &p_callable) {
+	if (p_body == dispatch_body) {
+		p_callable.call(); // a run_on_physics_thread() call, now on the physics thread
+		return;
+	}
 	GodotPhysXBody3D *body = body_owner.get_or_null(p_body);
 	ERR_FAIL_NULL(body);
 	body->set_state_sync_callback(p_callable);
@@ -648,7 +765,7 @@ PhysicsDirectBodyState3D *GodotPhysXServer3D::body_get_direct_state(RID p_body) 
 	return body->get_direct_state();
 }
 
-bool GodotPhysXServer3D::body_test_motion(RID p_body, const PS3DT::MotionParameters &p_parameters, PS3DT::MotionResult *r_result) {
+bool GodotPhysXServer3D::body_test_motion(RID p_body, const MotionParameters &p_parameters, MotionResult *r_result) {
 	GodotPhysXBody3D *body = body_owner.get_or_null(p_body);
 	ERR_FAIL_NULL_V(body, false);
 	GodotPhysXSpace3D *space = body->get_space();
@@ -677,8 +794,8 @@ void GodotPhysXServer3D::joint_clear(RID p_joint) {
 	joint->clear();
 }
 
-PhysicsServer3DEnums::JointType GodotPhysXServer3D::joint_get_type(RID p_joint) const {
-	GET_JOINT(joint, p_joint, PhysicsServer3DEnums::JOINT_TYPE_MAX);
+PhysicsServer3D::JointType GodotPhysXServer3D::joint_get_type(RID p_joint) const {
+	GET_JOINT(joint, p_joint, JOINT_TYPE_MAX);
 	return joint->get_type();
 }
 
@@ -707,11 +824,16 @@ void GodotPhysXServer3D::joint_make_pin(RID p_joint, RID p_body_A, const Vector3
 	joint->make_pin(body_owner.get_or_null(p_body_A), p_local_A, body_owner.get_or_null(p_body_B), p_local_B);
 }
 
-void GodotPhysXServer3D::pin_joint_set_param(RID p_joint, PhysicsServer3DEnums::PinJointParam p_param, real_t p_value) {
-	// Bullet-era bias / damping / impulse clamp -- unsupported here, as in Jolt.
-	WARN_PRINT_ONCE("PhysX: pin joint parameters are not supported and will be ignored.");
+void GodotPhysXServer3D::pin_joint_set_param(RID p_joint, PinJointParam p_param, real_t p_value) {
+	// Bullet-era bias / damping / impulse clamp -- unsupported here, as in
+	// Jolt; a warning only when set away from the default (joint nodes and
+	// PhysicalBone3D send the defaults every time).
+	const real_t def = p_param == PIN_JOINT_DAMPING ? 1.0 : (p_param == PIN_JOINT_IMPULSE_CLAMP ? 0.0 : 0.3);
+	if (!Math::is_equal_approx(p_value, def)) {
+		WARN_PRINT_ONCE("PhysX: pin joint parameters are not supported and will be ignored.");
+	}
 }
-real_t GodotPhysXServer3D::pin_joint_get_param(RID p_joint, PhysicsServer3DEnums::PinJointParam p_param) const {
+real_t GodotPhysXServer3D::pin_joint_get_param(RID p_joint, PinJointParam p_param) const {
 	return 0.0;
 }
 
@@ -753,19 +875,19 @@ void GodotPhysXServer3D::joint_make_hinge_simple(RID p_joint, RID p_body_A, cons
 	joint_make_hinge(p_joint, p_body_A, frame_from(p_pivot_A, p_axis_A), p_body_B, frame_from(p_pivot_B, p_axis_B));
 }
 
-void GodotPhysXServer3D::hinge_joint_set_param(RID p_joint, PhysicsServer3DEnums::HingeJointParam p_param, real_t p_value) {
+void GodotPhysXServer3D::hinge_joint_set_param(RID p_joint, HingeJointParam p_param, real_t p_value) {
 	GET_JOINT_VOID(joint, p_joint);
 	joint->set_hinge_param(p_param, p_value);
 }
-real_t GodotPhysXServer3D::hinge_joint_get_param(RID p_joint, PhysicsServer3DEnums::HingeJointParam p_param) const {
+real_t GodotPhysXServer3D::hinge_joint_get_param(RID p_joint, HingeJointParam p_param) const {
 	GET_JOINT(joint, p_joint, 0.0);
 	return joint->get_hinge_param(p_param);
 }
-void GodotPhysXServer3D::hinge_joint_set_flag(RID p_joint, PhysicsServer3DEnums::HingeJointFlag p_flag, bool p_enabled) {
+void GodotPhysXServer3D::hinge_joint_set_flag(RID p_joint, HingeJointFlag p_flag, bool p_enabled) {
 	GET_JOINT_VOID(joint, p_joint);
 	joint->set_hinge_flag(p_flag, p_enabled);
 }
-bool GodotPhysXServer3D::hinge_joint_get_flag(RID p_joint, PhysicsServer3DEnums::HingeJointFlag p_flag) const {
+bool GodotPhysXServer3D::hinge_joint_get_flag(RID p_joint, HingeJointFlag p_flag) const {
 	GET_JOINT(joint, p_joint, false);
 	return joint->get_hinge_flag(p_flag);
 }
@@ -774,11 +896,11 @@ void GodotPhysXServer3D::joint_make_slider(RID p_joint, RID p_body_A, const Tran
 	GET_JOINT_VOID(joint, p_joint);
 	joint->make_slider(body_owner.get_or_null(p_body_A), p_local_frame_A, body_owner.get_or_null(p_body_B), p_local_frame_B);
 }
-void GodotPhysXServer3D::slider_joint_set_param(RID p_joint, PhysicsServer3DEnums::SliderJointParam p_param, real_t p_value) {
+void GodotPhysXServer3D::slider_joint_set_param(RID p_joint, SliderJointParam p_param, real_t p_value) {
 	GET_JOINT_VOID(joint, p_joint);
 	joint->set_slider_param(p_param, p_value);
 }
-real_t GodotPhysXServer3D::slider_joint_get_param(RID p_joint, PhysicsServer3DEnums::SliderJointParam p_param) const {
+real_t GodotPhysXServer3D::slider_joint_get_param(RID p_joint, SliderJointParam p_param) const {
 	GET_JOINT(joint, p_joint, 0.0);
 	return joint->get_slider_param(p_param);
 }
@@ -787,11 +909,11 @@ void GodotPhysXServer3D::joint_make_cone_twist(RID p_joint, RID p_body_A, const 
 	GET_JOINT_VOID(joint, p_joint);
 	joint->make_cone_twist(body_owner.get_or_null(p_body_A), p_local_frame_A, body_owner.get_or_null(p_body_B), p_local_frame_B);
 }
-void GodotPhysXServer3D::cone_twist_joint_set_param(RID p_joint, PhysicsServer3DEnums::ConeTwistJointParam p_param, real_t p_value) {
+void GodotPhysXServer3D::cone_twist_joint_set_param(RID p_joint, ConeTwistJointParam p_param, real_t p_value) {
 	GET_JOINT_VOID(joint, p_joint);
 	joint->set_cone_twist_param(p_param, p_value);
 }
-real_t GodotPhysXServer3D::cone_twist_joint_get_param(RID p_joint, PhysicsServer3DEnums::ConeTwistJointParam p_param) const {
+real_t GodotPhysXServer3D::cone_twist_joint_get_param(RID p_joint, ConeTwistJointParam p_param) const {
 	GET_JOINT(joint, p_joint, 0.0);
 	return joint->get_cone_twist_param(p_param);
 }
@@ -800,19 +922,19 @@ void GodotPhysXServer3D::joint_make_generic_6dof(RID p_joint, RID p_body_A, cons
 	GET_JOINT_VOID(joint, p_joint);
 	joint->make_6dof(body_owner.get_or_null(p_body_A), p_local_frame_A, body_owner.get_or_null(p_body_B), p_local_frame_B);
 }
-void GodotPhysXServer3D::generic_6dof_joint_set_param(RID p_joint, Vector3::Axis p_axis, PhysicsServer3DEnums::G6DOFJointAxisParam p_param, real_t p_value) {
+void GodotPhysXServer3D::generic_6dof_joint_set_param(RID p_joint, Vector3::Axis p_axis, G6DOFJointAxisParam p_param, real_t p_value) {
 	GET_JOINT_VOID(joint, p_joint);
 	joint->set_6dof_param(p_axis, p_param, p_value);
 }
-real_t GodotPhysXServer3D::generic_6dof_joint_get_param(RID p_joint, Vector3::Axis p_axis, PhysicsServer3DEnums::G6DOFJointAxisParam p_param) const {
+real_t GodotPhysXServer3D::generic_6dof_joint_get_param(RID p_joint, Vector3::Axis p_axis, G6DOFJointAxisParam p_param) const {
 	GET_JOINT(joint, p_joint, 0.0);
 	return joint->get_6dof_param(p_axis, p_param);
 }
-void GodotPhysXServer3D::generic_6dof_joint_set_flag(RID p_joint, Vector3::Axis p_axis, PhysicsServer3DEnums::G6DOFJointAxisFlag p_flag, bool p_enable) {
+void GodotPhysXServer3D::generic_6dof_joint_set_flag(RID p_joint, Vector3::Axis p_axis, G6DOFJointAxisFlag p_flag, bool p_enable) {
 	GET_JOINT_VOID(joint, p_joint);
 	joint->set_6dof_flag(p_axis, p_flag, p_enable);
 }
-bool GodotPhysXServer3D::generic_6dof_joint_get_flag(RID p_joint, Vector3::Axis p_axis, PhysicsServer3DEnums::G6DOFJointAxisFlag p_flag) const {
+bool GodotPhysXServer3D::generic_6dof_joint_get_flag(RID p_joint, Vector3::Axis p_axis, G6DOFJointAxisFlag p_flag) const {
 	GET_JOINT(joint, p_joint, false);
 	return joint->get_6dof_flag(p_axis, p_flag);
 }
@@ -827,6 +949,7 @@ RID GodotPhysXServer3D::particle_fluid_create() {
 }
 
 void GodotPhysXServer3D::particle_fluid_set_space(RID p_fluid, RID p_space) {
+	QUEUE_UNLESS_SAFE(particle_fluid_set_space(p_fluid, p_space))
 	GodotPhysXParticleFluid3D *fluid = fluid_owner.get_or_null(p_fluid);
 	ERR_FAIL_NULL(fluid);
 	GodotPhysXSpace3D *space = space_owner.get_or_null(p_space);
@@ -834,6 +957,7 @@ void GodotPhysXServer3D::particle_fluid_set_space(RID p_fluid, RID p_space) {
 }
 
 void GodotPhysXServer3D::particle_fluid_set_param(RID p_fluid, int p_param, real_t p_value) {
+	QUEUE_UNLESS_SAFE(particle_fluid_set_param(p_fluid, p_param, p_value))
 	GodotPhysXParticleFluid3D *fluid = fluid_owner.get_or_null(p_fluid);
 	ERR_FAIL_NULL(fluid);
 	ERR_FAIL_INDEX(p_param, GodotPhysXParticleFluid3D::PARAM_MAX);
@@ -841,36 +965,42 @@ void GodotPhysXServer3D::particle_fluid_set_param(RID p_fluid, int p_param, real
 }
 
 void GodotPhysXServer3D::particle_fluid_set_granular(RID p_fluid, bool p_enabled, real_t p_friction) {
+	QUEUE_UNLESS_SAFE(particle_fluid_set_granular(p_fluid, p_enabled, p_friction))
 	GodotPhysXParticleFluid3D *fluid = fluid_owner.get_or_null(p_fluid);
 	ERR_FAIL_NULL(fluid);
 	fluid->set_granular(p_enabled, p_friction);
 }
 
 void GodotPhysXServer3D::particle_fluid_set_capacity(RID p_fluid, int p_max) {
+	QUEUE_UNLESS_SAFE(particle_fluid_set_capacity(p_fluid, p_max))
 	GodotPhysXParticleFluid3D *fluid = fluid_owner.get_or_null(p_fluid);
 	ERR_FAIL_NULL(fluid);
 	fluid->set_capacity(p_max > 0 ? (uint32_t)p_max : 1);
 }
 
 void GodotPhysXServer3D::particle_fluid_set_particles(RID p_fluid, const Vector<Vector3> &p_positions, const Vector3 &p_initial_velocity) {
+	QUEUE_UNLESS_SAFE(particle_fluid_set_particles(p_fluid, p_positions, p_initial_velocity))
 	GodotPhysXParticleFluid3D *fluid = fluid_owner.get_or_null(p_fluid);
 	ERR_FAIL_NULL(fluid);
 	fluid->set_particles(p_positions, p_initial_velocity);
 }
 
 void GodotPhysXServer3D::particle_fluid_emit(RID p_fluid, const Vector<Vector3> &p_positions, const Vector3 &p_velocity) {
+	QUEUE_UNLESS_SAFE(particle_fluid_emit(p_fluid, p_positions, p_velocity))
 	GodotPhysXParticleFluid3D *fluid = fluid_owner.get_or_null(p_fluid);
 	ERR_FAIL_NULL(fluid);
 	fluid->emit(p_positions, p_velocity);
 }
 
 void GodotPhysXServer3D::particle_fluid_clear(RID p_fluid) {
+	QUEUE_UNLESS_SAFE(particle_fluid_clear(p_fluid))
 	GodotPhysXParticleFluid3D *fluid = fluid_owner.get_or_null(p_fluid);
 	ERR_FAIL_NULL(fluid);
 	fluid->clear();
 }
 
 void GodotPhysXServer3D::particle_fluid_set_foam(RID p_fluid, bool p_enabled, int p_capacity, real_t p_lifetime, real_t p_threshold, real_t p_buoyancy, real_t p_size) {
+	QUEUE_UNLESS_SAFE(particle_fluid_set_foam(p_fluid, p_enabled, p_capacity, p_lifetime, p_threshold, p_buoyancy, p_size))
 	GodotPhysXParticleFluid3D *fluid = fluid_owner.get_or_null(p_fluid);
 	ERR_FAIL_NULL(fluid);
 	fluid->set_foam_capacity(p_capacity > 0 ? (uint32_t)p_capacity : 1);
@@ -884,13 +1014,7 @@ void GodotPhysXServer3D::particle_fluid_set_foam(RID p_fluid, bool p_enabled, in
 Vector<Vector3> GodotPhysXServer3D::particle_fluid_get_foam_positions(RID p_fluid) const {
 	GodotPhysXParticleFluid3D *fluid = fluid_owner.get_or_null(p_fluid);
 	ERR_FAIL_NULL_V(fluid, Vector<Vector3>());
-	const LocalVector<Vector3> &src = fluid->get_foam_positions();
-	Vector<Vector3> out;
-	out.resize(src.size());
-	if (src.size() > 0) {
-		memcpy(out.ptrw(), src.ptr(), src.size() * sizeof(Vector3));
-	}
-	return out;
+	return fluid->copy_foam_positions();
 }
 
 int GodotPhysXServer3D::particle_fluid_get_foam_count(RID p_fluid) const {
@@ -900,12 +1024,14 @@ int GodotPhysXServer3D::particle_fluid_get_foam_count(RID p_fluid) const {
 }
 
 void GodotPhysXServer3D::particle_fluid_set_surface_mesh(RID p_fluid, bool p_enabled) {
+	QUEUE_UNLESS_SAFE(particle_fluid_set_surface_mesh(p_fluid, p_enabled))
 	GodotPhysXParticleFluid3D *fluid = fluid_owner.get_or_null(p_fluid);
 	ERR_FAIL_NULL(fluid);
 	fluid->set_surface_mesh_enabled(p_enabled);
 }
 
 void GodotPhysXServer3D::particle_fluid_set_surface_anisotropy(RID p_fluid, bool p_enabled) {
+	QUEUE_UNLESS_SAFE(particle_fluid_set_surface_anisotropy(p_fluid, p_enabled))
 	GodotPhysXParticleFluid3D *fluid = fluid_owner.get_or_null(p_fluid);
 	ERR_FAIL_NULL(fluid);
 	fluid->set_surface_anisotropy_enabled(p_enabled);
@@ -962,13 +1088,7 @@ int GodotPhysXServer3D::particle_fluid_get_foam_mesh(RID p_fluid, PackedVector3A
 Vector<Vector3> GodotPhysXServer3D::particle_fluid_get_positions(RID p_fluid) const {
 	GodotPhysXParticleFluid3D *fluid = fluid_owner.get_or_null(p_fluid);
 	ERR_FAIL_NULL_V(fluid, Vector<Vector3>());
-	const LocalVector<Vector3> &src = fluid->get_positions();
-	Vector<Vector3> out;
-	out.resize(src.size());
-	if (src.size() > 0) {
-		memcpy(out.ptrw(), src.ptr(), src.size() * sizeof(Vector3));
-	}
-	return out;
+	return fluid->copy_positions();
 }
 
 int GodotPhysXServer3D::particle_fluid_get_particle_count(RID p_fluid) const {
@@ -996,36 +1116,42 @@ RID GodotPhysXServer3D::cloth_create() {
 }
 
 void GodotPhysXServer3D::cloth_set_space(RID p_cloth, RID p_space) {
+	QUEUE_UNLESS_SAFE(cloth_set_space(p_cloth, p_space))
 	GodotPhysXCloth3D *cloth = cloth_owner.get_or_null(p_cloth);
 	ERR_FAIL_NULL(cloth);
 	cloth->set_space(space_owner.get_or_null(p_space));
 }
 
 void GodotPhysXServer3D::cloth_set_params(RID p_cloth, real_t p_thickness, real_t p_density, real_t p_stretch, real_t p_bend, real_t p_damping, uint32_t p_collision_mask) {
+	QUEUE_UNLESS_SAFE(cloth_set_params(p_cloth, p_thickness, p_density, p_stretch, p_bend, p_damping, p_collision_mask))
 	GodotPhysXCloth3D *cloth = cloth_owner.get_or_null(p_cloth);
 	ERR_FAIL_NULL(cloth);
 	cloth->set_params(p_thickness, p_density, p_stretch, p_bend, p_damping, p_collision_mask);
 }
 
 void GodotPhysXServer3D::cloth_build(RID p_cloth, const Vector<Vector3> &p_positions, const Vector<int32_t> &p_indices, const Transform3D &p_xform) {
+	QUEUE_UNLESS_SAFE(cloth_build(p_cloth, p_positions, p_indices, p_xform))
 	GodotPhysXCloth3D *cloth = cloth_owner.get_or_null(p_cloth);
 	ERR_FAIL_NULL(cloth);
 	cloth->build(p_positions, p_indices, p_xform);
 }
 
 void GodotPhysXServer3D::cloth_set_pinned(RID p_cloth, const Vector<int32_t> &p_pinned) {
+	QUEUE_UNLESS_SAFE(cloth_set_pinned(p_cloth, p_pinned))
 	GodotPhysXCloth3D *cloth = cloth_owner.get_or_null(p_cloth);
 	ERR_FAIL_NULL(cloth);
 	cloth->set_pinned(p_pinned);
 }
 
 void GodotPhysXServer3D::cloth_set_pin_targets(RID p_cloth, const Vector<Vector3> &p_world_targets) {
+	QUEUE_UNLESS_SAFE(cloth_set_pin_targets(p_cloth, p_world_targets))
 	GodotPhysXCloth3D *cloth = cloth_owner.get_or_null(p_cloth);
 	ERR_FAIL_NULL(cloth);
 	cloth->set_pin_targets(p_world_targets);
 }
 
 void GodotPhysXServer3D::cloth_apply_wind(RID p_cloth, const Vector3 &p_wind, real_t p_drag, real_t p_lift, real_t p_dt) {
+	QUEUE_UNLESS_SAFE(cloth_apply_wind(p_cloth, p_wind, p_drag, p_lift, p_dt))
 	GodotPhysXCloth3D *cloth = cloth_owner.get_or_null(p_cloth);
 	ERR_FAIL_NULL(cloth);
 	cloth->apply_wind(p_wind, p_drag, p_lift, p_dt);
@@ -1119,6 +1245,26 @@ uint32_t GodotPhysXServer3D::soft_body_get_collision_mask(RID p_body) const {
 	return soft_body->get_collision_mask();
 }
 
+void GodotPhysXServer3D::body_add_collision_exception(RID p_body, RID p_body_b) {
+	GodotPhysXBody3D *body = body_owner.get_or_null(p_body);
+	ERR_FAIL_NULL(body);
+	body->add_collision_exception(p_body_b);
+}
+
+void GodotPhysXServer3D::body_remove_collision_exception(RID p_body, RID p_body_b) {
+	GodotPhysXBody3D *body = body_owner.get_or_null(p_body);
+	ERR_FAIL_NULL(body);
+	body->remove_collision_exception(p_body_b);
+}
+
+void GodotPhysXServer3D::body_get_collision_exceptions(RID p_body, List<RID> *p_exceptions) {
+	GodotPhysXBody3D *body = body_owner.get_or_null(p_body);
+	ERR_FAIL_NULL(body);
+	for (const RID &e : body->get_collision_exceptions()) {
+		p_exceptions->push_back(e);
+	}
+}
+
 void GodotPhysXServer3D::soft_body_add_collision_exception(RID p_body, RID p_body_b) {
 	GET_SOFT_BODY_V();
 	soft_body->add_collision_exception(p_body_b);
@@ -1136,27 +1282,27 @@ void GodotPhysXServer3D::soft_body_get_collision_exceptions(RID p_body, List<RID
 	}
 }
 
-void GodotPhysXServer3D::soft_body_set_state(RID p_body, PhysicsServer3DEnums::BodyState p_state, const Variant &p_variant) {
+void GodotPhysXServer3D::soft_body_set_state(RID p_body, BodyState p_state, const Variant &p_variant) {
 	GET_SOFT_BODY_V();
-	if (p_state == PhysicsServer3DEnums::BODY_STATE_TRANSFORM) {
+	if (p_state == BODY_STATE_TRANSFORM) {
 		soft_body->set_transform(p_variant);
 	}
 	// Linear/angular velocity and sleep have no meaning for a vertex cloud here.
 }
 
-Variant GodotPhysXServer3D::soft_body_get_state(RID p_body, PhysicsServer3DEnums::BodyState p_state) const {
+Variant GodotPhysXServer3D::soft_body_get_state(RID p_body, BodyState p_state) const {
 	GET_SOFT_BODY(Variant());
 	switch (p_state) {
-		case PhysicsServer3DEnums::BODY_STATE_TRANSFORM: {
+		case BODY_STATE_TRANSFORM: {
 			// Origin at the current bounds center; basis stays identity (the sim
 			// runs in world space, like every other backend's soft body).
 			return Transform3D(Basis(), soft_body->get_bounds().get_center());
 		}
-		case PhysicsServer3DEnums::BODY_STATE_LINEAR_VELOCITY:
-		case PhysicsServer3DEnums::BODY_STATE_ANGULAR_VELOCITY:
+		case BODY_STATE_LINEAR_VELOCITY:
+		case BODY_STATE_ANGULAR_VELOCITY:
 			return Vector3();
-		case PhysicsServer3DEnums::BODY_STATE_SLEEPING:
-		case PhysicsServer3DEnums::BODY_STATE_CAN_SLEEP:
+		case BODY_STATE_SLEEPING:
+		case BODY_STATE_CAN_SLEEP:
 			return false;
 	}
 	return Variant();
@@ -1295,7 +1441,23 @@ void GodotPhysXServer3D::soft_body_apply_central_force(RID p_body, const Vector3
 /* MISC */
 
 void GodotPhysXServer3D::free_rid(RID p_rid) {
+	QUEUE_UNLESS_SAFE(free_rid(p_rid)) // (a node freeing its fluid, cloth or vehicle identity directly)
 	if (GodotPhysXShape3D *shape = shape_owner.get_or_null(p_rid)) {
+		// Whoever still uses it drops it (they kept a dangling pointer before).
+		LocalVector<GodotPhysXBody3D *> bodies;
+		for (const KeyValue<GodotPhysXBody3D *, int> &E : shape->get_body_owners()) {
+			bodies.push_back(E.key);
+		}
+		for (GodotPhysXBody3D *body : bodies) {
+			body->shape_freed(shape);
+		}
+		LocalVector<GodotPhysXArea3D *> areas;
+		for (const KeyValue<GodotPhysXArea3D *, int> &E : shape->get_area_owners()) {
+			areas.push_back(E.key);
+		}
+		for (GodotPhysXArea3D *area : areas) {
+			area->shape_freed(shape);
+		}
 		shape_owner.free(p_rid);
 		memdelete(shape);
 	} else if (GodotPhysXBody3D *body = body_owner.get_or_null(p_rid)) {
@@ -1331,12 +1493,22 @@ void GodotPhysXServer3D::free_rid(RID p_rid) {
 	}
 }
 
+String GodotPhysXServer3D::get_gpu_device_name() const {
+#ifdef GODOT_PHYSX_GPU
+	if (px_cuda) {
+		return String(px_cuda->getDeviceName());
+	}
+#endif
+	return String();
+}
+
 void GodotPhysXServer3D::set_active(bool p_active) {
 	active = p_active;
 }
 
 void GodotPhysXServer3D::init() {
 	PhysicsServer3DDummy::init();
+	server_thread = Thread::get_caller_id(); // the physics thread with run_on_separate_thread, else the main one
 
 	GodotPhysXProjectSettings::read_settings();
 
@@ -1347,7 +1519,9 @@ void GodotPhysXServer3D::init() {
 	ERR_FAIL_NULL_MSG(px_physics, "PhysX: PxCreatePhysics failed.");
 
 #ifdef GODOT_PHYSX_GPU
-	if (!GodotPhysXProjectSettings::enhanced_determinism) {
+	if (!GodotPhysXProjectSettings::gpu_dynamics) {
+		print_verbose("PhysX: gpu_dynamics is off -> CPU simulation.");
+	} else if (!GodotPhysXProjectSettings::enhanced_determinism) {
 		PxCudaContextManagerDesc cuda_desc;
 		px_cuda = PxCreateCudaContextManager(*px_foundation, cuda_desc, PxGetProfilerCallback());
 		if (px_cuda && !px_cuda->contextIsValid()) {
@@ -1356,6 +1530,12 @@ void GodotPhysXServer3D::init() {
 		}
 		if (px_cuda) {
 			print_line(vformat("PhysX: CUDA context ready on device '%s' -> GPU dynamics available.", px_cuda->getDeviceName()));
+		} else if (px_error_callback.gpu_module_load_failed) {
+#ifdef WINDOWS_ENABLED
+			WARN_PRINT("PhysX: PhysXGpu_64.dll was not found next to the executable; falling back to CPU simulation. Ship it with the game (see the module README, \"Exporting a game\").");
+#else
+			WARN_PRINT("PhysX: libPhysXGpu_64.so was not found next to the executable; falling back to CPU simulation. Ship it with the game (see the module README, \"Exporting a game\").");
+#endif
 		} else {
 			WARN_PRINT("PhysX: no usable CUDA device; falling back to CPU simulation.");
 		}
@@ -1387,6 +1567,8 @@ void GodotPhysXServer3D::init() {
 	print_verbose(vformat("PhysX %d.%d.%d initialized%s.",
 			PX_PHYSICS_VERSION_MAJOR, PX_PHYSICS_VERSION_MINOR, PX_PHYSICS_VERSION_BUGFIX,
 			px_cuda ? " [GPU]" : ""));
+
+	dispatch_body = body_create();
 }
 
 void GodotPhysXServer3D::step(real_t p_step) {
@@ -1404,7 +1586,16 @@ void GodotPhysXServer3D::step(real_t p_step) {
 	}
 }
 
+void GodotPhysXServer3D::sync() {
+	syncing = true; // the physics thread is parked until end_sync()
+}
+
+void GodotPhysXServer3D::end_sync() {
+	syncing = false;
+}
+
 void GodotPhysXServer3D::flush_queries() {
+	GodotPhysXSoftBody3D::build_pending();
 	if (!active) {
 		return;
 	}
@@ -1415,7 +1606,31 @@ void GodotPhysXServer3D::flush_queries() {
 	flushing_queries = false;
 }
 
+bool GodotPhysXServer3D::begin_background_job() {
+	// Counted before the check, so finish() can't miss a job that starts as it begins.
+	background_jobs.increment();
+	if (finishing.is_set()) {
+		background_jobs.decrement();
+		return false;
+	}
+	return true;
+}
+
 void GodotPhysXServer3D::finish() {
+	// A background job stops at its next check, but a Blast stage already running can't be interrupted.
+	finishing.set();
+	const uint64_t give_up = OS::get_singleton()->get_ticks_msec() + 120000;
+	while (background_jobs.get() > 0 && OS::get_singleton()->get_ticks_msec() < give_up) {
+		OS::get_singleton()->delay_usec(2000);
+	}
+	if (background_jobs.get() > 0) {
+		ERR_PRINT("PhysX: a background job (a Blast fracture) was still running after 2 minutes; shutting down anyway.");
+	}
+	if (dispatch_body.is_valid()) {
+		free_rid(dispatch_body);
+		dispatch_body = RID();
+	}
+	GodotPhysXSpace3D::flush_material_releases(); // (bodies freed since the last step)
 	if (px_cuda) {
 		px_cuda->release();
 		px_cuda = nullptr;
@@ -1435,8 +1650,8 @@ void GodotPhysXServer3D::finish() {
 	PhysicsServer3DDummy::finish();
 }
 
-int GodotPhysXServer3D::get_process_info(PhysicsServer3DEnums::ProcessInfo p_info) {
-	if (p_info == PhysicsServer3DEnums::INFO_ACTIVE_OBJECTS) {
+int GodotPhysXServer3D::get_process_info(ProcessInfo p_info) {
+	if (p_info == INFO_ACTIVE_OBJECTS) {
 		return active_objects;
 	}
 	return 0;

@@ -9,29 +9,29 @@
 // grid is an integer fixed-point accumulator so it needs only plain atomicAdd on
 // int (no float-atomic extension).
 
-#define FIXED 8388608.0   // 2^23 -- exact in fp32, plenty of per-cell headroom
-#define IMP_FIXED 1024.0  // coarser fixed-point for the collider impulse sum (small values, many adds)
+#define FIXED 8388608.0 // 2^23 -- exact in fp32, plenty of per-cell headroom
+#define IMP_FIXED 1024.0 // coarser fixed-point for the collider impulse sum (small values, many adds)
 #define SURF_FIXED 256.0 // fixed-point for the isosurface density scatter (boosted density can run high)
 #define GROUP 64
-#define GAMMA 7.0         // Tait exponent -- stiff under compression, soft under expansion
+#define GAMMA 7.0 // Tait exponent -- stiff under compression, soft under expansion
 #define MAX_COLLIDERS 32 // keep in sync with mpm_fluid_solver.cpp (loops use the dynamic NCOL, not this)
 
 struct Particle {
 	vec4 x_d; // xyz = position (world), w = last sampled density (debug/readback)
-	vec4 v;   // xyz = velocity, w unused
-	vec4 c0;  // affine velocity matrix C, column 0 (w unused)
+	vec4 v; // xyz = velocity, w unused
+	vec4 c0; // affine velocity matrix C, column 0 (w unused)
 	vec4 c1;
 	vec4 c2;
-	vec4 f0;  // deformation gradient F, column 0 -- granular mode only (identity otherwise)
+	vec4 f0; // deformation gradient F, column 0 -- granular mode only (identity otherwise)
 	vec4 f1;
 	vec4 f2;
 };
 
 // Analytic collider: a moving velocity boundary condition for the grid.
-//   c0: xyz = centre (world), w = shape (0 sphere, 1 box, 2 plane, 3 capsule)
-//   c1: sphere x=radius | box xyz=half-extents | plane xyz=unit normal | capsule x=radius y=half-height
-//   c2: xyz = linear velocity
-//   c3: orientation quaternion (box / capsule; sphere and plane ignore it)
+//   c0: xyz = center (world), w = shape (0 sphere, 1 box, 2 plane, 3 capsule, 4 baked, 5 cylinder)
+//   c1: sphere x=radius | box xyz=half-extents | plane xyz=unit normal | capsule, cylinder x=radius y=half-height | baked xyz=half-extents w=distance scale
+//   c2: xyz = linear velocity, w = baked: where its grid starts in sdf_voxels
+//   c3: orientation quaternion (box / capsule / baked / cylinder; sphere and plane ignore it)
 struct Collider {
 	vec4 c0;
 	vec4 c1;
@@ -40,41 +40,58 @@ struct Collider {
 };
 
 layout(set = 0, binding = 0, std140) uniform Params {
-	vec4 gravity_dt;  // xyz gravity, w dt
-	vec4 origin_dx;   // xyz grid origin (world), w cell size
-	ivec4 res_count;  // xyz grid resolution (nodes), w particle count
-	vec4 fluid;       // x rest_density, y stiffness, z dynamic_viscosity, w particle_mass
-	vec4 bmin;        // xyz domain min (world), w = surface mass boost
-	vec4 bmax;        // xyz domain max (world), w = granular flag (0 fluid / 1 granular)
-	vec4 extra;       // x collider count, y collider friction, z surface iso density, w surface kernel
-	vec4 gran;        // granular: x = Drucker-Prager alpha (friction), y = cohesion, z = shear modulus mu, w = Lame lambda
+	vec4 gravity_dt; // xyz gravity, w dt
+	vec4 origin_dx; // xyz grid origin (world), w cell size
+	ivec4 res_count; // xyz grid resolution (nodes), w particle count
+	vec4 fluid; // x rest_density, y stiffness, z dynamic_viscosity, w particle_mass
+	vec4 bmin; // xyz domain min (world), w = surface mass boost
+	vec4 bmax; // xyz domain max (world), w = granular flag (0 fluid / 1 granular)
+	vec4 extra; // x collider count, y collider friction, z surface iso density, w surface kernel
+	vec4 gran; // granular: x = Drucker-Prager alpha (friction), y = cohesion, z = shear modulus mu, w = Lame lambda
 };
 
-layout(set = 0, binding = 1, std430) restrict buffer Particles { Particle particles[]; };
-layout(set = 0, binding = 2, std430) restrict buffer GridAcc { int grid_i[]; };  // 4 ints / node: mass, mom.xyz
-layout(set = 0, binding = 3, std430) restrict buffer GridVel { vec4 grid_v[]; }; // xyz velocity, w mass
-layout(set = 0, binding = 4, std430) restrict buffer Colliders { Collider colliders[]; };
-layout(set = 0, binding = 5, std430) restrict buffer ColliderImp { int cimp[]; }; // 4 ints / collider: reaction impulse xyz
-layout(set = 0, binding = 6, std430) restrict buffer MMData { float mm[]; };       // 12 floats / instance: MultiMesh transform rows
-layout(set = 0, binding = 7, std430) restrict buffer SurfaceField { int surf_i[]; }; // 1 int / node: SPH density scatter (SURF_FIXED), for isosurfacing
+layout(set = 0, binding = 1, std430) restrict buffer Particles {
+	Particle particles[];
+};
+layout(set = 0, binding = 2, std430) restrict buffer GridAcc {
+	int grid_i[];
+}; // 4 ints / node: mass, mom.xyz
+layout(set = 0, binding = 3, std430) restrict buffer GridVel {
+	vec4 grid_v[];
+}; // xyz velocity, w mass
+layout(set = 0, binding = 4, std430) restrict buffer Colliders {
+	Collider colliders[];
+};
+layout(set = 0, binding = 5, std430) restrict buffer ColliderImp {
+	int cimp[];
+}; // 4 ints / collider: reaction impulse xyz
+layout(set = 0, binding = 6, std430) restrict buffer MMData {
+	float mm[];
+}; // 12 floats / instance: MultiMesh transform rows
+layout(set = 0, binding = 7, std430) restrict buffer SurfaceField {
+	int surf_i[];
+}; // 1 int / node: SPH density scatter (SURF_FIXED), for isosurfacing
+layout(set = 0, binding = 8, std430) restrict readonly buffer SDFVoxels {
+	float sdf_voxels[];
+}; // every baked collider's grid (see collider_baked)
 
-#define DT       (gravity_dt.w)
-#define GRAV     (gravity_dt.xyz)
-#define ORIGIN   (origin_dx.xyz)
-#define DX       (origin_dx.w)
-#define RES      (res_count.xyz)
-#define PCOUNT   (res_count.w)
-#define RHO0     (fluid.x)
-#define STIFF    (fluid.y)
-#define VISC     (fluid.z)
-#define PMASS    (fluid.w)
-#define NCOL     (int(extra.x))
-#define CFRIC    (extra.y)
+#define DT (gravity_dt.w)
+#define GRAV (gravity_dt.xyz)
+#define ORIGIN (origin_dx.xyz)
+#define DX (origin_dx.w)
+#define RES (res_count.xyz)
+#define PCOUNT (res_count.w)
+#define RHO0 (fluid.x)
+#define STIFF (fluid.y)
+#define VISC (fluid.z)
+#define PMASS (fluid.w)
+#define NCOL (int(extra.x))
+#define CFRIC (extra.y)
 #define GRANULAR (bmax.w > 0.5)
 #define DP_ALPHA (gran.x)
-#define DP_COH   (gran.y)
-#define GMU      (gran.z)
-#define GLAMBDA  (gran.w)
+#define DP_COH (gran.y)
+#define GMU (gran.z)
+#define GLAMBDA (gran.w)
 
 int node_index(ivec3 c) {
 	return (c.z * RES.y + c.y) * RES.x + c.x;
@@ -171,6 +188,36 @@ vec3 dp_project(vec3 sig, float mu, float lambda, float alpha, float coh) {
 	return exp(eps - dg * eps_hat / ehn);
 }
 
+// --- baked collider: a field baked by GPUParticlesCollisionSDF3D, in sdf_voxels ---
+// Its grid starts with its size (three floats), then x, then y, then z. p is local to
+// the collider, with the box the field fills centered on it.
+
+float sdf_voxel(uint first, ivec3 size, ivec3 c) {
+	return sdf_voxels[first + uint(c.x + size.x * (c.y + size.y * c.z))];
+}
+
+float collider_baked(int i, vec3 p) {
+	vec3 half_size = colliders[i].c1.xyz;
+	float beyond = length(max(abs(p) - half_size, 0.0));
+	if (beyond > DX) {
+		return beyond; // too far to touch anything, and no reads
+	}
+	uint head = uint(colliders[i].c2.w + 0.5);
+	ivec3 size = ivec3(sdf_voxels[head], sdf_voxels[head + 1u], sdf_voxels[head + 2u]);
+	uint first = head + 3u;
+	vec3 g = clamp((p / half_size * 0.5 + 0.5) * vec3(size) - 0.5, vec3(0.0), vec3(size - 1));
+	ivec3 a = ivec3(g);
+	ivec3 b = min(a + 1, size - 1);
+	vec3 f = g - vec3(a);
+	float s = mix(
+			mix(mix(sdf_voxel(first, size, a), sdf_voxel(first, size, ivec3(b.x, a.y, a.z)), f.x),
+					mix(sdf_voxel(first, size, ivec3(a.x, b.y, a.z)), sdf_voxel(first, size, ivec3(b.x, b.y, a.z)), f.x), f.y),
+			mix(mix(sdf_voxel(first, size, ivec3(a.x, a.y, b.z)), sdf_voxel(first, size, ivec3(b.x, a.y, b.z)), f.x),
+					mix(sdf_voxel(first, size, ivec3(a.x, b.y, b.z)), sdf_voxel(first, size, b), f.x), f.y),
+			f.z);
+	return s * colliders[i].c1.w + beyond;
+}
+
 // --- analytic collider SDF (shared by the coupling pass and G2P clamp) ---
 
 vec3 _qrot(vec4 q, vec3 v) {
@@ -185,6 +232,13 @@ float collider_sdf(int i, vec3 wp) {
 	}
 	vec4 q = colliders[i].c3;
 	vec3 p = _qrot(vec4(-q.xyz, q.w), wp - ctr);
+	if (type == 4) {
+		return collider_baked(i, p);
+	}
+	if (type == 5) { // cylinder along local Y
+		vec2 d = vec2(length(p.xz) - colliders[i].c1.x, abs(p.y) - colliders[i].c1.y);
+		return length(max(d, 0.0)) + min(max(d.x, d.y), 0.0);
+	}
 	if (type == 1) { // box
 		vec3 d = abs(p) - colliders[i].c1.xyz;
 		return length(max(d, 0.0)) + min(max(d.x, max(d.y, d.z)), 0.0);

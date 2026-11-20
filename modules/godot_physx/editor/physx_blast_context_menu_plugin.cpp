@@ -21,7 +21,7 @@
 /*                                                                        */
 /* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,        */
 /* EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF     */
-/* MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. */
+/* MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. */
 /* IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY   */
 /* CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,   */
 /* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE      */
@@ -43,7 +43,7 @@
 #include "scene/main/node.h"
 #include "scene/resources/texture.h"
 
-void PhysXBlastFractureMenuPlugin::get_options(const Vector<String> &p_paths, const Variant &p_data) {
+void PhysXBlastFractureMenuPlugin::get_options(const Vector<String> &p_paths) {
 	if (p_paths.size() != 1) {
 		return;
 	}

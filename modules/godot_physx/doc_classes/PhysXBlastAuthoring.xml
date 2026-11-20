@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<class name="PhysXBlastAuthoring" inherits="RefCounted" api_type="core" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../../../doc/class.xsd">
+	<brief_description>
+		Script-callable Blast fracture authoring: turns a [Mesh] into a [PhysXBlastAsset] at runtime or in headless tool scripts.
+	</brief_description>
+	<description>
+		Runs the same NVIDIA Blast authoring pipeline as the editor's in-viewport fracture dialog (the one behind right-clicking a [MeshInstance3D] in the Scene tree or a [Mesh] in the FileSystem dock), but callable from any script -- useful for batch asset generation, CI-authored test assets, or in-game procedural destruction authoring. Needs the module built with [code]blast_sdk=[/code].
+		The result carries the cooked NvBlast asset plus the per-chunk render geometry; feed it to a [PhysXDestructible3D] via its [member PhysXDestructible3D.blast_asset] property.
+	</description>
+	<tutorials>
+	</tutorials>
+	<methods>
+		<method name="fracture_mesh">
+			<return type="PhysXBlastAsset" />
+			<param index="0" name="mesh" type="Mesh" />
+			<param index="1" name="site_count" type="int" />
+			<param index="2" name="seed" type="int" />
+			<param index="3" name="pattern" type="int" enum="PhysXBlastAuthoring.FracturePattern" default="0" />
+			<param index="4" name="cutout_pattern" type="Texture2D" default="null" />
+			<description>
+				Fractures [param mesh] and returns the finished [PhysXBlastAsset], or a null reference on failure: a null mesh; a surface whose indices aren't whole triangles or point past its vertices, or a NaN or infinite vertex; a mesh with no volume (flat, or collapsed to a point); a mesh whose triangles don't form a closed watertight surface after the automatic cleanup pass; or [constant PATTERN_CUTOUT] without a usable [param cutout_pattern]. [method get_last_error] says which. Every triangle surface of [param mesh] is fractured together, each piece keeping which surface its faces came from and the asset keeping each surface's material (a surface that isn't a triangle list is left out, with a warning).
+				A mesh that is already closed (every edge shared by two triangles) skips the cleanup pass. If the cleanup returns nothing or reshapes the mesh beyond its bounds, the mesh is fractured as it was; if it only drops loose parts that weren't a closed solid, the cleaned mesh is used. An inside-out mesh (its triangles facing inward) is fractured with its triangles flipped, so the pieces face outward. Each of these warns (see [method get_last_warnings]).
+				[param site_count] is the cell/slice count: for [constant PATTERN_VORONOI] it is the number of random cells the mesh is split into; for [constant PATTERN_SLICING] it is cut into roughly that many brick-like pieces on the longest axis; it is ignored for [constant PATTERN_CUTOUT] (the pattern texture alone defines the pieces). [param seed] makes [constant PATTERN_VORONOI] reproducible -- the same mesh, count and seed always produce the same asset, on every platform.
+				Note the mesh is authored as-is: a source [MeshInstance3D]'s node transform (including scale) is not baked in.
+				Each piece's collision hull is cooked here and stored in the asset (see [member PhysXBlastAsset.chunk_hulls]), so breaking doesn't cook it.
+				The whole fracture runs before this returns, which takes seconds for a detailed mesh; [method fracture_mesh_async] runs it in the background instead.
+			</description>
+		</method>
+		<method name="fracture_mesh_async">
+			<return type="PhysXBlastFractureTask" />
+			<param index="0" name="mesh" type="Mesh" />
+			<param index="1" name="site_count" type="int" />
+			<param index="2" name="seed" type="int" />
+			<param index="3" name="pattern" type="int" enum="PhysXBlastAuthoring.FracturePattern" default="0" />
+			<param index="4" name="cutout_pattern" type="Texture2D" default="null" />
+			<description>
+				The same fracture as [method fracture_mesh], with the same result, on a worker thread: [param mesh] and [param cutout_pattern] are read before this returns, the rest runs in the background while the game or editor keeps running. The returned task reports each stage it starts ([signal PhysXBlastFractureTask.stage_changed]) and emits [signal PhysXBlastFractureTask.finished] with the asset, or with [code]null[/code] on failure (see [method PhysXBlastFractureTask.get_last_error]). Both signals come on the main thread, from the next frame on. The task doesn't need to be kept: it runs until it finishes either way.
+				[codeblock]
+				var task = PhysXBlastAuthoring.new().fracture_mesh_async(mesh, 32, 1)
+				task.stage_changed.connect(func(stage, count, description): label.text = "Stage %d of %d: %s" % [stage, count, description])
+				task.finished.connect(func(asset): if asset: $Destructible.blast_asset = asset)
+				[/codeblock]
+			</description>
+		</method>
+		<method name="get_last_error" qualifiers="const">
+			<return type="String" />
+			<description>
+				Why the last [method fracture_mesh] call failed, the same text it printed as an error (for example "index 500 points past the mesh's 8 vertices."). Empty if it succeeded.
+			</description>
+		</method>
+		<method name="get_last_warnings" qualifiers="const">
+			<return type="PackedStringArray" />
+			<description>
+				What the last [method fracture_mesh] call warned about, the same text it printed as warnings: for example, that the mesh cleaner dropped parts of the mesh that weren't a closed solid. Empty if it warned about nothing.
+			</description>
+		</method>
+	</methods>
+	<constants>
+		<constant name="PATTERN_VORONOI" value="0" enum="FracturePattern">
+			Random Voronoi cells -- organic, rock-like chunks. The default.
+		</constant>
+		<constant name="PATTERN_SLICING" value="1" enum="FracturePattern">
+			Evenly spaced cutting planes per axis -- regular, brick-like pieces. Good for crates and walls.
+		</constant>
+		<constant name="PATTERN_CUTOUT" value="2" enum="FracturePattern">
+			Extrudes a caller-supplied grayscale texture ([method fracture_mesh]'s [code]cutout_pattern[/code]) through the mesh -- glass/tile-style breaks. The cracks must reach the texture's edge (like a real broken pane) or the fracture is rejected.
+		</constant>
+	</constants>
+</class>

@@ -32,6 +32,7 @@
 
 #include "../godot_physx_conversions.h"
 #include "../godot_physx_server_3d.h"
+#include "../objects/godot_physx_area_3d.h"
 #include "../objects/godot_physx_body_3d.h"
 #include "../shapes/godot_physx_shape_3d.h"
 #include "godot_physx_space_3d.h"
@@ -56,11 +57,27 @@ Vector3 GodotPhysXDirectBodyState3D::get_total_gravity() const {
 }
 
 real_t GodotPhysXDirectBodyState3D::get_total_linear_damp() const {
-	return body->get_linear_damp();
+	return body->get_total_linear_damp();
 }
 
 real_t GodotPhysXDirectBodyState3D::get_total_angular_damp() const {
-	return body->get_angular_damp();
+	return body->get_total_angular_damp();
+}
+
+Vector3 GodotPhysXDirectBodyState3D::get_center_of_mass() const {
+	return body->get_center_of_mass_relative();
+}
+
+Vector3 GodotPhysXDirectBodyState3D::get_center_of_mass_local() const {
+	return body->get_center_of_mass_local();
+}
+
+Basis GodotPhysXDirectBodyState3D::get_principal_inertia_axes() const {
+	return body->get_principal_inertia_axes();
+}
+
+Vector3 GodotPhysXDirectBodyState3D::get_inverse_inertia() const {
+	return body->get_inverse_inertia();
 }
 
 real_t GodotPhysXDirectBodyState3D::get_inverse_mass() const {
@@ -118,11 +135,18 @@ Vector3 GodotPhysXDirectBodyState3D::get_angular_velocity() const {
 }
 
 void GodotPhysXDirectBodyState3D::set_transform(const Transform3D &p_transform) {
-	body->set_state(PS3DE::BODY_STATE_TRANSFORM, p_transform);
+	body->set_state(PhysicsServer3D::BODY_STATE_TRANSFORM, p_transform);
 }
 
 Transform3D GodotPhysXDirectBodyState3D::get_transform() const {
 	return body->get_transform();
+}
+
+Vector3 GodotPhysXDirectBodyState3D::get_velocity_at_local_position(const Vector3 &p_position) const {
+	// p_position is an offset from the body origin in world axes
+	// (CharacterBody3D passes the floor contact point minus the platform's
+	// origin).
+	return body->get_velocity_at_position(body->get_transform().origin + p_position);
 }
 
 void GodotPhysXDirectBodyState3D::apply_central_impulse(const Vector3 &p_impulse) {
@@ -142,8 +166,55 @@ void GodotPhysXDirectBodyState3D::apply_central_force(const Vector3 &p_force) {
 }
 
 void GodotPhysXDirectBodyState3D::apply_force(const Vector3 &p_force, const Vector3 &p_position) {
-	// Approximated as a central force for now (ignores the torque arm).
-	body->apply_central_force(p_force);
+	body->apply_force(p_force, p_position);
+}
+
+void GodotPhysXDirectBodyState3D::apply_torque(const Vector3 &p_torque) {
+	body->apply_torque(p_torque);
+}
+
+void GodotPhysXDirectBodyState3D::add_constant_central_force(const Vector3 &p_force) {
+	body->add_constant_central_force(p_force);
+}
+
+void GodotPhysXDirectBodyState3D::add_constant_force(const Vector3 &p_force, const Vector3 &p_position) {
+	body->add_constant_force(p_force, p_position);
+}
+
+void GodotPhysXDirectBodyState3D::add_constant_torque(const Vector3 &p_torque) {
+	body->add_constant_torque(p_torque);
+}
+
+void GodotPhysXDirectBodyState3D::set_constant_force(const Vector3 &p_force) {
+	body->set_constant_force(p_force);
+}
+
+Vector3 GodotPhysXDirectBodyState3D::get_constant_force() const {
+	return body->get_constant_force();
+}
+
+void GodotPhysXDirectBodyState3D::set_constant_torque(const Vector3 &p_torque) {
+	body->set_constant_torque(p_torque);
+}
+
+Vector3 GodotPhysXDirectBodyState3D::get_constant_torque() const {
+	return body->get_constant_torque();
+}
+
+void GodotPhysXDirectBodyState3D::set_collision_layer(uint32_t p_layer) {
+	body->set_collision_layer(p_layer);
+}
+
+uint32_t GodotPhysXDirectBodyState3D::get_collision_layer() const {
+	return body->get_collision_layer();
+}
+
+void GodotPhysXDirectBodyState3D::set_collision_mask(uint32_t p_mask) {
+	body->set_collision_mask(p_mask);
+}
+
+uint32_t GodotPhysXDirectBodyState3D::get_collision_mask() const {
+	return body->get_collision_mask();
 }
 
 void GodotPhysXDirectBodyState3D::set_sleep_state(bool p_sleep) {
@@ -189,7 +260,7 @@ int GodotPhysXDirectBodyState3D::get_contact_local_shape(int p_contact_idx) cons
 
 Vector3 GodotPhysXDirectBodyState3D::get_contact_local_velocity_at_position(int p_contact_idx) const {
 	ERR_FAIL_INDEX_V(p_contact_idx, body->get_contact_count(), Vector3());
-	return body->get_linear_velocity();
+	return body->get_contact(p_contact_idx).local_velocity;
 }
 
 RID GodotPhysXDirectBodyState3D::get_contact_collider(int p_contact_idx) const {
@@ -231,26 +302,85 @@ _FORCE_INLINE_ int shape_index_of(const PxShape *p_shape) {
 	return p_shape ? (int)reinterpret_cast<uintptr_t>(p_shape->userData) : 0;
 }
 
-// Applies Godot's collision mask + RID exclude list. Bodies only for now
-// (areas are not simulated).
+// Area3D shapes are the only trigger shapes, and an area's actor carries the
+// GodotPhysXArea3D in userData (a body's carries the GodotPhysXBody3D).
+_FORCE_INLINE_ bool is_area_shape(const PxShape *p_shape) {
+	return p_shape && (p_shape->getFlags() & PxShapeFlag::eTRIGGER_SHAPE);
+}
+
+_FORCE_INLINE_ GodotPhysXArea3D *area_of(const PxActor *p_actor) {
+	return p_actor ? static_cast<GodotPhysXArea3D *>(p_actor->userData) : nullptr;
+}
+
+// What a query hit: a body or an area.
+struct QueryHitObject {
+	RID rid;
+	ObjectID instance_id;
+	GodotPhysXBody3D *body = nullptr;
+};
+
+QueryHitObject hit_object(const PxRigidActor *p_actor, const PxShape *p_shape) {
+	QueryHitObject o;
+	if (is_area_shape(p_shape)) {
+		if (GodotPhysXArea3D *area = area_of(p_actor)) {
+			o.rid = area->get_self();
+			o.instance_id = area->get_instance_id();
+		}
+	} else if (GodotPhysXBody3D *body = body_of(p_actor)) {
+		o.rid = body->get_self();
+		o.instance_id = body->get_instance_id();
+		o.body = body;
+	}
+	return o;
+}
+
+// Applies Godot's collision mask, RID exclude list, collide_with_bodies /
+// collide_with_areas, and -- for the viewport's picking ray -- the objects'
+// input_ray_pickable.
 class QueryFilter : public PxQueryFilterCallback {
 public:
 	const HashSet<RID> *exclude = nullptr;
 	uint32_t collision_mask = UINT32_MAX;
+	bool collide_with_bodies = true;
+	bool collide_with_areas = false;
+	bool picking = false;
+
+	template <typename T>
+	void set_from(const T &p_parameters) {
+		exclude = &p_parameters.exclude;
+		collision_mask = p_parameters.collision_mask;
+		collide_with_bodies = p_parameters.collide_with_bodies;
+		collide_with_areas = p_parameters.collide_with_areas;
+	}
 
 	virtual PxQueryHitType::Enum preFilter(const PxFilterData &, const PxShape *p_shape, const PxRigidActor *p_actor, PxHitFlags &) override {
-		// Skip area trigger shapes -- scene queries hit bodies only for now.
-		if (p_shape && (p_shape->getFlags() & PxShapeFlag::eTRIGGER_SHAPE)) {
+		RID self;
+		uint32_t layer = 0;
+		bool pickable = true;
+		if (is_area_shape(p_shape)) {
+			const GodotPhysXArea3D *a = collide_with_areas ? area_of(p_actor) : nullptr;
+			if (!a) {
+				return PxQueryHitType::eNONE;
+			}
+			self = a->get_self();
+			layer = a->get_collision_layer();
+			pickable = a->is_ray_pickable();
+		} else {
+			const GodotPhysXBody3D *b = collide_with_bodies ? body_of(p_actor) : nullptr;
+			if (!b) {
+				return PxQueryHitType::eNONE;
+			}
+			self = b->get_self();
+			layer = b->get_collision_layer();
+			pickable = b->is_ray_pickable();
+		}
+		if ((layer & collision_mask) == 0) {
 			return PxQueryHitType::eNONE;
 		}
-		GodotPhysXBody3D *b = body_of(p_actor);
-		if (!b) {
+		if (picking && !pickable) {
 			return PxQueryHitType::eNONE;
 		}
-		if ((b->get_collision_layer() & collision_mask) == 0) {
-			return PxQueryHitType::eNONE;
-		}
-		if (exclude && exclude->has(b->get_self())) {
+		if (exclude && exclude->has(self)) {
 			return PxQueryHitType::eNONE;
 		}
 		return PxQueryHitType::eBLOCK;
@@ -258,6 +388,64 @@ public:
 
 	virtual PxQueryHitType::Enum postFilter(const PxFilterData &, const PxQueryHit &, const PxShape *, const PxRigidActor *) override {
 		return PxQueryHitType::eBLOCK;
+	}
+};
+
+const GodotPhysXShape3D *godot_shape_of(const PxRigidActor *p_actor, const PxShape *p_shape) {
+	const GodotPhysXBody3D *body = is_area_shape(p_shape) ? nullptr : body_of(p_actor);
+	if (!body || !p_shape) {
+		return nullptr;
+	}
+	const GodotPhysXBody3D::ShapeRef *sr = body->get_shape_ref(shape_index_of(p_shape));
+	return sr ? sr->shape : nullptr;
+}
+
+// Ray queries: a trimesh back face only counts when the shape has
+// backface_collision on AND the query asks for back faces (Jolt's rule).
+// eMESH_BOTH_SIDES (needed for hit_back_faces on height fields) is cleared for
+// triangle meshes: PhysX hands a mesh's one closest hit to postFilter, so
+// letting it see back faces there would hide a front face behind them, and on a
+// back-face mesh it ties each triangle with its coplanar flipped copy (half the
+// normals then point away from the ray). One-sided, a ray meets the original
+// from the front and the flipped copy from behind -- always facing the ray.
+class RayQueryFilter : public QueryFilter {
+public:
+	bool hit_back_faces = true;
+	bool hit_from_inside = false;
+
+	virtual PxQueryHitType::Enum preFilter(const PxFilterData &p_data, const PxShape *p_shape, const PxRigidActor *p_actor, PxHitFlags &r_flags) override {
+		const PxQueryHitType::Enum type = QueryFilter::preFilter(p_data, p_shape, p_actor, r_flags);
+		if (type != PxQueryHitType::eNONE && p_shape->getGeometry().getType() == PxGeometryType::eTRIANGLEMESH) {
+			r_flags.clear(PxHitFlag::eMESH_BOTH_SIDES);
+		}
+		return type;
+	}
+
+	virtual PxQueryHitType::Enum postFilter(const PxFilterData &, const PxQueryHit &p_hit, const PxShape *p_shape, const PxRigidActor *p_actor) override {
+		// A ray that STARTS inside a solid shape: PhysX reports it at distance 0. Godot (and Jolt) skip that shape
+		// unless hit_from_inside is set -- character code casts from inside its own capsule (foot IK, ground and
+		// ledge probes) and must reach the ground below. Meshes and height fields have no inside: left as they are.
+		if (!hit_from_inside && p_shape && static_cast<const PxLocationHit &>(p_hit).distance <= 0.0f) {
+			const PxGeometryType::Enum gt = p_shape->getGeometry().getType();
+			if (gt == PxGeometryType::eSPHERE || gt == PxGeometryType::eCAPSULE || gt == PxGeometryType::eBOX ||
+					gt == PxGeometryType::eCONVEXMESH) {
+				return PxQueryHitType::eNONE;
+			}
+		}
+		if (!p_shape || !p_actor || p_hit.faceIndex == 0xFFFFFFFF || p_shape->getGeometry().getType() != PxGeometryType::eTRIANGLEMESH) {
+			return PxQueryHitType::eBLOCK;
+		}
+		const GodotPhysXShape3D *shape = godot_shape_of(p_actor, p_shape);
+		if (!shape) {
+			return PxQueryHitType::eBLOCK;
+		}
+		if (!shape->has_backface_collision() || hit_back_faces) {
+			return PxQueryHitType::eBLOCK; // one-sided (see preFilter): only faces toward the ray are hit
+		}
+		// A flipped copy is a back face of the source triangle.
+		bool back = false;
+		shape->source_face_index(p_hit.faceIndex, back);
+		return back ? PxQueryHitType::eNONE : PxQueryHitType::eBLOCK;
 	}
 };
 
@@ -275,7 +463,7 @@ GodotPhysXShape3D *query_shape(RID p_shape_rid) {
 
 } //namespace
 
-bool GodotPhysXDirectSpaceState3D::intersect_ray(const PS3DT::RayParameters &p_parameters, PS3DT::RayResult &r_result) {
+bool GodotPhysXDirectSpaceState3D::intersect_ray(const RayParameters &p_parameters, RayResult &r_result) {
 	PxScene *scene = space ? space->get_px_scene() : nullptr;
 	ERR_FAIL_NULL_V(scene, false);
 
@@ -285,11 +473,13 @@ bool GodotPhysXDirectSpaceState3D::intersect_ray(const PS3DT::RayParameters &p_p
 		return false;
 	}
 
-	QueryFilter filter;
-	filter.exclude = &p_parameters.exclude;
-	filter.collision_mask = p_parameters.collision_mask;
+	RayQueryFilter filter;
+	filter.set_from(p_parameters);
+	filter.picking = p_parameters.pick_ray;
+	filter.hit_back_faces = p_parameters.hit_back_faces;
+	filter.hit_from_inside = p_parameters.hit_from_inside;
 
-	PxQueryFilterData fd(PxQueryFlag::eSTATIC | PxQueryFlag::eDYNAMIC | PxQueryFlag::ePREFILTER);
+	PxQueryFilterData fd(PxQueryFlag::eSTATIC | PxQueryFlag::eDYNAMIC | PxQueryFlag::ePREFILTER | PxQueryFlag::ePOSTFILTER);
 	PxHitFlags hit_flags = PxHitFlag::ePOSITION | PxHitFlag::eNORMAL | PxHitFlag::eFACE_INDEX;
 	if (p_parameters.hit_back_faces) {
 		hit_flags |= PxHitFlag::eMESH_BOTH_SIDES;
@@ -302,18 +492,26 @@ bool GodotPhysXDirectSpaceState3D::intersect_ray(const PS3DT::RayParameters &p_p
 	}
 
 	const PxRaycastHit &b = hit.block;
-	GodotPhysXBody3D *body = body_of(b.actor);
+	const QueryHitObject o = hit_object(b.actor, b.shape);
 	r_result.position = to_godot(b.position);
-	r_result.normal = to_godot(b.normal);
-	r_result.rid = body ? body->get_self() : RID();
-	r_result.collider_id = body ? body->get_instance_id() : ObjectID();
+	// Started inside (hit_from_inside): Godot reports a zero normal there.
+	r_result.normal = b.distance <= 0.0f ? Vector3() : to_godot(b.normal);
+	r_result.rid = o.rid;
+	r_result.collider_id = o.instance_id;
 	r_result.collider = r_result.collider_id.is_valid() ? ObjectDB::get_instance(r_result.collider_id) : nullptr;
 	r_result.shape = shape_index_of(b.shape);
 	r_result.face_index = (b.faceIndex == 0xFFFFFFFF) ? -1 : (int)b.faceIndex;
+	if (r_result.face_index >= 0 && b.shape && b.shape->getGeometry().getType() == PxGeometryType::eTRIANGLEMESH) {
+		// Godot's face order, not the cooked one.
+		if (const GodotPhysXShape3D *shape = godot_shape_of(b.actor, b.shape)) {
+			bool back = false;
+			r_result.face_index = shape->source_face_index(b.faceIndex, back);
+		}
+	}
 	return true;
 }
 
-int GodotPhysXDirectSpaceState3D::intersect_point(const PS3DT::PointParameters &p_parameters, PS3DT::ShapeResult *r_results, int p_result_max) {
+int GodotPhysXDirectSpaceState3D::intersect_point(const PointParameters &p_parameters, ShapeResult *r_results, int p_result_max) {
 	PxScene *scene = space ? space->get_px_scene() : nullptr;
 	ERR_FAIL_NULL_V(scene, 0);
 	if (p_result_max <= 0) {
@@ -321,8 +519,7 @@ int GodotPhysXDirectSpaceState3D::intersect_point(const PS3DT::PointParameters &
 	}
 
 	QueryFilter filter;
-	filter.exclude = &p_parameters.exclude;
-	filter.collision_mask = p_parameters.collision_mask;
+	filter.set_from(p_parameters);
 	PxQueryFilterData fd(PxQueryFlag::eSTATIC | PxQueryFlag::eDYNAMIC | PxQueryFlag::ePREFILTER | PxQueryFlag::eNO_BLOCK);
 
 	LocalVector<PxOverlapHit> touches;
@@ -335,12 +532,12 @@ int GodotPhysXDirectSpaceState3D::intersect_point(const PS3DT::PointParameters &
 
 	int count = 0;
 	for (PxU32 i = 0; i < buf.getNbTouches() && count < p_result_max; i++) {
-		GodotPhysXBody3D *body = body_of(buf.getTouch(i).actor);
-		if (!body) {
+		const QueryHitObject o = hit_object(buf.getTouch(i).actor, buf.getTouch(i).shape);
+		if (!o.rid.is_valid()) {
 			continue;
 		}
-		r_results[count].rid = body->get_self();
-		r_results[count].collider_id = body->get_instance_id();
+		r_results[count].rid = o.rid;
+		r_results[count].collider_id = o.instance_id;
 		r_results[count].collider = r_results[count].collider_id.is_valid() ? ObjectDB::get_instance(r_results[count].collider_id) : nullptr;
 		r_results[count].shape = shape_index_of(buf.getTouch(i).shape);
 		count++;
@@ -348,7 +545,7 @@ int GodotPhysXDirectSpaceState3D::intersect_point(const PS3DT::PointParameters &
 	return count;
 }
 
-int GodotPhysXDirectSpaceState3D::intersect_shape(const PS3DT::ShapeParameters &p_parameters, PS3DT::ShapeResult *r_results, int p_result_max) {
+int GodotPhysXDirectSpaceState3D::intersect_shape(const ShapeParameters &p_parameters, ShapeResult *r_results, int p_result_max) {
 	PxScene *scene = space ? space->get_px_scene() : nullptr;
 	ERR_FAIL_NULL_V(scene, 0);
 	GodotPhysXShape3D *shape = query_shape(p_parameters.shape_rid);
@@ -359,8 +556,7 @@ int GodotPhysXDirectSpaceState3D::intersect_shape(const PS3DT::ShapeParameters &
 	}
 
 	QueryFilter filter;
-	filter.exclude = &p_parameters.exclude;
-	filter.collision_mask = p_parameters.collision_mask;
+	filter.set_from(p_parameters);
 	PxQueryFilterData fd(PxQueryFlag::eSTATIC | PxQueryFlag::eDYNAMIC | PxQueryFlag::ePREFILTER | PxQueryFlag::eNO_BLOCK);
 
 	LocalVector<PxOverlapHit> touches;
@@ -372,12 +568,12 @@ int GodotPhysXDirectSpaceState3D::intersect_shape(const PS3DT::ShapeParameters &
 
 	int count = 0;
 	for (PxU32 i = 0; i < buf.getNbTouches() && count < p_result_max; i++) {
-		GodotPhysXBody3D *body = body_of(buf.getTouch(i).actor);
-		if (!body) {
+		const QueryHitObject o = hit_object(buf.getTouch(i).actor, buf.getTouch(i).shape);
+		if (!o.rid.is_valid()) {
 			continue;
 		}
-		r_results[count].rid = body->get_self();
-		r_results[count].collider_id = body->get_instance_id();
+		r_results[count].rid = o.rid;
+		r_results[count].collider_id = o.instance_id;
 		r_results[count].collider = r_results[count].collider_id.is_valid() ? ObjectDB::get_instance(r_results[count].collider_id) : nullptr;
 		r_results[count].shape = shape_index_of(buf.getTouch(i).shape);
 		count++;
@@ -385,7 +581,7 @@ int GodotPhysXDirectSpaceState3D::intersect_shape(const PS3DT::ShapeParameters &
 	return count;
 }
 
-bool GodotPhysXDirectSpaceState3D::cast_motion(const PS3DT::ShapeParameters &p_parameters, real_t &p_closest_safe, real_t &p_closest_unsafe, PS3DT::ShapeRestInfo *r_info) {
+bool GodotPhysXDirectSpaceState3D::cast_motion(const ShapeParameters &p_parameters, real_t &p_closest_safe, real_t &p_closest_unsafe, ShapeRestInfo *r_info) {
 	p_closest_safe = 1.0;
 	p_closest_unsafe = 1.0;
 
@@ -401,8 +597,7 @@ bool GodotPhysXDirectSpaceState3D::cast_motion(const PS3DT::ShapeParameters &p_p
 	}
 
 	QueryFilter filter;
-	filter.exclude = &p_parameters.exclude;
-	filter.collision_mask = p_parameters.collision_mask;
+	filter.set_from(p_parameters);
 	PxQueryFilterData fd(PxQueryFlag::eSTATIC | PxQueryFlag::eDYNAMIC | PxQueryFlag::ePREFILTER);
 
 	const PxTransform pose = to_px(p_parameters.transform) * g.local_pose;
@@ -418,18 +613,18 @@ bool GodotPhysXDirectSpaceState3D::cast_motion(const PS3DT::ShapeParameters &p_p
 	p_closest_safe = frac;
 	p_closest_unsafe = frac;
 	if (r_info) {
-		GodotPhysXBody3D *body = body_of(hit.block.actor);
+		const QueryHitObject o = hit_object(hit.block.actor, hit.block.shape);
 		r_info->point = to_godot(hit.block.position);
 		r_info->normal = to_godot(hit.block.normal);
-		r_info->rid = body ? body->get_self() : RID();
-		r_info->collider_id = body ? body->get_instance_id() : ObjectID();
+		r_info->rid = o.rid;
+		r_info->collider_id = o.instance_id;
 		r_info->shape = shape_index_of(hit.block.shape);
-		r_info->linear_velocity = body ? body->get_linear_velocity() : Vector3();
+		r_info->linear_velocity = o.body ? o.body->get_velocity_at_position(r_info->point) : Vector3();
 	}
 	return true;
 }
 
-bool GodotPhysXDirectSpaceState3D::collide_shape(const PS3DT::ShapeParameters &p_parameters, Vector3 *r_results, int p_result_max, int &r_result_count) {
+bool GodotPhysXDirectSpaceState3D::collide_shape(const ShapeParameters &p_parameters, Vector3 *r_results, int p_result_max, int &r_result_count) {
 	r_result_count = 0;
 	PxScene *scene = space ? space->get_px_scene() : nullptr;
 	ERR_FAIL_NULL_V(scene, false);
@@ -441,8 +636,7 @@ bool GodotPhysXDirectSpaceState3D::collide_shape(const PS3DT::ShapeParameters &p
 	}
 
 	QueryFilter filter;
-	filter.exclude = &p_parameters.exclude;
-	filter.collision_mask = p_parameters.collision_mask;
+	filter.set_from(p_parameters);
 	PxQueryFilterData fd(PxQueryFlag::eSTATIC | PxQueryFlag::eDYNAMIC | PxQueryFlag::ePREFILTER | PxQueryFlag::eNO_BLOCK);
 
 	const int max_hits = p_result_max / 2;
@@ -467,7 +661,7 @@ bool GodotPhysXDirectSpaceState3D::collide_shape(const PS3DT::ShapeParameters &p
 	return r_result_count > 0;
 }
 
-bool GodotPhysXDirectSpaceState3D::rest_info(const PS3DT::ShapeParameters &p_parameters, PS3DT::ShapeRestInfo *r_info) {
+bool GodotPhysXDirectSpaceState3D::rest_info(const ShapeParameters &p_parameters, ShapeRestInfo *r_info) {
 	PxScene *scene = space ? space->get_px_scene() : nullptr;
 	ERR_FAIL_NULL_V(scene, false);
 	GodotPhysXShape3D *shape = query_shape(p_parameters.shape_rid);
@@ -475,8 +669,7 @@ bool GodotPhysXDirectSpaceState3D::rest_info(const PS3DT::ShapeParameters &p_par
 	const GodotPhysXShape3D::ScaledGeometry g = shape->scaled_geometry(p_parameters.transform.basis.get_scale());
 
 	QueryFilter filter;
-	filter.exclude = &p_parameters.exclude;
-	filter.collision_mask = p_parameters.collision_mask;
+	filter.set_from(p_parameters);
 	PxQueryFilterData fd(PxQueryFlag::eSTATIC | PxQueryFlag::eDYNAMIC | PxQueryFlag::ePREFILTER | PxQueryFlag::eNO_BLOCK);
 
 	PxOverlapHit touch;
@@ -495,13 +688,13 @@ bool GodotPhysXDirectSpaceState3D::rest_info(const PS3DT::ShapeParameters &p_par
 		return false;
 	}
 
-	GodotPhysXBody3D *body = body_of(h.actor);
+	const QueryHitObject o = hit_object(h.actor, h.shape);
 	r_info->point = to_godot(pose.p) - to_godot(dir) * depth;
 	r_info->normal = to_godot(dir);
-	r_info->rid = body ? body->get_self() : RID();
-	r_info->collider_id = body ? body->get_instance_id() : ObjectID();
+	r_info->rid = o.rid;
+	r_info->collider_id = o.instance_id;
 	r_info->shape = shape_index_of(h.shape);
-	r_info->linear_velocity = body ? body->get_linear_velocity() : Vector3();
+	r_info->linear_velocity = o.body ? o.body->get_velocity_at_position(r_info->point) : Vector3();
 	return true;
 }
 

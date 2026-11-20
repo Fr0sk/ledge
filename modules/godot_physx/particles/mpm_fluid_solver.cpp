@@ -30,18 +30,8 @@
 
 #include "mpm_fluid_solver.h"
 
-#include "mpm_clear.glsl.gen.h"
-#include "mpm_couple.glsl.gen.h"
-#include "mpm_g2p.glsl.gen.h"
-#include "mpm_grid.glsl.gen.h"
-#include "mpm_march.glsl.gen.h"
-#include "mpm_p2g_mass.glsl.gen.h"
-#include "mpm_p2g_mom.glsl.gen.h"
-#include "mpm_render.glsl.gen.h"
-#include "mpm_surface.glsl.gen.h"
-
-#include "mpm_bs_binsert.glsl.gen.h"
 #include "mpm_bs_bdispatch.glsl.gen.h"
+#include "mpm_bs_binsert.glsl.gen.h"
 #include "mpm_bs_clear.glsl.gen.h"
 #include "mpm_bs_clearnodes.glsl.gen.h"
 #include "mpm_bs_couple.glsl.gen.h"
@@ -52,11 +42,21 @@
 #include "mpm_bs_p2g_mom.glsl.gen.h"
 #include "mpm_bs_render.glsl.gen.h"
 #include "mpm_bs_surface.glsl.gen.h"
+#include "mpm_clear.glsl.gen.h"
+#include "mpm_couple.glsl.gen.h"
+#include "mpm_g2p.glsl.gen.h"
+#include "mpm_grid.glsl.gen.h"
+#include "mpm_march.glsl.gen.h"
+#include "mpm_p2g_mass.glsl.gen.h"
+#include "mpm_p2g_mom.glsl.gen.h"
+#include "mpm_render.glsl.gen.h"
+#include "mpm_surface.glsl.gen.h"
 
 #include "core/io/marshalls.h"
 #include "core/math/math_funcs.h"
 #include "core/object/callable_mp.h"
 #include "core/os/os.h"
+#include "scene/resources/texture.h"
 #include "servers/display/display_server.h"
 #include "servers/rendering/rendering_device.h"
 #include "servers/rendering/rendering_device_binds.h"
@@ -98,6 +98,145 @@ uint32_t next_pow2(uint32_t v) {
 	v |= v >> 16;
 	return v + 1;
 }
+
+// A bake is only negative in a thin skin behind each surface, and positive again past it: fluid that
+// got through a closed mesh's skin would be free inside it, and a skin thinner than a grid cell is easy
+// to get through. So what can't be reached from the box's edges without crossing a skin is solid: its
+// voxels become negative, further from the outside the deeper in. An open mesh is reached from outside
+// through its opening, and keeps its hollow. Returns whether anything was enclosed.
+//
+// The skin has gaps: behind a concave edge, what's behind each triangle spreads apart, and a voxel there
+// reads as just outside the nearest triangle. So the search from outside stops a voxel short of any
+// surface, which no such gap gets through (an opening under two voxels wide closes too).
+bool _fill_enclosed_voxels(float *r_voxels, const Vector3i &p_size, float p_voxel) {
+	const int64_t count = (int64_t)p_size.x * p_size.y * p_size.z;
+	const int64_t steps[3] = { 1, p_size.x, (int64_t)p_size.x * p_size.y };
+	const int axis_size[3] = { p_size.x, p_size.y, p_size.z };
+
+	LocalVector<uint32_t> depth; // 0: reached from outside (or not yet looked at)
+	depth.resize(count);
+	LocalVector<uint8_t> outside;
+	outside.resize(count);
+	memset(outside.ptr(), 0, count);
+
+	LocalVector<uint32_t> front;
+	for (int z = 0; z < p_size.z; z++) {
+		for (int y = 0; y < p_size.y; y++) {
+			for (int x = 0; x < p_size.x; x++) {
+				const bool edge = x == 0 || y == 0 || z == 0 || x == p_size.x - 1 || y == p_size.y - 1 || z == p_size.z - 1;
+				const int64_t at = x + y * steps[1] + z * steps[2];
+				if (edge && r_voxels[at] >= p_voxel) {
+					outside[at] = 1;
+					front.push_back((uint32_t)at);
+				}
+			}
+		}
+	}
+
+	const auto neighbors = [&](int64_t p_at, auto &&p_visit) {
+		const int coord[3] = { (int)(p_at % p_size.x), (int)((p_at / p_size.x) % p_size.y), (int)(p_at / steps[2]) };
+		for (int axis = 0; axis < 3; axis++) {
+			if (coord[axis] > 0) {
+				p_visit(p_at - steps[axis]);
+			}
+			if (coord[axis] < axis_size[axis] - 1) {
+				p_visit(p_at + steps[axis]);
+			}
+		}
+	};
+
+	// What can be reached from outside.
+	while (!front.is_empty()) {
+		const uint32_t at = front[front.size() - 1];
+		front.resize(front.size() - 1);
+		neighbors(at, [&](int64_t p_next) {
+			if (!outside[p_next] && r_voxels[p_next] >= p_voxel) {
+				outside[p_next] = 1;
+				front.push_back((uint32_t)p_next);
+			}
+		});
+	}
+
+	bool enclosed = false;
+	for (int64_t at = 0; at < count && !enclosed; at++) {
+		enclosed = !outside[at] && r_voxels[at] >= p_voxel;
+	}
+
+	// That stopped short of the surface. With nothing enclosed, all that's left outside is what's positive.
+	// Otherwise the voxels it left on the outside of the skin are within two steps.
+	if (!enclosed) {
+		for (int64_t at = 0; at < count; at++) {
+			outside[at] = r_voxels[at] >= 0.0f;
+		}
+	}
+	LocalVector<uint32_t> skin;
+	for (int pass = 0; enclosed && pass < 2; pass++) {
+		skin.clear();
+		for (int64_t at = 0; at < count; at++) {
+			if (!outside[at]) {
+				continue;
+			}
+			neighbors(at, [&](int64_t p_next) {
+				if (!outside[p_next] && r_voxels[p_next] >= 0.0f && r_voxels[p_next] < p_voxel) {
+					skin.push_back((uint32_t)p_next);
+				}
+			});
+		}
+		for (uint32_t i = 0; i < skin.size(); i++) {
+			outside[skin[i]] = 1;
+		}
+	}
+
+	// How far in the rest is. The first layer keeps its baked distance: that's where the surface is. This
+	// is for a wall's insides too: baked, they rise to zero again at its far side, which would push fluid
+	// that got that far through the wall.
+	memset(depth.ptr(), 0, count * sizeof(uint32_t));
+	LocalVector<uint32_t> layer;
+	for (int64_t at = 0; at < count; at++) {
+		if (outside[at]) {
+			continue;
+		}
+		bool touches = false;
+		neighbors(at, [&](int64_t p_next) { touches = touches || outside[p_next]; });
+		if (touches) {
+			depth[at] = 1;
+			r_voxels[at] = -Math::abs(r_voxels[at]);
+			layer.push_back((uint32_t)at);
+		}
+	}
+	uint32_t reached = 1;
+	while (!layer.is_empty()) {
+		reached++;
+		front.clear();
+		for (uint32_t i = 0; i < layer.size(); i++) {
+			neighbors(layer[i], [&](int64_t p_next) {
+				if (!outside[p_next] && depth[p_next] == 0) {
+					depth[p_next] = reached;
+					r_voxels[p_next] = -(float)(reached - 1) * p_voxel;
+					front.push_back((uint32_t)p_next);
+				}
+			});
+		}
+		SWAP(layer, front);
+	}
+	// Enclosed without a skin next to the outside (a mesh filling the box's edges).
+	for (int64_t at = 0; at < count; at++) {
+		if (!outside[at] && depth[at] == 0) {
+			r_voxels[at] = -p_voxel;
+		}
+	}
+	return enclosed;
+}
+
+RID _rt_create_sdf_buffer(RenderingDevice *p_rd, const PackedByteArray &p_voxels) {
+	if (p_voxels.is_empty()) {
+		PackedByteArray none; // a shader's binding always needs a buffer
+		none.resize(16);
+		memset(none.ptrw(), 0, none.size());
+		return p_rd->storage_buffer_create(none.size(), none);
+	}
+	return p_rd->storage_buffer_create(p_voxels.size(), p_voxels);
+}
 } // namespace
 
 /* ===================================================================== */
@@ -135,6 +274,17 @@ void MPMFluidSolverGPU::rt_compile(Ref<MPMFluidSolverGPU> p_self) {
 		mpm_bs_render_shader_glsl,
 	};
 	for (int i = 0; i < PASS_MAX; i++) {
+		// PASS_BS_MARCH is compiled lazily (see _ensure_bs_march_pipeline()), not
+		// here -- a defense-in-depth precaution left in place after root-causing
+		// and fixing a real hang in this shader's own source (see the big comment
+		// at the top of mpm_bs_march.glsl for the full story: on a confirmed RTX
+		// 5070/Blackwell + driver combination, compute_pipeline_create() hung
+		// outright compiling the shader's old normal-computation approach). Even
+		// with that fixed, there's no reason to pay this pipeline's compile cost
+		// for every granular/non-surface MPM instance, which never dispatch it.
+		if (i == PASS_BS_MARCH) {
+			continue;
+		}
 		Ref<RDShaderFile> sf;
 		sf.instantiate();
 		if (sf->parse_versions_from_text(src[i]) != OK) {
@@ -147,6 +297,24 @@ void MPMFluidSolverGPU::rt_compile(Ref<MPMFluidSolverGPU> p_self) {
 		ERR_FAIL_COND(pipeline[i].is_null());
 	}
 	_shaders_ok = true;
+}
+
+bool MPMFluidSolverGPU::_ensure_bs_march_pipeline() {
+	if (pipeline[PASS_BS_MARCH].is_valid()) {
+		return true;
+	}
+	Ref<RDShaderFile> sf;
+	sf.instantiate();
+	if (sf->parse_versions_from_text(mpm_bs_march_shader_glsl) != OK) {
+		ERR_PRINT("MPMFluidSolver: block-sparse march (isosurface) shader failed to compile.");
+		return false;
+	}
+	shader[PASS_BS_MARCH] = rd->shader_create_from_spirv(sf->get_spirv_stages());
+	if (shader[PASS_BS_MARCH].is_null()) {
+		return false;
+	}
+	pipeline[PASS_BS_MARCH] = rd->compute_pipeline_create(shader[PASS_BS_MARCH]);
+	return pipeline[PASS_BS_MARCH].is_valid();
 }
 
 void MPMFluidSolverGPU::_rt_free_buffers() {
@@ -162,7 +330,7 @@ void MPMFluidSolverGPU::_rt_free_buffers() {
 			uset[i] = RID();
 		}
 	}
-	RID *bufs[] = { &buf_params, &buf_particles, &buf_grid_i, &buf_grid_v, &buf_colliders, &buf_cimp, &buf_mm, &buf_surf, &buf_mverts, &buf_mnorms, &buf_mcount, &buf_bhash, &buf_bhash_val, &buf_bkey, &buf_bcounts };
+	RID *bufs[] = { &buf_params, &buf_particles, &buf_grid_i, &buf_grid_v, &buf_colliders, &buf_cimp, &buf_mm, &buf_surf, &buf_mverts, &buf_mnorms, &buf_mcount, &buf_bhash, &buf_bhash_val, &buf_bkey, &buf_bcounts, &buf_bargs, &buf_sdf };
 	for (RID *b : bufs) {
 		if (b->is_valid()) {
 			rd->free_rid(*b);
@@ -172,6 +340,10 @@ void MPMFluidSolverGPU::_rt_free_buffers() {
 }
 
 void MPMFluidSolverGPU::_rt_rebuild_uniform_sets() {
+	if (uset_mesh.is_valid()) {
+		rd->free_rid(uset_mesh);
+		uset_mesh = RID();
+	}
 	for (int p = 0; p < PASS_MAX; p++) {
 		if (uset[p].is_valid()) {
 			rd->free_rid(uset[p]);
@@ -180,12 +352,16 @@ void MPMFluidSolverGPU::_rt_rebuild_uniform_sets() {
 	}
 
 	// Only the passes for this build's path get a uniform set. Dense passes bind
-	// mpm_fluid_inc.glsl's 8 bindings; block-sparse passes bind mpm_block_inc's 12.
-	const RID by_binding[12] = { buf_params, buf_particles, buf_grid_i, buf_grid_v, buf_colliders, buf_cimp, buf_mm, buf_surf, buf_bhash, buf_bhash_val, buf_bkey, buf_bcounts };
+	// mpm_fluid_inc.glsl's 8 bindings; block-sparse passes bind mpm_block_inc's 12,
+	// and PASS_BS_BDISPATCH also the indirect args (see buf_bargs).
+	const RID by_binding[13] = { buf_params, buf_particles, buf_grid_i, buf_grid_v, buf_colliders, buf_cimp, buf_mm, buf_surf, buf_bhash, buf_bhash_val, buf_bkey, buf_bcounts, buf_bargs };
 	const int lo = block_sparse ? (int)PASS_BS_CLEAR : (int)PASS_CLEAR;
 	const int hi = block_sparse ? (int)PASS_MAX : (int)PASS_BS_CLEAR;
-	const int nbind = block_sparse ? 12 : 8;
 	for (int p = lo; p < hi; p++) {
+		if (p == PASS_BS_MARCH && !shader[p].is_valid()) {
+			continue; // lazily compiled on first surface_mesh request; see _ensure_bs_march_pipeline()
+		}
+		const int nbind = !block_sparse ? 8 : (p == PASS_BS_BDISPATCH ? 13 : 12);
 		Vector<RD::Uniform> uniforms;
 		for (int bnd = 0; bnd < nbind; bnd++) {
 			RD::Uniform u;
@@ -194,11 +370,18 @@ void MPMFluidSolverGPU::_rt_rebuild_uniform_sets() {
 			u.append_id(by_binding[bnd]);
 			uniforms.push_back(u);
 		}
+		{
+			RD::Uniform u;
+			u.uniform_type = RD::UNIFORM_TYPE_STORAGE_BUFFER;
+			u.binding = block_sparse ? 13 : 8; // after each path's own (see the includes)
+			u.append_id(buf_sdf);
+			uniforms.push_back(u);
+		}
 		uset[p] = rd->uniform_set_create(uniforms, shader[p], 0);
 		ERR_FAIL_COND(uset[p].is_null());
 	}
 
-	if (buf_mverts.is_valid()) {
+	if (buf_mverts.is_valid() && shader[block_sparse ? PASS_BS_MARCH : PASS_MARCH].is_valid()) {
 		Vector<RD::Uniform> m;
 		const RID mesh_bufs[3] = { buf_mverts, buf_mnorms, buf_mcount };
 		for (int b = 0; b < 3; b++) {
@@ -213,7 +396,7 @@ void MPMFluidSolverGPU::_rt_rebuild_uniform_sets() {
 	}
 }
 
-void MPMFluidSolverGPU::rt_build(Ref<MPMFluidSolverGPU> p_self, PackedByteArray p_params, PackedByteArray p_particles, int p_capacity, int p_node_count, int p_tri_budget, bool p_block_sparse, int p_max_blocks, int p_hash_slots) {
+void MPMFluidSolverGPU::rt_build(Ref<MPMFluidSolverGPU> p_self, PackedByteArray p_params, PackedByteArray p_particles, int p_capacity, int p_node_count, int p_tri_budget, bool p_block_sparse, int p_max_blocks, int p_hash_slots, PackedByteArray p_sdf) {
 	if (rd == nullptr || !_shaders_ok) {
 		return;
 	}
@@ -248,6 +431,7 @@ void MPMFluidSolverGPU::rt_build(Ref<MPMFluidSolverGPU> p_self, PackedByteArray 
 	memset(czero.ptrw(), 0, czero.size());
 	buf_colliders = rd->storage_buffer_create(czero.size(), czero);
 	buf_cimp = rd->storage_buffer_create(MAX_COLLIDERS * 4 * sizeof(int32_t));
+	buf_sdf = _rt_create_sdf_buffer(rd, p_sdf);
 
 	{
 		PackedByteArray mm_zero;
@@ -265,7 +449,8 @@ void MPMFluidSolverGPU::rt_build(Ref<MPMFluidSolverGPU> p_self, PackedByteArray 
 		buf_bhash = rd->storage_buffer_create(hash_slots * sizeof(uint32_t));
 		buf_bhash_val = rd->storage_buffer_create(hash_slots * sizeof(uint32_t));
 		buf_bkey = rd->storage_buffer_create(max_blocks * sizeof(uint32_t));
-		buf_bcounts = rd->storage_buffer_create(8 * sizeof(uint32_t), Span<uint8_t>(), RD::STORAGE_BUFFER_USAGE_DISPATCH_INDIRECT);
+		buf_bcounts = rd->storage_buffer_create(4 * sizeof(uint32_t));
+		buf_bargs = rd->storage_buffer_create(4 * sizeof(uint32_t), Span<uint8_t>(), RD::STORAGE_BUFFER_USAGE_DISPATCH_INDIRECT);
 		buf_mverts = rd->storage_buffer_create(tri_budget * 3 * 4 * sizeof(float));
 		buf_mnorms = rd->storage_buffer_create(tri_budget * 3 * 4 * sizeof(float));
 		PackedByteArray mc;
@@ -286,8 +471,41 @@ void MPMFluidSolverGPU::rt_build(Ref<MPMFluidSolverGPU> p_self, PackedByteArray 
 		buf_mcount = rd->storage_buffer_create(mc.size(), mc);
 	}
 
+	const uint32_t nodes = block_sparse ? (uint32_t)(max_blocks * BCELLS) : (uint32_t)node_count;
+	// A buffer created without data holds whatever its memory held before (a
+	// freed scene's meshes, say); start the ones the passes accumulate into at
+	// zero.
+	rd->buffer_clear(buf_cimp, 0, MAX_COLLIDERS * 4 * sizeof(int32_t));
+	rd->buffer_clear(buf_grid_i, 0, nodes * 4 * sizeof(int32_t));
+	rd->buffer_clear(buf_grid_v, 0, nodes * 4 * sizeof(float));
+	rd->buffer_clear(buf_surf, 0, nodes * sizeof(int32_t));
+	if (block_sparse) {
+		rd->buffer_clear(buf_bcounts, 0, 4 * sizeof(uint32_t));
+		rd->buffer_clear(buf_bargs, 0, 4 * sizeof(uint32_t));
+	}
+
 	_rt_rebuild_uniform_sets();
 	built.set_to(true);
+}
+
+void MPMFluidSolverGPU::rt_set_sdf(Ref<MPMFluidSolverGPU> p_self, PackedByteArray p_sdf) {
+	if (rd == nullptr || !built.is_set()) {
+		return;
+	}
+	if (local && _submitted) {
+		rd->sync(); // don't free a buffer with GPU work still in flight
+		_submitted = false;
+	}
+	// The uniform sets first: see _rt_free_buffers.
+	for (int p = 0; p < PASS_MAX; p++) {
+		if (uset[p].is_valid()) {
+			rd->free_rid(uset[p]);
+			uset[p] = RID();
+		}
+	}
+	rd->free_rid(buf_sdf);
+	buf_sdf = _rt_create_sdf_buffer(rd, p_sdf);
+	_rt_rebuild_uniform_sets();
 }
 
 void MPMFluidSolverGPU::rt_step(Ref<MPMFluidSolverGPU> p_self, PackedByteArray p_params, PackedByteArray p_colliders, int p_ncol, int p_pcount, int p_node_count, Vector3i p_grid_dims, int p_substeps, bool p_want_surface, bool p_bench) {
@@ -328,6 +546,16 @@ void MPMFluidSolverGPU::rt_step(Ref<MPMFluidSolverGPU> p_self, PackedByteArray p
 	const uint32_t pg = groups_for(p_pcount);
 	const int cells = (p_grid_dims.x - 1) * (p_grid_dims.y - 1) * (p_grid_dims.z - 1);
 
+	// Compile the block-sparse march pipeline on first actual use, not up front --
+	// see the note in rt_compile(). Must happen before compute_list_begin(): once
+	// recorded, an open compute list can't have its uniform sets freed/rebuilt
+	// safely without touching binds already recorded in it.
+	if (block_sparse && p_want_surface && !pipeline[PASS_BS_MARCH].is_valid()) {
+		if (_ensure_bs_march_pipeline()) {
+			_rt_rebuild_uniform_sets();
+		}
+	}
+
 	if (p_bench) {
 		rd->capture_timestamp("mpm_a");
 	}
@@ -345,7 +573,7 @@ void MPMFluidSolverGPU::rt_step(Ref<MPMFluidSolverGPU> p_self, PackedByteArray p
 		auto pass_indirect = [&](Pass pp) {
 			rd->compute_list_bind_compute_pipeline(cl, pipeline[pp]);
 			rd->compute_list_bind_uniform_set(cl, uset[pp], 0);
-			rd->compute_list_dispatch_indirect(cl, buf_bcounts, 4); // bcounts[1..3]
+			rd->compute_list_dispatch_indirect(cl, buf_bargs, 0);
 			rd->compute_list_add_barrier(cl);
 		};
 		for (int s = 0; s < p_substeps; s++) {
@@ -361,12 +589,12 @@ void MPMFluidSolverGPU::rt_step(Ref<MPMFluidSolverGPU> p_self, PackedByteArray p
 			}
 			pass(PASS_BS_G2P, pg);
 		}
-		if (p_want_surface) {
+		if (p_want_surface && pipeline[PASS_BS_MARCH].is_valid()) {
 			pass(PASS_BS_SURFACE, pg);
 			rd->compute_list_bind_compute_pipeline(cl, pipeline[PASS_BS_MARCH]);
 			rd->compute_list_bind_uniform_set(cl, uset[PASS_BS_MARCH], 0);
 			rd->compute_list_bind_uniform_set(cl, uset_mesh, 1);
-			rd->compute_list_dispatch_indirect(cl, buf_bcounts, 4); // one wg / active block
+			rd->compute_list_dispatch_indirect(cl, buf_bargs, 0); // one wg / active block
 			rd->compute_list_add_barrier(cl);
 		}
 		rd->compute_list_bind_compute_pipeline(cl, pipeline[PASS_BS_RENDER]);
@@ -921,11 +1149,11 @@ void MPMFluidSolver::_pack_colliders(const LocalVector<SphereCollider> &p_collid
 		encode_float(ext.x, o + 16);
 		encode_float(ext.y, o + 20);
 		encode_float(ext.z, o + 24);
-		encode_float(0.0f, o + 28);
+		encode_float(c.shape == COLLIDER_BAKED ? c.baked_scale : 0.0f, o + 28);
 		encode_float(c.velocity.x, o + 32);
 		encode_float(c.velocity.y, o + 36);
 		encode_float(c.velocity.z, o + 40);
-		encode_float(0.0f, o + 44);
+		encode_float(c.shape == COLLIDER_BAKED ? (float)c.baked_offset : 0.0f, o + 44);
 		const Quaternion q = c.rotation.normalized();
 		encode_float(q.x, o + 48);
 		encode_float(q.y, o + 52);
@@ -982,7 +1210,7 @@ void MPMFluidSolver::configure(const Settings &p_settings, const Transform3D &p_
 
 	gpu->built.set_to(false);
 	const bool bs = !settings.granular;
-	_dispatch(callable_mp(gpu.ptr(), &MPMFluidSolverGPU::rt_build).bind(gpu, params, job_particles, capacity, node_count, (int)TRI_BUDGET, bs, max_blocks, hash_slots));
+	_dispatch(callable_mp(gpu.ptr(), &MPMFluidSolverGPU::rt_build).bind(gpu, params, job_particles, capacity, node_count, (int)TRI_BUDGET, bs, max_blocks, hash_slots, baked_voxels));
 }
 
 void MPMFluidSolver::emit(const LocalVector<EmittedParticle> &p_new) {
@@ -1016,6 +1244,65 @@ void MPMFluidSolver::emit(const LocalVector<EmittedParticle> &p_new) {
 
 	write_head = (write_head + n) % capacity;
 	pcount = MIN(pcount + n, capacity);
+}
+
+int MPMFluidSolver::get_baked_field(const Ref<Texture3D> &p_texture, float p_voxel, Vector3i &r_size, bool &r_hollow) {
+	if (p_texture.is_null() || gpu.is_null()) {
+		return -1;
+	}
+	const ObjectID id = p_texture->get_instance_id();
+	if (const BakedField *known = baked_fields.getptr(id)) {
+		r_size = known->size;
+		r_hollow = known->hollow;
+		return known->offset;
+	}
+
+	BakedField field; // Remembered even when it can't be used, so it's only read back once.
+	const Vector<Ref<Image>> slices = p_texture->get_data();
+	const int depth = slices.size();
+	const int width = depth > 0 && slices[0].is_valid() ? slices[0]->get_width() : 0;
+	const int height = depth > 0 && slices[0].is_valid() ? slices[0]->get_height() : 0;
+	const int64_t voxels = (int64_t)width * height * depth;
+	const int64_t head = baked_voxels.size() / (int64_t)sizeof(float);
+	// A collider holds the start as a float, exact up to 2^24.
+	if (voxels == 0) {
+		ERR_PRINT("MPM fluid: a baked collider's texture has no data.");
+	} else if (head + 3 > (1 << 24) || voxels > (1 << 26)) {
+		ERR_PRINT("MPM fluid: too many baked collider voxels. Lower the GPUParticlesCollisionSDF3D resolution.");
+	} else {
+		baked_voxels.resize((head + 3 + voxels) * sizeof(float));
+		float *out = reinterpret_cast<float *>(baked_voxels.ptrw()) + head;
+		*out++ = (float)width;
+		*out++ = (float)height;
+		*out++ = (float)depth;
+		float *grid = out;
+		bool valid = true;
+		for (int z = 0; z < depth && valid; z++) {
+			Ref<Image> slice = slices[z]->duplicate();
+			if (slice->is_compressed()) {
+				slice->decompress();
+			}
+			slice->convert(Image::FORMAT_RF);
+			valid = slice->get_width() == width && slice->get_height() == height;
+			if (valid) {
+				memcpy(out, slice->ptr(), width * height * sizeof(float));
+				out += width * height;
+			}
+		}
+		if (valid) {
+			field.hollow = !_fill_enclosed_voxels(grid, Vector3i(width, height, depth), p_voxel);
+			field.offset = (int)head;
+			field.size = Vector3i(width, height, depth);
+			_dispatch(callable_mp(gpu.ptr(), &MPMFluidSolverGPU::rt_set_sdf).bind(gpu, baked_voxels));
+		} else {
+			baked_voxels.resize(head * sizeof(float));
+			ERR_PRINT("MPM fluid: a baked collider's slices differ in size.");
+		}
+	}
+	baked_fields[id] = field;
+	r_size = field.size;
+	r_hollow = field.hollow;
+	return field.offset;
 }
 
 void MPMFluidSolver::set_domain_transform(const Transform3D &p_xform) {
