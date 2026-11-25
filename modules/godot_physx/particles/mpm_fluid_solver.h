@@ -36,14 +36,12 @@
 #include "core/math/vector3i.h"
 #include "core/object/ref_counted.h"
 #include "core/os/mutex.h"
-#include "core/templates/hash_map.h"
 #include "core/templates/local_vector.h"
 #include "core/templates/rid.h"
 #include "core/templates/safe_refcount.h"
 #include "core/variant/variant.h"
 
 class RenderingDevice;
-class Texture3D;
 
 // A cross-vendor MLS-MPM fluid on plain compute shaders (RenderingDevice, no
 // CUDA). This is the fallback backend for PhysXParticleFluid3D when the PhysX GPU
@@ -121,13 +119,7 @@ public:
 	RID buf_bhash; // block-sparse: block keys (open addressing)
 	RID buf_bhash_val; // hash slot -> block-pool slot
 	RID buf_bkey; // block key per block-pool slot
-	RID buf_bcounts; // [0] active blocks
-	// The per-block passes' indirect dispatch args, written by PASS_BS_BDISPATCH
-	// alone. A buffer of its own: Godot's render graph tracks one usage per
-	// buffer per compute list, so args a pass also binds as storage (bcounts)
-	// lose their indirect-read barrier and the dispatch reads stale counts.
-	RID buf_bargs;
-	RID buf_sdf; // every baked collider's grid
+	RID buf_bcounts; // [0] active blocks, [1..3] indirect dispatch (needs DISPATCH_INDIRECT usage)
 
 	bool block_sparse = false; // this build uses the mpm_bs_* passes (fluid, boundless-capable)
 	int capacity = 0;
@@ -151,11 +143,10 @@ public:
 	// Every call binds a Ref to this object (p_self) so it outlives work in
 	// flight; args are individually Variant-marshalled (no struct payloads).
 	void rt_compile(Ref<MPMFluidSolverGPU> p_self);
-	void rt_build(Ref<MPMFluidSolverGPU> p_self, PackedByteArray p_params, PackedByteArray p_particles, int p_capacity, int p_node_count, int p_tri_budget, bool p_block_sparse, int p_max_blocks, int p_hash_slots, PackedByteArray p_sdf);
+	void rt_build(Ref<MPMFluidSolverGPU> p_self, PackedByteArray p_params, PackedByteArray p_particles, int p_capacity, int p_node_count, int p_tri_budget, bool p_block_sparse, int p_max_blocks, int p_hash_slots);
 	void rt_step(Ref<MPMFluidSolverGPU> p_self, PackedByteArray p_params, PackedByteArray p_colliders, int p_ncol, int p_pcount, int p_node_count, Vector3i p_grid_dims, int p_substeps, bool p_want_surface, bool p_bench);
 	void rt_emit(Ref<MPMFluidSolverGPU> p_self, PackedByteArray p_blob, int p_head_bytes, int p_first_bytes);
 	void rt_read_positions(Ref<MPMFluidSolverGPU> p_self, int p_count);
-	void rt_set_sdf(Ref<MPMFluidSolverGPU> p_self, PackedByteArray p_sdf);
 	void rt_free(Ref<MPMFluidSolverGPU> p_self);
 
 	// Async readback callbacks: RenderingDevice invokes them with the data as the
@@ -211,17 +202,13 @@ public:
 	enum ColliderShape { COLLIDER_SPHERE,
 		COLLIDER_BOX,
 		COLLIDER_PLANE,
-		COLLIDER_CAPSULE,
-		COLLIDER_BAKED,
-		COLLIDER_CYLINDER };
+		COLLIDER_CAPSULE };
 	struct Collider {
 		ColliderShape shape = COLLIDER_SPHERE;
 		Vector3 position; // world center (or a point on the plane)
-		Vector3 extents; // sphere: x=radius | box, baked: half-extents | plane: unit normal | capsule, cylinder: (radius, half-height, -)
-		Quaternion rotation; // box / capsule / baked / cylinder orientation
+		Vector3 extents; // sphere: x=radius | box: half-extents | plane: unit normal | capsule: (radius, half-height, -)
+		Quaternion rotation; // box / capsule orientation
 		Vector3 velocity;
-		int baked_offset = 0; // baked: from get_baked_field()
-		float baked_scale = 1.0f; // baked: what the field's distances are multiplied by
 	};
 	using SphereCollider = Collider; // transitional alias
 
@@ -240,13 +227,6 @@ public:
 	// `p_xform` places the domain center in world. The GPU build runs on the
 	// render thread; is_available() flips true a frame or two later.
 	void configure(const Settings &p_settings, const Transform3D &p_xform, bool p_prefill = true);
-
-	// A distance field baked into a texture, read back once per texture and kept in one GPU buffer with
-	// the solver's other fields. p_voxel is a voxel's edge, in the field's distances. Returns where it
-	// starts for Collider::baked_offset (-1: it can't be used), its size in voxels, and whether nothing in
-	// it is enclosed: a hollow mesh, held only by the thickness of its walls.
-	int get_baked_field(const Ref<Texture3D> &p_texture, float p_voxel, Vector3i &r_size, bool &r_hollow);
-	float get_cell_size() const { return dx; }
 
 	// Move the domain center without reseeding.
 	void set_domain_transform(const Transform3D &p_xform);
@@ -279,16 +259,11 @@ public:
 	int get_capacity() const { return capacity; } // buffer / MultiMesh size
 	double get_last_step_msec() const;
 
-	// 12 floats / particle: MultiMesh TRANSFORM_3D rows (origin at 3, 7, 11), from
-	// the last reaped step. Empty until the first readback lands.
+	// 12 floats / particle: MultiMesh TRANSFORM_3D rows, from the last reaped
+	// step. Empty until the first readback lands.
 	PackedFloat32Array get_multimesh_buffer() const;
 	// Blocking: forces a render sync. Test / query helper only.
 	PackedVector3Array get_positions() const;
-	// The volume of fluid one particle stands for at rest (particles are seeded, and given mass, at dx / 2 spacing).
-	float get_particle_volume() const {
-		const float s = dx * 0.5f;
-		return s * s * s;
-	}
 
 	// GPU-marched isosurface geometry from the last reaped step run with
 	// p_want_surface = true. Non-indexed triangle soup, world space; returns the
@@ -312,14 +287,6 @@ private:
 	float dx = 0.0f;
 	float pmass = 0.0f;
 	float surf_iso_density = 500.0f; // settings.surface_iso resolved to a kg/m^3 threshold
-
-	struct BakedField {
-		int offset = -1;
-		Vector3i size;
-		bool hollow = false;
-	};
-	HashMap<ObjectID, BakedField> baked_fields; // by texture
-	PackedByteArray baked_voxels; // floats: each field's size, then its grid (as buf_sdf)
 
 	void _compute_scales();
 	void _recompute_surface_iso();

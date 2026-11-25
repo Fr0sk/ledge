@@ -49,8 +49,8 @@ class PhysXBlastFractureMenuPlugin : public EditorContextMenuPlugin {
 	ContextMenuSlot target_slot;
 	PhysXBlastFractureDialog *dialog = nullptr; // not owned, outlives this plugin
 
-	void _on_scene_tree_option(const OptionsData &p_data);
-	void _on_filesystem_option(const OptionsData &p_data);
+	void _on_scene_tree_option(const Dictionary &p_data);
+	void _on_filesystem_option(const Dictionary &p_data);
 
 public:
 	void get_options(const OptionsData &p_data) override;

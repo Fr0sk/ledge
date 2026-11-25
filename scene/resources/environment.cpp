@@ -603,6 +603,199 @@ void Environment::_update_sdfgi() {
 			sdfgi_probe_bias);
 }
 
+// Pathtracing
+
+void Environment::set_pathtracing_enabled(bool p_enabled) {
+	pathtracing_enabled = p_enabled;
+	_update_pathtracing();
+}
+
+bool Environment::is_pathtracing_enabled() const {
+	return pathtracing_enabled;
+}
+
+void Environment::set_pathtracing_debug_mode(PathtracingDebugMode p_mode) {
+	pathtracing_debug_mode = p_mode;
+	_update_pathtracing();
+}
+
+Environment::PathtracingDebugMode Environment::get_pathtracing_debug_mode() const {
+	return pathtracing_debug_mode;
+}
+
+void Environment::set_pathtracing_samples_per_pixel(int p_samples) {
+	pathtracing_samples_per_pixel = MAX(1, p_samples);
+	_update_pathtracing();
+}
+
+int Environment::get_pathtracing_samples_per_pixel() const {
+	return pathtracing_samples_per_pixel;
+}
+
+void Environment::set_pathtracing_max_bounces(int p_bounces) {
+	pathtracing_max_bounces = CLAMP(p_bounces, 1, 8);
+	_update_pathtracing();
+}
+
+int Environment::get_pathtracing_max_bounces() const {
+	return pathtracing_max_bounces;
+}
+
+void Environment::set_pathtracing_denoiser(RSE::PathtracingDenoiser p_denoiser) {
+	pathtracing_denoiser = p_denoiser;
+	_update_pathtracing();
+}
+
+RSE::PathtracingDenoiser Environment::get_pathtracing_denoiser() const {
+	return pathtracing_denoiser;
+}
+
+void Environment::_update_pathtracing() {
+	RS::get_singleton()->environment_set_pathtracing(
+			environment,
+			pathtracing_enabled,
+			(int)pathtracing_debug_mode,
+			pathtracing_samples_per_pixel,
+			pathtracing_max_bounces,
+			pathtracing_denoiser);
+}
+
+// DDGI
+
+void Environment::set_ddgi_enabled(bool p_enabled) {
+	ddgi_enabled = p_enabled;
+	_update_ddgi();
+	notify_property_list_changed();
+}
+
+bool Environment::is_ddgi_enabled() const {
+	return ddgi_enabled;
+}
+
+void Environment::set_ddgi_cascades(int p_cascades) {
+	ddgi_cascades = CLAMP(p_cascades, 1, 4);
+	_update_ddgi();
+}
+
+int Environment::get_ddgi_cascades() const {
+	return ddgi_cascades;
+}
+
+void Environment::set_ddgi_probe_spacing(float p_spacing) {
+	ddgi_probe_spacing = MAX(0.05f, p_spacing);
+	_update_ddgi();
+}
+
+float Environment::get_ddgi_probe_spacing() const {
+	return ddgi_probe_spacing;
+}
+
+void Environment::set_ddgi_probe_grid(const Vector3i &p_grid) {
+	ddgi_probe_grid = Vector3i(CLAMP(p_grid.x, 2, 64), CLAMP(p_grid.y, 2, 64), CLAMP(p_grid.z, 2, 64));
+	_update_ddgi();
+}
+
+Vector3i Environment::get_ddgi_probe_grid() const {
+	return ddgi_probe_grid;
+}
+
+void Environment::set_ddgi_energy(float p_energy) {
+	ddgi_energy = MAX(0.0f, p_energy);
+	_update_ddgi();
+}
+
+float Environment::get_ddgi_energy() const {
+	return ddgi_energy;
+}
+
+void Environment::set_ddgi_normal_bias(float p_bias) {
+	ddgi_normal_bias = p_bias;
+	_update_ddgi();
+}
+
+float Environment::get_ddgi_normal_bias() const {
+	return ddgi_normal_bias;
+}
+
+void Environment::set_ddgi_view_bias(float p_bias) {
+	ddgi_view_bias = p_bias;
+	_update_ddgi();
+}
+
+float Environment::get_ddgi_view_bias() const {
+	return ddgi_view_bias;
+}
+
+void Environment::set_ddgi_hysteresis(float p_hysteresis) {
+	ddgi_hysteresis = CLAMP(p_hysteresis, 0.0f, 0.999f);
+	_update_ddgi();
+}
+
+float Environment::get_ddgi_hysteresis() const {
+	return ddgi_hysteresis;
+}
+
+void Environment::set_ddgi_probe_relocation(bool p_enabled) {
+	ddgi_probe_relocation = p_enabled;
+	_update_ddgi();
+}
+
+bool Environment::is_ddgi_probe_relocation_enabled() const {
+	return ddgi_probe_relocation;
+}
+
+void Environment::set_ddgi_probe_classification(bool p_enabled) {
+	ddgi_probe_classification = p_enabled;
+	_update_ddgi();
+}
+
+bool Environment::is_ddgi_probe_classification_enabled() const {
+	return ddgi_probe_classification;
+}
+
+void Environment::set_ddgi_follow_camera(bool p_enabled) {
+	ddgi_follow_camera = p_enabled;
+	_update_ddgi();
+}
+
+bool Environment::is_ddgi_following_camera() const {
+	return ddgi_follow_camera;
+}
+
+void Environment::set_ddgi_debug_mode(DDGIDebugMode p_mode) {
+	ddgi_debug_mode = p_mode;
+	_update_ddgi();
+}
+
+Environment::DDGIDebugMode Environment::get_ddgi_debug_mode() const {
+	return ddgi_debug_mode;
+}
+
+void Environment::set_ddgi_volume(bool p_node_volume, const Vector3 &p_center, const Vector3 &p_size) {
+	ddgi_node_volume = p_node_volume;
+	ddgi_volume_center = p_center;
+	ddgi_volume_size = p_size.maxf(0.1f);
+	RS::get_singleton()->environment_set_ddgi_volume(environment, ddgi_node_volume, ddgi_volume_center, ddgi_volume_size);
+}
+
+void Environment::_update_ddgi() {
+	RS::get_singleton()->environment_set_ddgi(
+			environment,
+			ddgi_enabled,
+			ddgi_cascades,
+			ddgi_probe_spacing,
+			ddgi_probe_grid,
+			ddgi_energy,
+			ddgi_normal_bias,
+			ddgi_view_bias,
+			ddgi_hysteresis,
+			ddgi_probe_relocation,
+			ddgi_probe_classification,
+			ddgi_follow_camera,
+			(int)ddgi_debug_mode);
+	RS::get_singleton()->environment_set_ddgi_volume(environment, ddgi_node_volume, ddgi_volume_center, ddgi_volume_size);
+}
+
 // Glow
 
 void Environment::set_glow_enabled(bool p_enabled) {
@@ -1108,6 +1301,10 @@ void Environment::_validate_property(PropertyInfo &p_property) const {
 	if (!Engine::get_singleton()->is_editor_hint()) {
 		return;
 	}
+	if (p_property.name.begins_with("ddgi_")) {
+		p_property.usage = PROPERTY_USAGE_NO_EDITOR;
+		return;
+	}
 	if (p_property.name == "sky" || p_property.name == "sky_custom_fov" || p_property.name == "sky_rotation" || p_property.name == "ambient_light_sky_contribution") {
 		if (bg_mode != BG_SKY && ambient_source != AMBIENT_SOURCE_SKY && reflection_source != REFLECTION_SOURCE_SKY) {
 			p_property.usage = PROPERTY_USAGE_NO_EDITOR;
@@ -1430,6 +1627,68 @@ void Environment::_bind_methods() {
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "sdfgi_normal_bias"), "set_sdfgi_normal_bias", "get_sdfgi_normal_bias");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "sdfgi_probe_bias"), "set_sdfgi_probe_bias", "get_sdfgi_probe_bias");
 
+	// Pathtracing
+
+	ClassDB::bind_method(D_METHOD("set_pathtracing_enabled", "enabled"), &Environment::set_pathtracing_enabled);
+	ClassDB::bind_method(D_METHOD("is_pathtracing_enabled"), &Environment::is_pathtracing_enabled);
+	ClassDB::bind_method(D_METHOD("set_pathtracing_debug_mode", "mode"), &Environment::set_pathtracing_debug_mode);
+	ClassDB::bind_method(D_METHOD("get_pathtracing_debug_mode"), &Environment::get_pathtracing_debug_mode);
+	ClassDB::bind_method(D_METHOD("set_pathtracing_samples_per_pixel", "samples"), &Environment::set_pathtracing_samples_per_pixel);
+	ClassDB::bind_method(D_METHOD("get_pathtracing_samples_per_pixel"), &Environment::get_pathtracing_samples_per_pixel);
+	ClassDB::bind_method(D_METHOD("set_pathtracing_max_bounces", "bounces"), &Environment::set_pathtracing_max_bounces);
+	ClassDB::bind_method(D_METHOD("get_pathtracing_max_bounces"), &Environment::get_pathtracing_max_bounces);
+	ClassDB::bind_method(D_METHOD("set_pathtracing_denoiser", "denoiser"), &Environment::set_pathtracing_denoiser);
+	ClassDB::bind_method(D_METHOD("get_pathtracing_denoiser"), &Environment::get_pathtracing_denoiser);
+	GLOBAL_DEF("rendering/pathtracing/use_simple_shadows", false);
+
+	ADD_GROUP("Pathtracing", "pathtracing_");
+	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "pathtracing_enabled", PROPERTY_HINT_GROUP_ENABLE), "set_pathtracing_enabled", "is_pathtracing_enabled");
+	ADD_PROPERTY(PropertyInfo(Variant::INT, "pathtracing_debug_mode", PROPERTY_HINT_ENUM, "Disabled,Mirror Reflection,Geometry Normals,Final Normals,Normal Map,Tangent,Bitangent,UV,Albedo,ORM,Diffuse Albedo,Specular Albedo,Normal+Roughness,Specular Hit Dist,Metalness,Roughness,View Normals,Diffuse+Specular,Fresnel F0,Front/Back Face,Depth,Emissive,BRDF Rejection"), "set_pathtracing_debug_mode", "get_pathtracing_debug_mode");
+	ADD_PROPERTY(PropertyInfo(Variant::INT, "pathtracing_samples_per_pixel", PROPERTY_HINT_RANGE, "1,16,1"), "set_pathtracing_samples_per_pixel", "get_pathtracing_samples_per_pixel");
+	ADD_PROPERTY(PropertyInfo(Variant::INT, "pathtracing_max_bounces", PROPERTY_HINT_RANGE, "1,8,1"), "set_pathtracing_max_bounces", "get_pathtracing_max_bounces");
+	ADD_PROPERTY(PropertyInfo(Variant::INT, "pathtracing_denoiser", PROPERTY_HINT_ENUM, "None,DLSS Ray Reconstruction"), "set_pathtracing_denoiser", "get_pathtracing_denoiser");
+
+	// DDGI
+
+	ClassDB::bind_method(D_METHOD("set_ddgi_enabled", "enabled"), &Environment::set_ddgi_enabled);
+	ClassDB::bind_method(D_METHOD("is_ddgi_enabled"), &Environment::is_ddgi_enabled);
+	ClassDB::bind_method(D_METHOD("set_ddgi_cascades", "cascades"), &Environment::set_ddgi_cascades);
+	ClassDB::bind_method(D_METHOD("get_ddgi_cascades"), &Environment::get_ddgi_cascades);
+	ClassDB::bind_method(D_METHOD("set_ddgi_probe_spacing", "spacing"), &Environment::set_ddgi_probe_spacing);
+	ClassDB::bind_method(D_METHOD("get_ddgi_probe_spacing"), &Environment::get_ddgi_probe_spacing);
+	ClassDB::bind_method(D_METHOD("set_ddgi_probe_grid", "grid"), &Environment::set_ddgi_probe_grid);
+	ClassDB::bind_method(D_METHOD("get_ddgi_probe_grid"), &Environment::get_ddgi_probe_grid);
+	ClassDB::bind_method(D_METHOD("set_ddgi_energy", "energy"), &Environment::set_ddgi_energy);
+	ClassDB::bind_method(D_METHOD("get_ddgi_energy"), &Environment::get_ddgi_energy);
+	ClassDB::bind_method(D_METHOD("set_ddgi_normal_bias", "bias"), &Environment::set_ddgi_normal_bias);
+	ClassDB::bind_method(D_METHOD("get_ddgi_normal_bias"), &Environment::get_ddgi_normal_bias);
+	ClassDB::bind_method(D_METHOD("set_ddgi_view_bias", "bias"), &Environment::set_ddgi_view_bias);
+	ClassDB::bind_method(D_METHOD("get_ddgi_view_bias"), &Environment::get_ddgi_view_bias);
+	ClassDB::bind_method(D_METHOD("set_ddgi_hysteresis", "hysteresis"), &Environment::set_ddgi_hysteresis);
+	ClassDB::bind_method(D_METHOD("get_ddgi_hysteresis"), &Environment::get_ddgi_hysteresis);
+	ClassDB::bind_method(D_METHOD("set_ddgi_probe_relocation", "enabled"), &Environment::set_ddgi_probe_relocation);
+	ClassDB::bind_method(D_METHOD("is_ddgi_probe_relocation_enabled"), &Environment::is_ddgi_probe_relocation_enabled);
+	ClassDB::bind_method(D_METHOD("set_ddgi_probe_classification", "enabled"), &Environment::set_ddgi_probe_classification);
+	ClassDB::bind_method(D_METHOD("is_ddgi_probe_classification_enabled"), &Environment::is_ddgi_probe_classification_enabled);
+	ClassDB::bind_method(D_METHOD("set_ddgi_follow_camera", "enabled"), &Environment::set_ddgi_follow_camera);
+	ClassDB::bind_method(D_METHOD("is_ddgi_following_camera"), &Environment::is_ddgi_following_camera);
+	ClassDB::bind_method(D_METHOD("set_ddgi_debug_mode", "mode"), &Environment::set_ddgi_debug_mode);
+	ClassDB::bind_method(D_METHOD("get_ddgi_debug_mode"), &Environment::get_ddgi_debug_mode);
+
+	ADD_GROUP("DDGI", "ddgi_");
+	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "ddgi_enabled", PROPERTY_HINT_GROUP_ENABLE), "set_ddgi_enabled", "is_ddgi_enabled");
+	ADD_PROPERTY(PropertyInfo(Variant::INT, "ddgi_cascades", PROPERTY_HINT_RANGE, "1,4,1"), "set_ddgi_cascades", "get_ddgi_cascades");
+	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "ddgi_probe_spacing", PROPERTY_HINT_RANGE, "0.05,16,0.01,or_greater,suffix:m"), "set_ddgi_probe_spacing", "get_ddgi_probe_spacing");
+	ADD_PROPERTY(PropertyInfo(Variant::VECTOR3I, "ddgi_probe_grid"), "set_ddgi_probe_grid", "get_ddgi_probe_grid");
+	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "ddgi_energy", PROPERTY_HINT_RANGE, "0,8,0.01,or_greater"), "set_ddgi_energy", "get_ddgi_energy");
+	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "ddgi_normal_bias", PROPERTY_HINT_RANGE, "0,1,0.01"), "set_ddgi_normal_bias", "get_ddgi_normal_bias");
+	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "ddgi_view_bias", PROPERTY_HINT_RANGE, "0,1,0.01"), "set_ddgi_view_bias", "get_ddgi_view_bias");
+	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "ddgi_hysteresis", PROPERTY_HINT_RANGE, "0,0.999,0.001"), "set_ddgi_hysteresis", "get_ddgi_hysteresis");
+	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "ddgi_probe_relocation"), "set_ddgi_probe_relocation", "is_ddgi_probe_relocation_enabled");
+	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "ddgi_probe_classification"), "set_ddgi_probe_classification", "is_ddgi_probe_classification_enabled");
+	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "ddgi_follow_camera"), "set_ddgi_follow_camera", "is_ddgi_following_camera");
+	ADD_PROPERTY(PropertyInfo(Variant::INT, "ddgi_debug_mode", PROPERTY_HINT_ENUM, "Disabled,Indirect Light,Probe Irradiance,Probe Distance,Probe States,Probe Update Priority,Cascades"), "set_ddgi_debug_mode", "get_ddgi_debug_mode");
+
 	// Glow
 
 	ClassDB::bind_method(D_METHOD("set_glow_enabled", "enabled"), &Environment::set_glow_enabled);
@@ -1626,6 +1885,39 @@ void Environment::_bind_methods() {
 	BIND_ENUM_CONSTANT(GLOW_BLEND_MODE_REPLACE);
 	BIND_ENUM_CONSTANT(GLOW_BLEND_MODE_MIX);
 
+	BIND_ENUM_CONSTANT(RT_DEBUG_DISABLED);
+	BIND_ENUM_CONSTANT(RT_DEBUG_MIRROR_REFLECTION);
+	BIND_ENUM_CONSTANT(RT_DEBUG_GEOMETRY_NORMALS);
+	BIND_ENUM_CONSTANT(RT_DEBUG_FINAL_NORMALS);
+	BIND_ENUM_CONSTANT(RT_DEBUG_NORMAL_MAP);
+	BIND_ENUM_CONSTANT(RT_DEBUG_TANGENT);
+	BIND_ENUM_CONSTANT(RT_DEBUG_BITANGENT);
+	BIND_ENUM_CONSTANT(RT_DEBUG_UV);
+	BIND_ENUM_CONSTANT(RT_DEBUG_ALBEDO);
+	BIND_ENUM_CONSTANT(RT_DEBUG_ORM);
+	BIND_ENUM_CONSTANT(RT_DEBUG_DIFFUSE_ALBEDO);
+	BIND_ENUM_CONSTANT(RT_DEBUG_SPECULAR_ALBEDO);
+	BIND_ENUM_CONSTANT(RT_DEBUG_NORMAL_ROUGHNESS);
+	BIND_ENUM_CONSTANT(RT_DEBUG_SPECULAR_HIT_DISTANCE);
+	BIND_ENUM_CONSTANT(RT_DEBUG_METALNESS);
+	BIND_ENUM_CONSTANT(RT_DEBUG_ROUGHNESS);
+	BIND_ENUM_CONSTANT(RT_DEBUG_VIEW_NORMALS);
+	BIND_ENUM_CONSTANT(RT_DEBUG_DIFFUSE_SPECULAR_SPLIT);
+	BIND_ENUM_CONSTANT(RT_DEBUG_FRESNEL_F0);
+	BIND_ENUM_CONSTANT(RT_DEBUG_FRONT_BACK_FACE);
+	BIND_ENUM_CONSTANT(RT_DEBUG_DEPTH);
+	BIND_ENUM_CONSTANT(RT_DEBUG_EMISSIVE);
+	BIND_ENUM_CONSTANT(RT_DEBUG_BRDF_REJECTION);
+
+	BIND_ENUM_CONSTANT(DDGI_DEBUG_DISABLED);
+	BIND_ENUM_CONSTANT(DDGI_DEBUG_INDIRECT_LIGHT);
+	BIND_ENUM_CONSTANT(DDGI_DEBUG_PROBE_IRRADIANCE);
+	BIND_ENUM_CONSTANT(DDGI_DEBUG_PROBE_DISTANCE);
+	BIND_ENUM_CONSTANT(DDGI_DEBUG_PROBE_STATES);
+	BIND_ENUM_CONSTANT(DDGI_DEBUG_PROBE_PRIORITY);
+	BIND_ENUM_CONSTANT(DDGI_DEBUG_CASCADES);
+	BIND_ENUM_CONSTANT(DDGI_DEBUG_MAX);
+
 	BIND_ENUM_CONSTANT(FOG_MODE_EXPONENTIAL);
 	BIND_ENUM_CONSTANT(FOG_MODE_DEPTH);
 
@@ -1654,6 +1946,8 @@ Environment::Environment() {
 	_update_ssao();
 	_update_ssil();
 	_update_sdfgi();
+	_update_pathtracing();
+	_update_ddgi();
 	_update_glow();
 	_update_fog();
 	_update_adjustment();

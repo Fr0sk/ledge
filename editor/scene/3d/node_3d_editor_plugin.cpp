@@ -80,6 +80,7 @@
 #include "editor/scene/3d/gizmos/physics/spring_arm_3d_gizmo_plugin.h"
 #include "editor/scene/3d/gizmos/physics/vehicle_body_3d_gizmo_plugin.h"
 #include "editor/scene/3d/gizmos/reflection_probe_gizmo_plugin.h"
+#include "editor/scene/3d/gizmos/rt_procedural_instance_3d_gizmo_plugin.h"
 #include "editor/scene/3d/gizmos/spring_bone_3d_gizmo_plugin.h"
 #include "editor/scene/3d/gizmos/sprite_base_3d_gizmo_plugin.h"
 #include "editor/scene/3d/gizmos/two_bone_ik_3d_gizmo_plugin.h"
@@ -2600,14 +2601,10 @@ void Node3DEditor::_notification(int p_what) {
 			}
 		} break;
 
-		case NOTIFICATION_THEME_CHANGED: {
-			_update_theme();
-			_update_gizmos_menu_theme();
-			sun_title->add_theme_font_override(SceneStringName(font), get_theme_font(SNAME("title_font"), SNAME("Window")));
-			environ_title->add_theme_font_override(SceneStringName(font), get_theme_font(SNAME("title_font"), SNAME("Window")));
-		} break;
-
 		case NOTIFICATION_VISIBILITY_CHANGED: {
+			if (is_visible_in_tree() && is_any_view_gizmos_enabled()) {
+				update_all_gizmos();
+			}
 			if (is_visible_in_tree()) {
 				set_process(true);
 				set_physics_process(true);
@@ -2616,6 +2613,13 @@ void Node3DEditor::_notification(int p_what) {
 				set_process(false);
 				set_physics_process(false);
 			}
+		} break;
+
+		case NOTIFICATION_THEME_CHANGED: {
+			_update_theme();
+			_update_gizmos_menu_theme();
+			sun_title->add_theme_font_override(SceneStringName(font), get_theme_font(SNAME("title_font"), SNAME("Window")));
+			environ_title->add_theme_font_override(SceneStringName(font), get_theme_font(SNAME("title_font"), SNAME("Window")));
 		} break;
 
 		case EditorSettings::NOTIFICATION_EDITOR_SETTINGS_CHANGED: {
@@ -3024,6 +3028,10 @@ void Node3DEditor::_register_all_gizmos() {
 	add_gizmo_plugin(Ref<ShapeCast3DGizmoPlugin>(memnew(ShapeCast3DGizmoPlugin)));
 	add_gizmo_plugin(Ref<SpringArm3DGizmoPlugin>(memnew(SpringArm3DGizmoPlugin)));
 	add_gizmo_plugin(Ref<PhysicalBone3DGizmoPlugin>(memnew(PhysicalBone3DGizmoPlugin)));
+	add_gizmo_plugin(Ref<FogVolumeGizmoPlugin>(memnew(FogVolumeGizmoPlugin)));
+	add_gizmo_plugin(Ref<RTProceduralInstance3DGizmoPlugin>(memnew(RTProceduralInstance3DGizmoPlugin)));
+	add_gizmo_plugin(Ref<TwoBoneIK3DGizmoPlugin>(memnew(TwoBoneIK3DGizmoPlugin)));
+	add_gizmo_plugin(Ref<ChainIK3DGizmoPlugin>(memnew(ChainIK3DGizmoPlugin)));
 	add_gizmo_plugin(Ref<VehicleWheel3DGizmoPlugin>(memnew(VehicleWheel3DGizmoPlugin)));
 	add_gizmo_plugin(Ref<RayCast3DGizmoPlugin>(memnew(RayCast3DGizmoPlugin)));
 }
@@ -4428,6 +4436,23 @@ void Node3DEditor::update_gizmo_bvh_node(DynamicBVH::ID p_id, const AABB &p_aabb
 
 void Node3DEditor::remove_gizmo_bvh_node(DynamicBVH::ID p_id) {
 	gizmo_bvh.remove(p_id);
+}
+
+bool Node3DEditor::is_any_view_gizmos_enabled() const {
+	for (uint32_t i = 0; i < VIEWPORTS_COUNT; i++) {
+		const Node3DEditorViewport *viewport = viewports[i];
+		if (viewport && viewport->is_visible_in_tree() && viewport->is_view_gizmos_enabled()) {
+			return true;
+		}
+	}
+	return false;
+}
+
+bool Node3DEditor::is_visual_suppressed_for(const EditorNode3DGizmoPlugin *p_plugin) const {
+	if (p_plugin && p_plugin->get_state() == EditorNode3DGizmoPlugin::HIDDEN) {
+		return true;
+	}
+	return !is_any_view_gizmos_enabled();
 }
 
 Vector<Node3D *> Node3DEditor::gizmo_bvh_ray_query(const Vector3 &p_ray_start, const Vector3 &p_ray_end) {

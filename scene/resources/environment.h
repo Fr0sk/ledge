@@ -32,6 +32,7 @@
 
 #include "core/io/resource.h"
 #include "scene/resources/texture.h"
+#include "servers/rendering/rendering_server_enums.h"
 
 class Sky;
 
@@ -74,6 +75,44 @@ public:
 		SDFGI_Y_SCALE_50_PERCENT,
 		SDFGI_Y_SCALE_75_PERCENT,
 		SDFGI_Y_SCALE_100_PERCENT,
+	};
+
+	enum PathtracingDebugMode {
+		RT_DEBUG_DISABLED,
+		RT_DEBUG_MIRROR_REFLECTION,
+		RT_DEBUG_GEOMETRY_NORMALS,
+		RT_DEBUG_FINAL_NORMALS,
+		RT_DEBUG_NORMAL_MAP,
+		RT_DEBUG_TANGENT,
+		RT_DEBUG_BITANGENT,
+		RT_DEBUG_UV,
+		RT_DEBUG_ALBEDO,
+		RT_DEBUG_ORM,
+		RT_DEBUG_DIFFUSE_ALBEDO,
+		RT_DEBUG_SPECULAR_ALBEDO,
+		RT_DEBUG_NORMAL_ROUGHNESS,
+		RT_DEBUG_SPECULAR_HIT_DISTANCE,
+		RT_DEBUG_METALNESS,
+		RT_DEBUG_ROUGHNESS,
+		RT_DEBUG_VIEW_NORMALS,
+		RT_DEBUG_DIFFUSE_SPECULAR_SPLIT,
+		RT_DEBUG_FRESNEL_F0,
+		RT_DEBUG_FRONT_BACK_FACE,
+		RT_DEBUG_DEPTH,
+		RT_DEBUG_EMISSIVE,
+		RT_DEBUG_BRDF_REJECTION,
+		RT_DEBUG_MAX
+	};
+
+	enum DDGIDebugMode {
+		DDGI_DEBUG_DISABLED,
+		DDGI_DEBUG_INDIRECT_LIGHT,
+		DDGI_DEBUG_PROBE_IRRADIANCE,
+		DDGI_DEBUG_PROBE_DISTANCE,
+		DDGI_DEBUG_PROBE_STATES,
+		DDGI_DEBUG_PROBE_PRIORITY,
+		DDGI_DEBUG_CASCADES,
+		DDGI_DEBUG_MAX
 	};
 
 	enum FogMode {
@@ -161,6 +200,32 @@ private:
 	float sdfgi_normal_bias = 1.1;
 	float sdfgi_probe_bias = 1.1;
 	void _update_sdfgi();
+
+	// Pathtracing
+	bool pathtracing_enabled = false;
+	PathtracingDebugMode pathtracing_debug_mode = RT_DEBUG_DISABLED;
+	int pathtracing_samples_per_pixel = 1;
+	int pathtracing_max_bounces = 3;
+	RSE::PathtracingDenoiser pathtracing_denoiser = RSE::PT_DENOISER_DLSS_RAY_RECONSTRUCTION;
+	void _update_pathtracing();
+
+	// DDGI
+	bool ddgi_enabled = false;
+	int ddgi_cascades = 3;
+	float ddgi_probe_spacing = 1.0;
+	Vector3i ddgi_probe_grid = Vector3i(24, 12, 24);
+	float ddgi_energy = 1.0;
+	float ddgi_normal_bias = 0.1;
+	float ddgi_view_bias = 0.3;
+	float ddgi_hysteresis = 0.95;
+	bool ddgi_probe_relocation = true;
+	bool ddgi_probe_classification = true;
+	bool ddgi_follow_camera = true;
+	bool ddgi_node_volume = false;
+	Vector3 ddgi_volume_center;
+	Vector3 ddgi_volume_size = Vector3(24, 12, 24);
+	DDGIDebugMode ddgi_debug_mode = DDGI_DEBUG_DISABLED;
+	void _update_ddgi();
 
 	// Glow
 	bool glow_enabled = false;
@@ -349,6 +414,45 @@ public:
 	void set_sdfgi_probe_bias(float p_bias);
 	float get_sdfgi_probe_bias() const;
 
+	// Pathtracing
+	void set_pathtracing_enabled(bool p_enabled);
+	bool is_pathtracing_enabled() const;
+	void set_pathtracing_debug_mode(PathtracingDebugMode p_mode);
+	PathtracingDebugMode get_pathtracing_debug_mode() const;
+	void set_pathtracing_samples_per_pixel(int p_samples);
+	int get_pathtracing_samples_per_pixel() const;
+	void set_pathtracing_max_bounces(int p_bounces);
+	int get_pathtracing_max_bounces() const;
+	void set_pathtracing_denoiser(RSE::PathtracingDenoiser p_denoiser);
+	RSE::PathtracingDenoiser get_pathtracing_denoiser() const;
+
+	// DDGI
+	void set_ddgi_enabled(bool p_enabled);
+	bool is_ddgi_enabled() const;
+	void set_ddgi_cascades(int p_cascades);
+	int get_ddgi_cascades() const;
+	void set_ddgi_probe_spacing(float p_spacing);
+	float get_ddgi_probe_spacing() const;
+	void set_ddgi_probe_grid(const Vector3i &p_grid);
+	Vector3i get_ddgi_probe_grid() const;
+	void set_ddgi_energy(float p_energy);
+	float get_ddgi_energy() const;
+	void set_ddgi_normal_bias(float p_bias);
+	float get_ddgi_normal_bias() const;
+	void set_ddgi_view_bias(float p_bias);
+	float get_ddgi_view_bias() const;
+	void set_ddgi_hysteresis(float p_hysteresis);
+	float get_ddgi_hysteresis() const;
+	void set_ddgi_probe_relocation(bool p_enabled);
+	bool is_ddgi_probe_relocation_enabled() const;
+	void set_ddgi_probe_classification(bool p_enabled);
+	bool is_ddgi_probe_classification_enabled() const;
+	void set_ddgi_follow_camera(bool p_enabled);
+	bool is_ddgi_following_camera() const;
+	void set_ddgi_debug_mode(DDGIDebugMode p_mode);
+	DDGIDebugMode get_ddgi_debug_mode() const;
+	void set_ddgi_volume(bool p_node_volume, const Vector3 &p_center, const Vector3 &p_size);
+
 	// Glow
 	void set_glow_enabled(bool p_enabled);
 	bool is_glow_enabled() const;
@@ -459,4 +563,6 @@ VARIANT_ENUM_CAST(Environment::ReflectionSource)
 VARIANT_ENUM_CAST(Environment::ToneMapper)
 VARIANT_ENUM_CAST(Environment::SDFGIYScale)
 VARIANT_ENUM_CAST(Environment::GlowBlendMode)
+VARIANT_ENUM_CAST(Environment::PathtracingDebugMode)
+VARIANT_ENUM_CAST(Environment::DDGIDebugMode)
 VARIANT_ENUM_CAST(Environment::FogMode)

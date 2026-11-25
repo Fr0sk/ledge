@@ -30,6 +30,8 @@
 
 #include "environment_storage.h"
 
+#include "core/config/project_settings.h"
+
 #ifdef DEBUG_ENABLED
 #include "core/os/os.h"
 #endif
@@ -892,6 +894,87 @@ RSE::EnvironmentSDFGIYScale RendererEnvironmentStorage::environment_get_sdfgi_y_
 	Environment *env = environment_owner.get_or_null(p_env);
 	ERR_FAIL_NULL_V(env, RSE::ENV_SDFGI_Y_SCALE_75_PERCENT);
 	return env->sdfgi_y_scale;
+}
+
+// Pathtracing
+
+void RendererEnvironmentStorage::environment_set_pathtracing(RID p_env, bool p_enable, int p_debug_mode, int p_samples_per_pixel, int p_max_bounces, RSE::PathtracingDenoiser p_denoiser) {
+	Environment *env = environment_owner.get_or_null(p_env);
+	ERR_FAIL_NULL(env);
+	env->pathtracing_enabled = p_enable;
+	env->pathtracing_debug_mode = p_debug_mode;
+	env->pathtracing_samples_per_pixel = p_samples_per_pixel;
+	env->pathtracing_max_bounces = p_max_bounces;
+	env->pathtracing_denoiser = p_denoiser;
+}
+
+bool RendererEnvironmentStorage::environment_get_pathtracing_enabled(RID p_env) const {
+	Environment *env = environment_owner.get_or_null(p_env);
+	ERR_FAIL_NULL_V(env, false);
+	return env->pathtracing_enabled;
+}
+
+int RendererEnvironmentStorage::environment_get_pathtracing_debug_mode(RID p_env) const {
+	Environment *env = environment_owner.get_or_null(p_env);
+	ERR_FAIL_NULL_V(env, 0);
+	return env->pathtracing_debug_mode;
+}
+
+int RendererEnvironmentStorage::environment_get_pathtracing_samples_per_pixel(RID p_env) const {
+	Environment *env = environment_owner.get_or_null(p_env);
+	ERR_FAIL_NULL_V(env, 1);
+	return env->pathtracing_samples_per_pixel;
+}
+
+int RendererEnvironmentStorage::environment_get_pathtracing_max_bounces(RID p_env) const {
+	Environment *env = environment_owner.get_or_null(p_env);
+	ERR_FAIL_NULL_V(env, 3);
+	return env->pathtracing_max_bounces;
+}
+
+RSE::PathtracingDenoiser RendererEnvironmentStorage::environment_get_pathtracing_denoiser(RID p_env) const {
+	Environment *env = environment_owner.get_or_null(p_env);
+	ERR_FAIL_NULL_V(env, RSE::PT_DENOISER_NONE);
+	return env->pathtracing_denoiser;
+}
+
+// DDGI
+
+void RendererEnvironmentStorage::environment_set_ddgi(RID p_env, bool p_enable, int p_cascades, float p_probe_spacing, const Vector3i &p_probe_grid, float p_energy, float p_normal_bias, float p_view_bias, float p_hysteresis, bool p_probe_relocation, bool p_probe_classification, bool p_follow_camera, int p_debug_mode) {
+	Environment *env = environment_owner.get_or_null(p_env);
+	ERR_FAIL_NULL(env);
+	env->ddgi.enabled = p_enable;
+	env->ddgi.cascades = CLAMP(p_cascades, 1, 4);
+	env->ddgi.probe_spacing = MAX(0.05f, p_probe_spacing);
+	env->ddgi.probe_grid = Vector3i(CLAMP(p_probe_grid.x, 2, 64), CLAMP(p_probe_grid.y, 2, 64), CLAMP(p_probe_grid.z, 2, 64));
+	env->ddgi.energy = MAX(0.0f, p_energy);
+	env->ddgi.normal_bias = p_normal_bias;
+	env->ddgi.view_bias = p_view_bias;
+	env->ddgi.hysteresis = CLAMP(p_hysteresis, 0.0f, 0.999f);
+	env->ddgi.probe_relocation = p_probe_relocation;
+	env->ddgi.probe_classification = p_probe_classification;
+	env->ddgi.follow_camera = p_follow_camera;
+	env->ddgi.debug_mode = p_debug_mode;
+}
+
+void RendererEnvironmentStorage::environment_set_ddgi_volume(RID p_env, bool p_node_volume, const Vector3 &p_center, const Vector3 &p_size) {
+	Environment *env = environment_owner.get_or_null(p_env);
+	ERR_FAIL_NULL(env);
+	env->ddgi.node_volume = p_node_volume;
+	env->ddgi.volume_center = p_center;
+	env->ddgi.volume_size = p_size.maxf(0.1f);
+}
+
+bool RendererEnvironmentStorage::environment_get_ddgi_enabled(RID p_env) const {
+	Environment *env = environment_owner.get_or_null(p_env);
+	ERR_FAIL_NULL_V(env, false);
+	return env->ddgi.enabled;
+}
+
+RendererEnvironmentStorage::DDGISettings RendererEnvironmentStorage::environment_get_ddgi(RID p_env) const {
+	Environment *env = environment_owner.get_or_null(p_env);
+	ERR_FAIL_NULL_V(env, DDGISettings());
+	return env->ddgi;
 }
 
 // Adjustments

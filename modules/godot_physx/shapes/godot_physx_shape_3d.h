@@ -31,7 +31,6 @@
 #pragma once
 
 #include "core/math/vector3.h"
-#include "core/templates/hash_map.h"
 #include "core/templates/rid.h"
 #include "core/templates/rid_owner.h"
 #include "core/variant/variant.h"
@@ -48,8 +47,6 @@
 #include <geometry/PxTriangleMeshGeometry.h>
 
 class GodotPhysXShape3D;
-class GodotPhysXBody3D;
-class GodotPhysXArea3D;
 
 // Local pose offset that a shape wants applied when attached to an actor
 // (PhysX capsules/planes are X-axis aligned; Godot expects Y / plane-at-origin).
@@ -106,18 +103,8 @@ public:
 	void set_type(PS3DE::ShapeType p_type) { type = p_type; }
 	PS3DE::ShapeType get_type() const { return type; }
 
-	// False when p_data is what the shape already holds (nothing to cook, nothing for its owners to pick up).
-	bool set_data(const Variant &p_data);
+	void set_data(const Variant &p_data);
 	Variant get_data() const { return data; }
-
-	// A convex hull cooked ahead of time, with the flags set_data() cooks points with. set_data() takes it back as
-	// {"points": the points, "cooked": the bytes} and loads it instead of cooking (the shape's data stays the points).
-	// Empty if cooking fails.
-	static PackedByteArray cook_convex(const Vector<Vector3> &p_points);
-	// What cook_convex() writes: the PhysX version, plus " gpu" when the hulls carry GPU data.
-	static String cooked_convex_format();
-	// Whether this build loads hulls in that format: the same PhysX version, and GPU data when GPU dynamics needs it.
-	static bool can_load_cooked_convex(const String &p_format);
 
 	void set_margin(real_t p_margin) { margin = p_margin; }
 	real_t get_margin() const { return margin; }
@@ -147,17 +134,4 @@ public:
 		physx::PxTransform local_pose{ physx::PxIdentity };
 	};
 	ScaledGeometry scaled_geometry(const Vector3 &p_scale) const;
-
-	// The bodies / areas using this shape (refcounted: one may use it at several indices), so a data change or a
-	// free reaches just them instead of every body on the server.
-	void add_owner(GodotPhysXBody3D *p_body) { body_owners[p_body]++; }
-	void remove_owner(GodotPhysXBody3D *p_body);
-	void add_owner(GodotPhysXArea3D *p_area) { area_owners[p_area]++; }
-	void remove_owner(GodotPhysXArea3D *p_area);
-	const HashMap<GodotPhysXBody3D *, int> &get_body_owners() const { return body_owners; }
-	const HashMap<GodotPhysXArea3D *, int> &get_area_owners() const { return area_owners; }
-
-private:
-	HashMap<GodotPhysXBody3D *, int> body_owners;
-	HashMap<GodotPhysXArea3D *, int> area_owners;
 };

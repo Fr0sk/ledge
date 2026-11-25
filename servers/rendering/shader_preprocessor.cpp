@@ -1250,6 +1250,10 @@ void ShaderPreprocessor::insert_builtin_define(String p_name, String p_value, St
 	p_state.defines[p_name] = define;
 }
 
+void ShaderPreprocessor::add_define(const String &p_name, const String &p_value) {
+	custom_defines.push_back({ p_name, p_value });
+}
+
 void ShaderPreprocessor::clear_state() {
 	if (state != nullptr) {
 		for (const RBMap<String, Define *>::Element *E = state->defines.front(); E; E = E->next()) {
@@ -1358,6 +1362,10 @@ void ShaderPreprocessor::_prepare_state(ShaderPreprocessor::State &rp_state, con
 		insert_builtin_define("RENDERER_COMPATIBILITY", _MKSTR(0), rp_state);
 		insert_builtin_define("RENDERER_MOBILE", _MKSTR(1), rp_state);
 		insert_builtin_define("RENDERER_FORWARD_PLUS", _MKSTR(2), rp_state);
+	}
+
+	for (const Pair<String, String> &def : custom_defines) {
+		insert_builtin_define(def.first, def.second, rp_state);
 	}
 }
 

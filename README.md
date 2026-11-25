@@ -1,428 +1,334 @@
-# Reginleif Engine
-hello hello! Reginleif (pronounced, 'rain-leaf') is a little fork made for me and my friends! 'twas made because GDScript was a *little* lacking, and i discovered i had the free will to do things my way! what *is* my way, you ask? well, i've always had a love-hate relationship with GDScript. i truly love the rapid iteration capabilities it offers, but ah well, it lacks a *few* features, *ahem*, to help build the kind of systems heavy games i want to make.
+# Godot Engine with NVIDIA DLSS, path tracing and PhysX 5
 
-tell ya what, mate. while writing gdscript across half a decade, it felt like my dumbass was being forced to accept a tradeoff that the developers had made. the tradeoff being that the language optimised the developer experience for the first fifty hours of gamedev, and did so by horribly compromising on the next thousand.
+<p align="center">
+  <a href="https://godotengine.org">
+    <img src="misc/logo/logo_outlined.svg" width="300" alt="Godot Engine logo">
+  </a>
+</p>
 
-i need to feel confident in the code that i write as i am indeed human and make mistakes! sound reasonable? hey, same, we might become good friends then!
+This is a fork of [Godot Engine](https://github.com/godotengine/godot) (`master`,
+4.8-dev) that combines three things in one source tree:
 
-## Who is this for?
-certainly not for everyone! that's pretty intentional.
+| Part | Source | What it adds |
+| --- | --- | --- |
+| Godot Engine | [godotengine/godot](https://github.com/godotengine/godot) `master` | The engine itself, kept up to date with upstream. |
+| NVIDIA RTX branch | [NVIDIA-RTX/godot](https://github.com/NVIDIA-RTX/godot) `nvidia-pt-dlss` | DLSS through NVIDIA Streamline, a real-time path tracer with DLSS Ray Reconstruction, Reflex, and Nsight Aftermath crash dumps. |
+| PhysX 5 module | [uno1982/godot](https://github.com/uno1982/godot/tree/feature/physx5-module) `feature/physx5-module` | `modules/godot_physx`: an NVIDIA PhysX 5 physics server with CUDA GPU dynamics, plus GPU fluid, cloth, soft bodies, destruction, vehicles and water. |
 
-this fork is, first and foremost, for me, and my group of friends i hang out with and make games with.
+All credit for those features goes to their authors: the Godot contributors,
+NVIDIA's RTX team, and the PhysX module's author. This fork merges them,
+fixes the conflicts between them, and keeps them building against the latest
+Godot `master`.
 
-but that's not enough to know if YOU, random stranger (perhaps) would be into this project. so let's talk about that.
+## PhysX module by Wild Ox Studios
 
-this fork is for devs who LIKE gdscript's workflow, engine integration and rapid iteration cycles, but are at their limits (like i) by the limits of the static analysis and the type system. it is aimed at devs building larger, or perhaps longer term projects where compile-time guarantees matter more than maintaining beginner simplicity, who don't want to be told 'har har har har just use C#'
+<p>
+  <a href="https://www.youtube.com/@WildOxStudios">
+    <img src="https://yt3.googleusercontent.com/ytc/AIdro_mRiIqNDV8Cx8l-2ze-wKUb9tczLXpsajPuE37jikCundo=s160-c-k-c0x00ffffff-no-rj" width="80" height="80" align="left" alt="Wild Ox Studios logo">
+  </a>
+</p>
 
-this fork will NOT aim to preserve GDScript as an extremely simplistic dynamic scripting language.
+The PhysX 5 module (`modules/godot_physx`) is made by **Wild Ox Studios**
+([uno1982](https://github.com/uno1982) on GitHub). This fork only vendors and
+adapts it; all the PhysX work is theirs.
 
-i strongly recommend turning on the static typing error in the project settings. you know which one, riiiight?
+- **YouTube:** [Wild Ox Studios](https://www.youtube.com/@WildOxStudios), for
+  videos of the module in action.
+- **Module source:** [uno1982/godot](https://github.com/uno1982/godot/tree/feature/physx5-module) (`feature/physx5-module`)
+- **Example project:** [uno1982/godot-physx-example](https://github.com/uno1982/godot-physx-example),
+  demo scenes and benchmarks for the module. See [Try the PhysX example project](#try-the-physx-example-project).
 
-## Get started
-Compile the engine by `git clone`ing this repository, use `pip install scons` to install `scons`, then compile by typing in just `scons`. Should take a little bit of time. 
+<br clear="left">
 
-If you don't want to go through the hassle of all that, I periodically throw a few prebuilt binaries in the releases section on the right. Ideally, there should be backwards compatibility with projects that use strongly typed GDScript, but back-compat is not the biggest prio for me, even if it *is* a priority.
+## Downloads
 
-**It is not guaranteed that the latest release matches nightly.** Compile yourself for the latest version or request another release if it seems too stale.
+Prebuilt Windows editors (standard and .NET) are on the
+[**Releases page**](https://github.com/Diginaat/godot/releases).
+Each release names the Godot version it's based on and this build's own
+version: `godot4.8-dev-nvidia-rt-dlss-physx-v0.4.0` is build 0.4.0, on Godot
+4.8-dev.
 
-## Shit I want to add
-- strongly typed callables
-- sum types
-- errors as values
-- exhaustive pattern matching
-- structs
+> [!IMPORTANT]
+> **The downloads work out of the box. You only need the NVIDIA Streamline SDK
+> if you want DLSS.**
+>
+> NVIDIA DLSS is not included in this repository or in the release downloads,
+> because NVIDIA's license doesn't allow redistributing the DLSS, Ray
+> Reconstruction, Frame Generation and Reflex runtime files this way.
+> The editor, the path tracer, PhysX GPU, Blast and Flow all work without them.
+>
+> **Only if you want DLSS** (or Ray Reconstruction, Frame Generation or Reflex),
+> either:
+>
+> - click **Get NVIDIA DLSS...** in the editor's menu bar (after Help). It
+>   explains each step, asks you to accept NVIDIA's license terms and to confirm
+>   the download from GitHub, checks the file's SHA-256, installs the DLLs next
+>   to the editor and offers to restart; or
+> - download the [NVIDIA Streamline SDK 2.10.0](https://github.com/NVIDIA-RTX/Streamline/releases/tag/v2.10.0)
+>   yourself and copy its DLLs next to the editor ([step 5 below](#5-optional-add-the-nvidia-streamline-dlls-only-for-dlss)).
 
-## Shit I added
-- type narrowing
-- generics (currently only type-erased)
-- nested types
-- completely optional braces {} based scoping
-- traits (first pass + optimisation passes)
-- some minor syntax niceties
-- some nontrivial optimisations
-- some PRs I merged that targeted upstream
+**Platform:** Windows 10/11 x64 with an NVIDIA RTX GPU. DLSS, Ray
+Reconstruction and the path tracer need an RTX card. PhysX GPU dynamics need an
+NVIDIA GPU with CUDA. Everything else falls back gracefully (PhysX runs on the
+CPU, rendering without DLSS).
 
-## How to use the shit I added
+## What's inside
 
-### Type Narrowing
-Not a feature you 'use' per se, but static analysis now becomes smarter.
-`is Type` type checks now 'narrow' the type in their branch.
+### NVIDIA DLSS, path tracing and Streamline (from NVIDIA-RTX/godot)
 
-```gdscript
-var node := get_node(...)
-if x is Node2D:
-    print(x.position)
+- **DLSS Super Resolution** as a 3D scaling mode (Project Settings >
+  Rendering > Scaling 3D > Mode = DLSS), with selectable presets
+  (`rendering/streamline/dlss_preset`).
+- **Real-time path tracer** in the Forward+ renderer: enable it per
+  `Environment` (`pathtracing_enabled`, samples per pixel, max bounces, debug
+  views). It uses hardware ray tracing pipelines, so it needs the **Vulkan**
+  driver (Godot's D3D12 driver has no ray tracing).
+- Path tracer additions in this fork: StandardMaterial3D emission, alpha
+  scissor, alpha blending and refraction (glass) are traced; emissive meshes
+  light the scene as mesh lights; custom shader `vertex()` displacement and
+  volumetric fog / `FogVolume` show up. Details and limits:
+  [`PATHTRACER_TESTING.md`](PATHTRACER_TESTING.md).
+- **DLSS Ray Reconstruction** as the path tracer's denoiser
+  (`Environment.pathtracing_denoiser = 1`).
+- **NVIDIA Reflex** low-latency modes (`rendering/streamline/reflex_mode`).
+- Streamline plugins for NIS, DeepDVC and DLSS Frame Generation are loaded when
+  their DLLs are present.
+- **Nsight Aftermath** GPU crash dumps (`use_aftermath=yes` at build time),
+  plus `--gpu-markers`, `--debug-shaders` and `--raytracing-validation`
+  command-line flags.
+
+### DDGI ray traced global illumination
+
+- **`DDGIVolume` node** for Forward+ Vulkan scenes: place the GI volume in the
+  scene like any other 3D node and resize its width, height and depth directly
+  in the editor viewport.
+- Real-time ray traced diffuse GI using the fork's hardware ray tracing path.
+  Probes update over time, support moving lights and dynamic geometry, and can
+  show debug views for indirect light, probe irradiance, distance, states,
+  update priority and cascades.
+- Environment DDGI inspector controls are hidden; use `DDGIVolume` as the
+  standard authoring workflow. A WorldEnvironment is still required because the
+  renderer stores DDGI state on the active environment RID.
+- Default `DDGIVolume` values are set for gameplay-sized rooms:
+  size `60.264 x 5.774 x 62.86 m`, probe spacing `2 m`, `3` cascades,
+  energy `1.0`, normal bias `0.1`, view bias `0.3`, hysteresis `0.95`, probe
+  relocation/classification off.
+
+### PhysX 5 (from the godot_physx module)
+
+Select it in Project Settings > Physics > 3D > Physics Engine = `PhysX`. Every
+standard 3D physics node keeps working. On top of that:
+
+- GPU rigid-body dynamics on NVIDIA GPUs (CUDA), with automatic CPU fallback.
+- `PhysXParticleFluid3D` (GPU fluid with surface meshing), `PhysXGranular3D`
+  (sand and snow), `PhysXGas3D` (smoke and fire), `PhysXCloth3D`, GPU soft
+  bodies for the stock `SoftBody3D`, `PhysXChunkEmitter3D` debris.
+- `PhysXDestructible3D`: runtime mesh fracture with NVIDIA Blast, plus an
+  in-editor fracture tool (right-click a MeshInstance3D or a mesh file, then
+  **Fracture with Blast...**).
+- `PhysXFlow3D` and `PhysXFlowEmitter3D`: NVIDIA Flow sparse-grid smoke, fire
+  and dust.
+- Vehicles (`PhysXVehicle3D`, `PhysXMotorcycle3D`, `PhysXTank3D`), water
+  (`PhysXWaterSurface3D`, FFT ocean, caustics) and boats.
+
+The module's full documentation is in
+[`modules/godot_physx/README.md`](modules/godot_physx/README.md).
+
+#### Try the PhysX example project
+
+The module's author, [Wild Ox Studios](https://www.youtube.com/@WildOxStudios),
+publishes a demo and benchmark project:
+**[uno1982/godot-physx-example](https://github.com/uno1982/godot-physx-example)**.
+It only works with an editor that includes the PhysX module, such as this one.
+
+1. Download or clone it:
+   ```
+   git clone https://github.com/uno1982/godot-physx-example.git
+   ```
+2. Open its `project.godot` with this editor. PhysX is already selected as the
+   physics engine.
+3. Pick a scene by what it needs:
+   - `cpu/`: rigid bodies, joints, characters, areas, queries. Works everywhere.
+   - `gpu/`: GPU particle fluids. Needs an NVIDIA GPU with CUDA; the release
+     editors are built with `physx_gpu=yes`.
+   - `flow/`: NVIDIA Flow smoke, fire and dust. The release editors include
+     Flow (`nvflow.dll`, `nvflowext.dll`).
+
+The log shows `PhysX 5.10.0 initialized [GPU]` when GPU dynamics are active.
+
+### Changes in this fork
+
+- Merged with the latest Godot `master`, with every conflict resolved by hand
+  (both sides kept).
+- Shader container format bumped to version 5, so shader caches from older
+  builds are rejected instead of crashing D3D12 startup.
+- New projects default to the Vulkan driver on Windows, because the path
+  tracer needs it. Requesting path tracing on D3D12 prints an explanatory
+  warning.
+- `misc/scripts/package_editor_win64.ps1` packages a release editor with all
+  runtime DLLs.
+- [`CUSTOM_BUILD.md`](CUSTOM_BUILD.md) is the maintenance runbook for keeping
+  the three sources in sync.
+
+## Building on Windows
+
+### 1. Prerequisites
+
+- **Visual Studio 2022** (or Build Tools) with the "Desktop development with
+  C++" workload and a Windows SDK.
+- **Python 3** and **SCons**: `python -m pip install scons`.
+- **Git** and **CMake** (the PhysX SDK builds with CMake).
+- **CUDA Toolkit 12.8**, only for PhysX GPU dynamics:
+  `winget install Nvidia.CUDA --version 12.8`. Open a new terminal afterwards
+  so `CUDA_PATH` is set.
+- **.NET SDK 8 or newer**, only for the C# (.NET) editor.
+- The **D3D12 build dependencies** (Mesa NIR and the Agility SDK), once:
+  ```
+  python misc/scripts/install_d3d12_sdk_windows.py
+  ```
+
+### 2. Get the source
+
 ```
-This marks the third line to be type unsafe in vanilla GDScript, and this can even be seen in the editor, as the line number on the left side of the code editor becomes unlit, showing that the analyser could not prove type safety. It even triggers UNSAFE_PROPERTY_ACCESS and related warnings! 
-But this is a problem, because, this operation provably IS safe, so the warning is misleading! it only executes if x is that type, and thus, x's type gets 'narrowed.'
-
-This fork is narrowing aware! It does indeed narrow the above case, along with the following cases:
-
-```gdscript
-if x is Node2D and x.get_position().x > 20:
-```
-
-```gdscript
-if x is not Node2D: return
-print(x.position)
-```
-
-```gdscript
-if x is not Node2D:
-    pass
-else:
-    print(x.position)
-```
-All the above cases become narrow-aware and thus type safe, along with full code complete! This extends to `is Trait` style checks too (discussed soon in this doc).
-
-### Generics
-
-a feature that lets you specify the type of a variable with a placeholder, usually `T`, where that `T` is usually meant to be replaced later on with a 'concrete type'. 
-
-currently, generics are TYPE-ERASED, which means they reduce to `Variant` in the actual runtime. all of the correctness heavywork is done by cranking static analysis up to the max. soon i intend to reify them, so correctness extends to runtime too.
-
-#### Class-level Generics
-
-declare a class level generic by stating it alongside the class_name identifier in your `class_name` declaration, wrapped in `[brackets]`
-
-```gdscript
-class_name Box[T]
-```
-
-and then use the generic parameter as a type anywhere in the class body:
-```gdscript
-class_name Box[T]
-
-var val: T
-
-func _init(arg: T) -> void:
-	arg = val
-```
-
-multiple parameters are also allowed in the declaration, as such:
-
-```gdscript
-class_name Result[T, E]
-```
-
-now, you can instance a Box by using the constructor as such:
-
-```gdscript
-func _ready() -> void:
-	var b := Box.new("waltuh...")
-```
-Static analysis magically infers that `b` is a `Box[String]`. Assigning `var x: Node = b.val` will give you a compile-time error. try it out!
-
-you can set an "upper bound" on the generics, which are type constraints placed on that generic.
-```gdscript
-class_name Box[T: Node3D]
-```
-now you can no longer pass Node2Ds into Box, as T only accepts Node3Ds and its children:
-```gdscript
-var b := Box.new(AnimatedSprite2D.new())
-#compile-time error!
-```
-
-to check if a generic is a certain concrete type, you can perform `if x is int:` style comparisons.
-```gdscript
-func balls(x: T) -> void:
-	if x is int: print(x)
-```
-
-!!however!! because generics are type-erased as of now, `if x is Box[int]` gets erased to `if x is Box` during the runtime. Please match on the actual value like such: `if x is Box and x.val is int` for now. Yes, this is a problem, and I will address this soon.
-
-#### Function-level generics
-
-to declare function-level generics, you can list them after the function name identifier in `[brackets]`:
-```gdscript
-func balls[U, V](input: U) -> V:
-```
-
-these generics are usually infered via arguments that are passed in automagically.
-
-however, in case you want to explicitly pass in the types for these generic parameters, you may use the
-turbobrick `::[]` for this. some of you might be familiar with a similar construct from a certain language.
-
-calling `balls()` with explicit types:
-```gdscript
-balls::[int, float](32)
-```
-
-in case your function only takes in only one function level generic, you may omit the `[brackets]`:
-```gdscript
-succ::int(32)
-```
-
-however, in 90% of cases, you will probably not need the turbobrick, as inference magics away the types for you.
-
-### exporting generics
-There are times when you'd rather want to export members set on a generic class. 
-
-Surely you've tried to do this:
-```gdscript
-class_name Box[T] extends Node
-@export var boxed: T
-#^^^^^^^^^^^^^^^^^^^ error!
-```
-The error will state that you cannot prove that T is a serialisable type and thus you cannot export T.
-
-To fulfill this, you **must set an upper bound** on T as something that is serialisable (a built-in, a Resource, a Node, or an enum, as Godot puts it).
-For an example:
-```gdscript
-class_name Box[T: Resource] extends Node
-               #  ^^^^^^^^^ since T must be a Resource, T is serialisable
-@export var boxed: T
-#no errors!
-```
-
-Now you can attach this script to a Node and make it active on the editor:
-```gdscript
-@export var box: Box[Shader] #summons an Export Box where you can fill in the value of boxed restricted to Shaders
-```
-This is a rather new feature, and I've tried my best to iron out any correctness bugs, but if you see any, please open issues!
-
-### full nested typing
-
-you remember how you could not make an `Array[Dictionary[StringName, Resource]]` in vanilla gdscript?
-the reins are unlocked and you can go batshit crazy with your type tetris now:
-
-```gdscript
-var x: Array[Dictionary[Node2D, Array[Dictionary[Resource, StringName]]]]
-#(please don't actually go that crazy for the sake of future you)
-```
-
-a caveat is that arrays/dicts that are typed to generics `[T]` don't have methods that take in `T`. they still want a `Variant` like in vanilla GDScript. of course, all these are planned to be addressed, but that's how it is for now.
-
-### completely optional braces{} based scoping
-
-This is now possible:
-```gdscript
-func _ready() -> void {
-	#your code goes here
-}
+git clone -b nvidia-dlss-physx https://github.com/Diginaat/godot.git godot-rtx
+cd godot-rtx
 ```
 
-However, funnily enough, **this is not supported**:
-```gdscript
-func _ready() -> void
-{
-	#your code
-}
-```
-this is because the `NEWLINE` token forces the parser into an ambiguous position that is very hard to solve without somehow breaking abstract functions. so just use KnR braces if you intend to use this feature lol
+### 3. Build the PhysX SDK
 
-oh, yeah! you can skip the `pass` keyword when using braces for empty blocks. this is completely legal:
-```gdscript
-func _ready() -> void {}
+The PhysX SDK is not included. A script clones NVIDIA's PhysX repository at a
+pinned version, applies the Godot build preset and patches, and builds it:
+
+```
+python modules/godot_physx/misc/build_physx.py --gpu --blast --flow
 ```
 
-A very unfortunate consequence of optional braces and then whitespace scoping being able to be mixed is that monstrous abominations straight out of Dante's Inferno are possible:
-```gdscript
-func _ready() -> void {
-	var x := 3
-	if x > 3 {
-		print("6")
-	} else:
-		print("7")
-}
+Leave out `--gpu` for a CPU-only build. `--blast` also builds the NVIDIA Blast
+SDK (destruction) and `--flow` NVIDIA Flow (smoke and fire); the release
+editors include both. The script prints the full SCons command for the next
+step, with the `physx_sdk=`, `blast_sdk=` and `flow_sdk=` paths. It clones
+into a `physx-sdk` folder next to this repository.
+
+### 4. Build the editor
+
+```
+python -m SCons platform=windows target=editor production=yes physx_sdk=<path from step 3> physx_gpu=yes blast_sdk=<path> flow_sdk=<path>
 ```
 
-have fuuun with that!
+- Run it from PowerShell or cmd, not Git Bash (SCons can't find the D3D12
+  dependencies there).
+- Leave out `blast_sdk` or `flow_sdk` to build without Blast or Flow.
+- Leave out `physx_gpu=yes` for a CPU-only PhysX build. Leave out `physx_sdk`
+  completely to build without PhysX.
+- The editor lands in `bin\godot.windows.editor.x86_64.exe`.
+  `PhysXGpu_64.dll` and the Blast and Flow DLLs are copied next to it
+  automatically.
 
-### Traits
-Traits are a feature that let you specify compile-time contracts of behaviour to either your own types or (as a form of ad-hoc polymorphism) apply them to Godot's existent types. This feature is extremely similar to what is known as 'interfaces' in other languages, and is heavily inspired by a certain other programming language's implementation of traits.
+### 5. Optional: add the NVIDIA Streamline DLLs (only for DLSS)
 
-**Traits cannot have generics applied on them yet.** This will be addressed soon.
+**Skip this step unless you want DLSS, Ray Reconstruction, Frame Generation or
+Reflex.** Everything else works without it.
 
-#### how to declare a trait
-you can only declare a trait in a new file. create a new gdscript file (a new extension is not required), and write `trait` followed by the name of the trait:
-```gdscript
-trait Rollable
+Streamline's runtime DLLs are not in this repository; NVIDIA distributes them
+in the Streamline SDK. This source is built against **Streamline SDK 2.10.0**
+(see `thirdparty/streamline/include/sl_version.h`).
+
+The easy way: in the editor, click **Get NVIDIA DLSS...** in the menu bar and
+follow the dialog. It does the steps below for you. To do them by hand:
+
+1. Download **Streamline SDK 2.10.0** from NVIDIA:
+   [github.com/NVIDIA-RTX/Streamline/releases/tag/v2.10.0](https://github.com/NVIDIA-RTX/Streamline/releases/tag/v2.10.0).
+   Product page: [developer.nvidia.com/rtx/streamline](https://developer.nvidia.com/rtx/streamline).
+2. From the SDK's `bin\x64` folder, copy these files into this repository's `bin\`
+   folder, next to the editor:
+   - `sl.interposer.dll` and the other `sl.*.dll` plugins,
+   - `nvngx_dlss.dll` (DLSS), `nvngx_dlssd.dll` (Ray Reconstruction),
+     `nvngx_dlssg.dll` (Frame Generation), `nvngx_deepdvc.dll`,
+   - `NvLowLatencyVk.dll` (Reflex on Vulkan),
+   - the license files (`nvngx_dlss.license.txt`, `reflex.license.txt`,
+     `nis.license.txt`).
+3. Use the **release** DLLs from `bin\x64`, not `bin\x64\development`. The
+   development DLLs are unsigned debug builds with an on-screen overlay. They're
+   for debugging only and must not be shipped.
+
+Without these DLLs the editor runs normally, including the path tracer and
+PhysX GPU. Only DLSS, Ray Reconstruction, Frame Generation and Reflex are
+unavailable.
+
+### 6. Optional: C# (.NET) editor
+
 ```
-you can then specify the "contract" associated with this trait, i.e, the required signature that a type implementing this trait must have:
-
-```gdscript
-trait Rollable
-
-func roll() -> void
-func is_rolling() -> bool
-```
-
-now any type that wants to implement this trait must necessarily implement a `roll()` method and a `is_rolling()` method, as was specified by the trait contract.
-
-
-#### how to implement a trait
-you can 'implement'(`impl`) a trait `for` a target type with this syntax: `impl TraitName for TargetType:`
-```gdscript
-class_name Balls
-
-impl Rollable for Balls:
-	func roll() -> void: print("ow")
-	func is_rolling() -> bool: return false
-```
-
-this allows you to call `x.roll()` on an `x` that is of the type `Balls`. 
-
-you can only implement a trait in:
-- the file that the trait is declared in, or
-- the target class' file that the trait targets
-
-you can target *any* type in the engine for a trait. 
-this quite literally means you can implement a trait for very commonly used built-in types, like `int`.
-
-as an example:
-```gdscript
-trait ExtInt
-func min(other: int) -> int
-
-impl ExtInt for int:
-	func min(other: int) -> int:
-		return mini(self, other)
-```
-this code grants any `int` the ability to call the method `min`:
-```gdscript
-func _ready() -> void:
-	print(3.min(2)) #prints 2
-```
-of course, you can use this to confer methods to anything in the engine, such as `String` or `Node`.
-
-#### trait bounds
-you can narrow the parameters that a function can accept by "bounding" its inputs or outputs by a trait using the `impl Trait` bound syntax:
-```gdscript
-func only_rollables[T: impl Rollable](x: T) -> T:
-```
-now this function accepts and returns any T that implements `Rollable`. multiple bounds can be described as such: `impl Rollable + ExtInt`.
-
-to have a variable that accepts any type that implements a trait:
-```gdscript
-var t: impl Rollable
-```
-this bounds `t` to only accepting values that `impl Rollable`.
-
-#### default methods
-you can implement default methods for traits to give any class implementing that trait the option to implement that method or not. if they don't, the default is used instead. the use cases for this are that you can use this to hack some duck-typed behaviour using `self`, or give the target access to a composed function that combines the functions that they implement.
-
-you can specify a default implementation by simply writing it as the  method signature's body:
-```gdscript
-trait Rollable
-func roll() -> void:
-	print(self, " is rolling")
-func is_rolling() -> bool
-```
-now a target need only implement `is_rolling()`, and `roll()` will be implemented by default for them.
-
-#### type tests
-you can test for traits at runtime using `is TraitName` as you would with `is` checks for classes.
-```gdscript
-func _on_body_entered(body: PhysicsBody2D) -> void:
-	if body is Rollable: body.roll()
+python -m SCons platform=windows target=editor production=yes module_mono_enabled=yes physx_sdk=<path> physx_gpu=yes blast_sdk=<path> flow_sdk=<path>
+bin\godot.windows.editor.x86_64.mono.console.exe --headless --generate-mono-glue modules\mono\glue
+python modules/mono/build_scripts/build_assemblies.py --godot-output-dir=./bin --godot-platform=windows
 ```
 
-#### impl shorthands
-for convenience, if you are implementing a trait in its trait file, you can omit the name of the trait in the `impl` block.
-```gdscript
-trait Rollable
-impl for Balls:
-	pass
+This produces `bin\godot.windows.editor.x86_64.mono.exe` and the
+`bin\GodotSharp` folder with the C# API assemblies.
+
+### 7. Optional: package a distributable zip
+
 ```
-this is the same as `impl Rollable for Balls`.
-
-similarly, you can omit the name of the type target that the trait is being implemented for (along with the `for` keyword) when you are implementing a trait for a class in its own class file.
-```gdscript
-class_name Balls
-impl Rollable:
-	pass
-```
-this is the same as `impl Rollable for Balls`, of course.
-
-#### static vs dynamic dispatch
-using a generic to bound a trait counts as static dispatch:
-```gdscript
-func thing[T: impl Rollable](y: T) -> void:
-	var x: T
-```
-this forces y and x to become the same type concrete in actual code. this is recommended over dynamic dispatch for performance reasons.
-
-however, using the `impl Rollable` itself as a type parameter results in it being counted as dynamic dispatch.
-```gdscript
-func thing(y: impl Rollable) -> void:
-	var x: impl Rollable
-```
-these are both dynamically dispatched types, so x and y are allowed to be different concrete types. it is more flexible but owing to dyn dispatch is less performant.
-
-i invite you to read the source in modules/gdscript/gdscript_trait_analyzer for a more thorough rundown on how this works. behind the hood, dynamic trait dispatch creates a hidden generic to facilitate passing generic args. of course, you can always ask me for implementation details too.
-
-### syntactical sugar
-
-#### fluent multiline chaining
-in vanilla gdscript, you needed `\` if you were chaining methods across multiple lines:
-```gdscript
-stage                          \
-  .query()                     \
-  .both_sides()                \
-  .and_then(draw_2)
+powershell -File misc/scripts/package_editor_win64.ps1          # standard editor
+powershell -File misc/scripts/package_editor_win64.ps1 -Mono    # .NET editor
 ```
 
-i have removed the need for this ugly `\`. you can now chain methods freely across multiple lines:
-```gdscript
-stage                          
-  .query()                     
-  .both_sides()                
-  .and_then(draw_2)
-```
-and things shall simply work.
+The zip goes to `dist\`. It contains the editor, `PhysXGpu_64.dll`, the Blast
+DLLs (`NvBlast*.dll`), the Flow DLLs (`nvflow.dll`, `nvflowext.dll`), the D3D12
+Agility SDK DLLs, all license files, a notice explaining where to get NVIDIA
+DLSS and, for .NET, the `GodotSharp` folder. It does **not** include NVIDIA's
+Streamline/DLSS runtime files, so it's safe to share. `-WithNvidiaRuntime`
+adds them for your own machines only; don't publish that zip (see
+[`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md)).
 
-#### optimisations
-Though not the express goal of Reginleif, performance is always good, so we take what we can get. Reginleif is faster than vanilla Godot, outperforming vanilla GDScript by 300-450% on pathological benchmarks and 30~% in a real game. These benchmarks can be ran for yourself in the /bench directory.
+## Using the features
 
-most people aren't really interested in the technical side of perf, so I'll keep this brief:
-- local variables in function calls now reuse previously used, and now assuredly free stack slots instead of naively allocating new ones. This can be turned off in the project settings.
-- compiler discarded away property access type info... the runtime had no idea what it was accessing and thus had to query classDB on every set/get. this info is now baked into the compile-time whenever sufficient type info is available, skipping a bunch of runtime bullshit. property set/get is now a lot faster!
-- small-ish functions on the same script/inheritance tree that are safe to inline are now inlined aggressively. This is a significant boost to speed, as it completely skips call overhead from several different layers of abstractions. Probably the single biggest boost to raw execution speed in this fork. This can be turned off in the project settings.
+- **DLSS** (needs the optional Streamline DLLs from step 5): Project Settings >
+  Rendering > Scaling 3D > Mode = DLSS. Pick a scale, for example 0.67 for
+  Quality.
+- **Path tracing:** use the Forward+ renderer with the Vulkan driver, add a
+  `WorldEnvironment`, and in its `Environment` enable **Pathtracing**. In
+  GDScript:
+  ```gdscript
+  var env: Environment = $WorldEnvironment.environment
+  env.pathtracing_enabled = true
+  env.pathtracing_samples_per_pixel = 1
+  env.pathtracing_max_bounces = 2
+  env.pathtracing_denoiser = 1  # DLSS Ray Reconstruction (needs step 5); 0 = none
+  ```
+- **PhysX:** Project Settings > Physics > 3D > Physics Engine = PhysX. GPU
+  dynamics start automatically on a CUDA-capable GPU; the log shows
+  `PhysX ... initialized [GPU]`. For ready-made scenes, open the
+  [PhysX example project](#try-the-physx-example-project).
 
-#### fun PRs that have been merged that aren't upstream
-Thanks to being a fork and not a transpiler or a gdextension, I have quite a bit of power, some power that I'll gladly let you experience for yourself, wink wink.
-I thank these contributors from upstream from the bottom of my heart for their work:
-- Hilderin's and ColinSORourke's PR-116368, `Fix Tool Script behaviors requiring restart`, has been merged, and will let you make toolscripts that just work on the go without needing you to restart the editor.
-- yahkr's PR-84018, `Add the ability to expose nodes for direct access in instantiated scenes`, lets you create 'exposed nodes', which are nodes that you can expose to the scene tree when their scene is instantiated. It's like the editable children feature, but much more scoped and powerful. Try it out, it makes for much better scene architecture!
-- ydeltastar's PR-99927, `Improve the material preview in the inspector` makes the 3D editor preview a lot better, actually showing what the object would look like in an environment.
+## Keeping it up to date
 
-This list will be snipped off as these PRs eventually get merged upstream.
+The fork tracks three upstreams. The update procedure, conflict rules and smoke
+tests are in [`CUSTOM_BUILD.md`](CUSTOM_BUILD.md). Its tables and examples use
+the maintainer's own local paths; replace them with yours.
 
-### This is a non standard, and experimental fork.
-Look, I'm just one unemployed college kid, alright? I'm human, I make mistakes, blah blah, this is the part where I tell you, hey, this fork is only actively used by like 10~ or so people. There COULD be bugs. I ask you report them, please. Sometimes there are periods when I go on for long periods without bugfixing or developing, and that's usually because I have either exams, a game jam or some other project of mine coming up.
+## Licenses
 
-I'm a game developer just like you. I make games all the time. Making games clashes with working on this project. Understandable, yeah? 
-Hopefully you like it too when the developer of an engine fork makes games with said fork himself?
+All components and their licenses are listed in
+[**`THIRD_PARTY_LICENSES.md`**](THIRD_PARTY_LICENSES.md). In short:
 
-## Backwards compat breaks
-There are none known so far that have not been fixed. Yay!
+- Godot Engine and this fork's changes: MIT, see [`LICENSE.txt`](LICENSE.txt)
+  and [`COPYRIGHT.txt`](COPYRIGHT.txt).
+- NVIDIA PhysX, Blast and Flow: BSD-3-Clause, see
+  [`modules/godot_physx/PHYSX-LICENSE.md`](modules/godot_physx/PHYSX-LICENSE.md)
+  and [`misc/dist/licenses/`](misc/dist/licenses/) (Blast also uses Boost and
+  V-HACD, licenses there too).
+- NVIDIA Streamline SDK headers: MIT, see
+  [`thirdparty/streamline/LICENSE.txt`](thirdparty/streamline/LICENSE.txt).
+- NVIDIA DLSS, Reflex and the Streamline runtime DLLs: **not included**.
+  They're under NVIDIA's own license terms, which come with the
+  [SDK download](https://github.com/NVIDIA-RTX/Streamline/releases/tag/v2.10.0).
+- Microsoft DirectX Agility SDK (`D3D12Core.dll`, `d3d12SDKLayers.dll`, in the
+  release zips only): Microsoft DirectX license, see
+  [`misc/dist/licenses/`](misc/dist/licenses/).
 
-## Motivation
-Why not contribute to Godot upstream itself? Well, I WANT to. But I have a few issues with that...
-
-0. GDScript dev team and I will probably never see eye-to-eye. We are solar systems apart with our philosophy towards languages. In what way, you ask? Ah, let me ramble a bit. I generally believe that beginner-friendliness should not come at the cost of correctness or large-scale scalability. The language should *let you grow.* I also think that this difference in interests is fine, that's what the magic of open source is. 
-1. I want traits, sum types, exhaustive matching, structs (and not in the "just make object leaner" way), PROPER ERROR HANDLING, tuples, stronger static guarantees, hell I'd even be delighted if GDScript dropped dynamic typing altogether, as I largely consider that to be a beginner trap. I am very glad that the Godot project is at least open-source, so that I may leech off of upstream and add my own changes. This project exists as a 'here you go!' for people who want the same rapid-iteration power GDScript is known for while allowing expression of stronger invariants, without bending knees to C#.
-2. Godot PR review is GLACIAL. By glacial I do mean INSANELY GLACIAL. New features take YEARS to be accepted. The dev team actually just hates it when you touch `core`. I won't pretend they're evil and do it just because they're lazy or something (cough cough Redot), they have very real reasons to take as much time as they take, Godot being the backbone of millions of indie gamedevs around. but obviously I'm unhappy with the pace, so I'll go ahead implementing some of these myself.
-3. I want the freedom to make mistakes with my PRs. Speaking of which...
-4. If I had a Rust dependency later on like Cranelift to enable JITs, I want a platform to be able to do that.
-5. I also just want to have fun adding silly little things! Professionalism is the antithesis of fun. I want the freedom to add a little life to the engine.
-6. Lastly, I have an amazing group of gamedev friends who have a vested interest in this specific project. 
-
-## Lmao why not c#
-because i don't wanna. if you want to, good! go ahead.
-
-## you should've waited for GDType/Big Core Rewrite/Godot 5/Weekly Steel Ball Run
-i don't wanna. i prioritise usability now. i'm not saying GDType and shit are bad, i'm saying i'm an impatient kid.
-
-### Let's be friends!
-Hey, if you liked my work, seriously, we can hang out! Let's be friends! Discord: monarch_zero
-
-## special thanks
-- the Free Will dev team, for stress-testing this fork
-- polanas, for lending me compute for compilation, and helping benchmark bottlenecks
-- Hannah (jmejuniper) for the awesome custom-built icon for this fork!
-- regulars in InboundShovel discord's godot channel for being awesome
-- regulars in the Godot discord's #gdscript-discuss channel for bouncing around ideas
-- godot upstream for getting me into gamedev in the first place
-- you!
+This fork is not affiliated with or endorsed by the Godot Foundation or
+NVIDIA. For general Godot documentation, see
+[docs.godotengine.org](https://docs.godotengine.org), and for the upstream
+project README, see
+[godotengine/godot](https://github.com/godotengine/godot#readme).

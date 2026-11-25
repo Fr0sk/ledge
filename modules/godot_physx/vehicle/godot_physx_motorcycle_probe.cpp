@@ -44,19 +44,6 @@ struct GodotPhysXMotorcycleProbe::Impl {
 	bool initialized = false;
 };
 
-// A probe is driven from a script at any time: whatever touches the PhysX scene runs where it may and is waited for
-// (see GodotPhysXServer3D::run_on_physics_thread()).
-template <typename F>
-static void _on_physics_thread(const F &p_func) {
-	GodotPhysXServer3D::run_on_physics_thread(p_func, true);
-}
-
-static PxTransform _pose_of(const PxRigidActor *p_actor) {
-	PxTransform pose;
-	_on_physics_thread([&]() { pose = p_actor->getGlobalPose(); });
-	return pose;
-}
-
 GodotPhysXMotorcycleProbe::GodotPhysXMotorcycleProbe() {
 	impl = memnew(Impl);
 }
@@ -64,10 +51,8 @@ GodotPhysXMotorcycleProbe::GodotPhysXMotorcycleProbe() {
 GodotPhysXMotorcycleProbe::~GodotPhysXMotorcycleProbe() {
 	if (impl) {
 		if (impl->initialized && impl->scene) {
-			_on_physics_thread([&]() {
-				impl->scene->removeActor(*impl->vehicle.physxActor.rigidBody);
-				impl->vehicle.destroy();
-			});
+			impl->scene->removeActor(*impl->vehicle.physxActor.rigidBody);
+			impl->vehicle.destroy();
 		}
 		memdelete(impl);
 	}
@@ -92,22 +77,20 @@ bool GodotPhysXMotorcycleProbe::initialize(RID p_space, const Vector3 &p_positio
 	cfg.front_wheel.position = Vector3(0.0f, 0.05f, 0.7f);
 	cfg.rear_wheel.position = Vector3(0.0f, 0.05f, -0.7f);
 
-	_on_physics_thread([&]() {
-		PxVehiclePhysXSimulationContext &out_context = impl->simulationContext;
-		if (!configure_vehicle2w(impl->vehicle, cfg, *physics, *scene, out_context)) {
-			return;
-		}
+	PxVehiclePhysXSimulationContext &out_context = impl->simulationContext;
+	if (!configure_vehicle2w(impl->vehicle, cfg, *physics, *scene, out_context)) {
+		return false;
+	}
 
-		Vehicle2W &v = impl->vehicle;
-		const PxTransform startPose(to_px(p_position), PxQuat(PxIdentity));
-		v.physxActor.rigidBody->setGlobalPose(startPose);
-		scene->addActor(*v.physxActor.rigidBody);
-		v.physxActor.rigidBody->setName("GodotPhysXMotorcycleProbe");
+	Vehicle2W &v = impl->vehicle;
+	const PxTransform startPose(to_px(p_position), PxQuat(PxIdentity));
+	v.physxActor.rigidBody->setGlobalPose(startPose);
+	scene->addActor(*v.physxActor.rigidBody);
+	v.physxActor.rigidBody->setName("GodotPhysXMotorcycleProbe");
 
-		impl->scene = scene;
-		impl->initialized = true;
-	});
-	return impl->initialized;
+	impl->scene = scene;
+	impl->initialized = true;
+	return true;
 }
 
 void GodotPhysXMotorcycleProbe::step(real_t p_dt, real_t p_throttle, real_t p_brake, real_t p_steer) {
@@ -117,21 +100,21 @@ void GodotPhysXMotorcycleProbe::step(real_t p_dt, real_t p_throttle, real_t p_br
 	v.commandState.brakes[0] = (PxReal)p_brake;
 	v.commandState.nbBrakes = 1;
 	v.commandState.steer = (PxReal)p_steer;
-	_on_physics_thread([&]() { v.step((PxReal)p_dt, impl->simulationContext); });
+	v.step((PxReal)p_dt, impl->simulationContext);
 }
 
 void GodotPhysXMotorcycleProbe::apply_torque_impulse(const Vector3 &p_impulse) {
 	ERR_FAIL_COND(!impl->initialized);
 	PxRigidDynamic *dynamic_body = impl->vehicle.physxActor.rigidBody->is<PxRigidDynamic>();
 	ERR_FAIL_NULL(dynamic_body);
-	_on_physics_thread([&]() { dynamic_body->addTorque(to_px(p_impulse), PxForceMode::eIMPULSE); });
+	dynamic_body->addTorque(to_px(p_impulse), PxForceMode::eIMPULSE);
 }
 
 void GodotPhysXMotorcycleProbe::set_angular_velocity(const Vector3 &p_angular_velocity) {
 	ERR_FAIL_COND(!impl->initialized);
 	PxRigidDynamic *dynamic_body = impl->vehicle.physxActor.rigidBody->is<PxRigidDynamic>();
 	ERR_FAIL_NULL(dynamic_body);
-	_on_physics_thread([&]() { dynamic_body->setAngularVelocity(to_px(p_angular_velocity)); });
+	dynamic_body->setAngularVelocity(to_px(p_angular_velocity));
 }
 
 Vector3 GodotPhysXMotorcycleProbe::get_position() const {
@@ -150,36 +133,35 @@ real_t GodotPhysXMotorcycleProbe::get_forward_speed() const {
 	// direction -- rotate it into world space by the actor's current
 	// orientation first (see PhysXVehicle3D::get_forward_speed()'s own
 	// comment for the real bug this was found from).
-	const PxTransform actor_pose = _pose_of(impl->vehicle.physxActor.rigidBody);
+	const PxTransform actor_pose = impl->vehicle.physxActor.rigidBody->getGlobalPose();
 	const PxVec3 fwd = actor_pose.q.rotate(impl->vehicle.frame.getLngAxis());
 	return (real_t)impl->vehicle.rigidBodyState.linearVelocity.dot(fwd);
 }
 
 Vector3 GodotPhysXMotorcycleProbe::get_up() const {
 	ERR_FAIL_COND_V(!impl->initialized, Vector3(0, 1, 0));
-	const PxTransform actor_pose = _pose_of(impl->vehicle.physxActor.rigidBody);
+	const PxTransform actor_pose = impl->vehicle.physxActor.rigidBody->getGlobalPose();
 	return to_godot(actor_pose.q.getBasisVector1());
 }
 
 Vector3 GodotPhysXMotorcycleProbe::get_forward() const {
-	ERR_FAIL_COND_V(!impl->initialized, Vector3(0, 0, 1));
-	const PxTransform actor_pose = _pose_of(impl->vehicle.physxActor.rigidBody);
-	// Forward is the local +Z axis (see configure_vehicle2w()): basis vector 2.
-	return to_godot(actor_pose.q.getBasisVector2());
+	ERR_FAIL_COND_V(!impl->initialized, Vector3(0, 0, -1));
+	const PxTransform actor_pose = impl->vehicle.physxActor.rigidBody->getGlobalPose();
+	// Godot forward is -Z, PxVehicleFrame::eNegZ (see configure_vehicle2w()) --
+	// basis vector 2 is the local Z axis, negate it.
+	return -to_godot(actor_pose.q.getBasisVector2());
 }
 
 Vector3 GodotPhysXMotorcycleProbe::get_angular_velocity() const {
 	ERR_FAIL_COND_V(!impl->initialized, Vector3());
 	PxRigidDynamic *dynamic_body = impl->vehicle.physxActor.rigidBody->is<PxRigidDynamic>();
 	ERR_FAIL_NULL_V(dynamic_body, Vector3());
-	Vector3 velocity;
-	_on_physics_thread([&]() { velocity = to_godot(dynamic_body->getAngularVelocity()); });
-	return velocity;
+	return to_godot(dynamic_body->getAngularVelocity());
 }
 
 real_t GodotPhysXMotorcycleProbe::get_roll_angle() const {
 	ERR_FAIL_COND_V(!impl->initialized, 0.0);
-	const PxTransform actor_pose = _pose_of(impl->vehicle.physxActor.rigidBody);
+	const PxTransform actor_pose = impl->vehicle.physxActor.rigidBody->getGlobalPose();
 	// right.y/up.y ratio isolates rotation about the forward axis regardless
 	// of yaw -- exact when pitch is small (always true here, the bike never
 	// pitches far from level), which is the practical case a lean controller
@@ -191,7 +173,7 @@ real_t GodotPhysXMotorcycleProbe::get_roll_angle() const {
 
 Vector3 GodotPhysXMotorcycleProbe::get_actor_position() const {
 	ERR_FAIL_COND_V(!impl->initialized, Vector3());
-	return to_godot(_pose_of(impl->vehicle.physxActor.rigidBody).p);
+	return to_godot(impl->vehicle.physxActor.rigidBody->getGlobalPose().p);
 }
 
 real_t GodotPhysXMotorcycleProbe::get_wheel_jounce(int p_wheel) const {

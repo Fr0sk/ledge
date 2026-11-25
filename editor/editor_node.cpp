@@ -146,6 +146,7 @@
 #include "editor/settings/editor_settings.h"
 #include "editor/settings/editor_settings_dialog.h"
 #include "editor/settings/project_settings_editor.h"
+#include "editor/settings/streamline_installer.h"
 #include "editor/shader/editor_native_shader_source_visualizer.h"
 #include "editor/shader/shader_editor_plugin.h"
 #include "editor/shader/shader_text_editor.h"
@@ -4019,6 +4020,11 @@ void EditorNode::_menu_option_confirm(int p_option, bool p_confirmed) {
 		case EDITOR_CONFIGURE_FBX_IMPORTER: {
 #if !defined(ANDROID_ENABLED) && !defined(WEB_ENABLED)
 			fbx_importer_manager->show_dialog();
+#endif
+		} break;
+		case EDITOR_INSTALL_STREAMLINE: {
+#if defined(WINDOWS_ENABLED) && defined(STREAMLINE_ENABLED)
+			streamline_installer->popup_installer();
 #endif
 		} break;
 		case EDITOR_MANAGE_FEATURE_PROFILES: {
@@ -8399,6 +8405,11 @@ void EditorNode::_build_settings_menu(bool p_dark_mode) {
 #if !defined(ANDROID_ENABLED) && !defined(WEB_ENABLED)
 	settings_menu->add_item(TTRC("Configure FBX Importer..."), EDITOR_CONFIGURE_FBX_IMPORTER);
 #endif
+#if defined(WINDOWS_ENABLED) && defined(STREAMLINE_ENABLED)
+	settings_menu->add_separator();
+	settings_menu->add_item(TTRC("Install NVIDIA DLSS (Streamline SDK)..."), EDITOR_INSTALL_STREAMLINE);
+	settings_menu->set_item_tooltip(-1, TTRC("Download NVIDIA's Streamline SDK and install its DLSS runtime DLLs next to the editor. Shows every step and asks you to accept NVIDIA's license first."));
+#endif
 }
 
 void EditorNode::_build_help_menu(bool p_dark_mode) {
@@ -8439,6 +8450,19 @@ void EditorNode::_build_help_menu(bool p_dark_mode) {
 void EditorNode::_add_to_main_menu(const String &p_name, PopupMenu *p_menu) {
 	p_menu->set_name(p_name);
 	main_menu_items.push_back(p_menu);
+}
+
+void EditorNode::_update_dlss_install_button() {
+	if (!dlss_install_button) {
+		return;
+	}
+	if (FileAccess::exists(OS::get_singleton()->get_executable_path().get_base_dir().path_join("sl.interposer.dll"))) {
+		dlss_install_button->set_text(TTRC("DLSS Setup"));
+		dlss_install_button->set_tooltip_text(TTRC("NVIDIA Streamline (DLSS) is installed next to the editor. Open the installer to check it or reinstall."));
+	} else {
+		dlss_install_button->set_text(TTRC("Get NVIDIA DLSS..."));
+		dlss_install_button->set_tooltip_text(TTRC("Download NVIDIA's Streamline SDK and install its DLSS runtime DLLs next to the editor. Shows every step and asks you to accept NVIDIA's license first."));
+	}
 }
 
 void EditorNode::_update_main_menu_type() {
@@ -8539,6 +8563,11 @@ void EditorNode::_update_main_menu_type() {
 		title_bar->move_child(main_menu_bar, left_menu_spacer ? left_menu_spacer->get_index() + 1 : 0);
 	}
 
+	if (dlss_install_button) {
+		Control *menu = main_menu_bar ? (Control *)main_menu_bar : (Control *)main_menu_button;
+		title_bar->move_child(dlss_install_button, menu->get_index() + 1);
+	}
+
 	// Show/hide project title.
 	if (project_title) {
 		project_title->set_visible(can_expand && menu_type == MENU_TYPE_GLOBAL);
@@ -8612,7 +8641,8 @@ HashMap<String, Variant> EditorNode::get_initial_settings() {
 	settings["gui/common/auto_focus_strategy"] = Control::AutoFocusStrategy::STRATEGY_BALLOON;
 	settings["input_devices/joypads/ignore_joypad_on_unfocused_application"] = true;
 	settings["physics/3d/physics_engine"] = PhysicsServer3DManager::JOLT_PHYSICS_NAME;
-	settings["rendering/rendering_device/driver.windows"] = "d3d12";
+	// Vulkan, not D3D12: the D3D12 driver has no ray tracing, so path tracing needs Vulkan.
+	settings["rendering/rendering_device/driver.windows"] = "vulkan";
 	settings["rendering/lights_and_shadows/multi_bounce_occlusion/enabled"] = true;
 	return settings;
 }
@@ -9222,6 +9252,11 @@ EditorNode::EditorNode() {
 	gui_base->add_child(fbx_importer_manager);
 #endif
 
+#if defined(WINDOWS_ENABLED) && defined(STREAMLINE_ENABLED)
+	streamline_installer = memnew(StreamlineInstaller);
+	gui_base->add_child(streamline_installer);
+#endif
+
 #ifndef ANDROID_ENABLED
 	android_sdk_manager = memnew(AndroidSDKManager);
 	gui_base->add_child(android_sdk_manager);
@@ -9372,6 +9407,19 @@ EditorNode::EditorNode() {
 	help_menu = memnew(PopupMenu);
 	help_menu->connect(SceneStringName(id_pressed), callable_mp(this, &EditorNode::_menu_option));
 	_add_to_main_menu(TTRC("Help"), help_menu);
+
+#if defined(WINDOWS_ENABLED) && defined(STREAMLINE_ENABLED)
+	// Shortcut to the DLSS installer, placed after the main menu by _update_main_menu_type().
+	dlss_install_button = memnew(Button);
+	dlss_install_button->set_theme_type_variation("MainMenuBar");
+	dlss_install_button->set_focus_mode(Control::FOCUS_NONE);
+	dlss_install_button->set_v_size_flags(Control::SIZE_SHRINK_CENTER);
+	dlss_install_button->connect(SceneStringName(pressed), callable_mp(this, &EditorNode::_menu_option).bind(EDITOR_INSTALL_STREAMLINE));
+	title_bar->add_child(dlss_install_button);
+	// The installer changes what's installed, so refresh the label when it closes.
+	streamline_installer->connect(SceneStringName(visibility_changed), callable_mp(this, &EditorNode::_update_dlss_install_button));
+	_update_dlss_install_button();
+#endif
 
 	_update_main_menu_type();
 
