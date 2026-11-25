@@ -52,8 +52,16 @@ public:
 	SafeFlag built;
 
 	static constexpr int MAX_CAPSULES = 64;
+	// Boxes follow the capsules in the same buffer, at a fixed offset (the
+	// shader's BOX_BASE): 32 floats each -- previous frame (centre, then the
+	// three half-axes, each scaled to its half extent), then this frame's.
+	static constexpr int MAX_BOXES = 32;
 
+	// The compute shader is made once, not per solver (= per cloth build): glslang's compile and the driver's shader
+	// creation took ~25 ms a build. The SPIR-V is shared; on the main device so are the shader and pipeline, freed by
+	// free_shared(). A solver on a local device makes its own from the shared SPIR-V (owns_shader).
 	RID shader, pipeline;
+	bool owns_shader = false;
 	RID buf_params, buf_rest, buf_skin_idx, buf_skin_w, buf_bones, buf_target, buf_target_prev;
 	RID buf_pos, buf_prev, buf_constraints, buf_tethers, buf_capsules, buf_adj_offsets, buf_adj_pairs;
 	RID tex_pos, tex_nrm;
@@ -73,10 +81,12 @@ public:
 	void rt_build(Ref<SkinnedClothSolverGPU> p_self, PackedFloat32Array p_rest, PackedFloat32Array p_rest_normals, PackedInt32Array p_skin_idx, PackedFloat32Array p_skin_w,
 			PackedFloat32Array p_constraints, PackedInt32Array p_batch_offsets, PackedFloat32Array p_tethers,
 			PackedInt32Array p_adj_offsets, PackedInt32Array p_adj_pairs, int p_bone_count);
-	void rt_step(Ref<SkinnedClothSolverGPU> p_self, PackedFloat32Array p_bones, PackedFloat32Array p_capsules, PackedFloat32Array p_params, int p_substeps);
+	void rt_step(Ref<SkinnedClothSolverGPU> p_self, PackedFloat32Array p_bones, PackedFloat32Array p_capsules, PackedFloat32Array p_boxes, PackedFloat32Array p_params, int p_substeps);
 	void rt_reset(Ref<SkinnedClothSolverGPU> p_self);
 	void rt_free_buffers();
 	void rt_free(Ref<SkinnedClothSolverGPU> p_self);
+
+	static void free_shared();
 
 	~SkinnedClothSolverGPU();
 };
@@ -90,6 +100,9 @@ public:
 		float stiffness = 0.9f; // 0..1, applied per constraint pass on top of each constraint's own stiffness
 		float damping = 0.02f; // fraction of velocity lost per second
 		Vector3 gravity = Vector3(0, -9.8f, 0);
+		Vector3 wind; // world-space air velocity (m/s); zero = no air pass
+		float drag = 1.0f;
+		float lift = 0.2f;
 		float thickness = 0.01f;
 		float tether_slack = 1.03f; // a particle may drift this far beyond its rest distance to its anchor
 		float tether_stiffness = 1.0f;
@@ -113,7 +126,9 @@ public:
 	// p_bones: 16 floats (column-major mat4) per skin bind, world space.
 	// p_capsules: 16 floats per capsule -- previous frame (a.xyz, ra, b.xyz,
 	// rb) then this frame's -- world space, blended across the substeps.
-	void step(const PackedFloat32Array &p_bones, const PackedFloat32Array &p_capsules, double p_delta, int p_substeps, const Settings &p_settings);
+	// p_boxes: 32 floats per box -- previous frame (centre.xyz, active (1 / 0),
+	// then the half-axes x, y, z, each a vec4 with w unused), then this frame's.
+	void step(const PackedFloat32Array &p_bones, const PackedFloat32Array &p_capsules, const PackedFloat32Array &p_boxes, double p_delta, int p_substeps, const Settings &p_settings);
 	void reset();
 
 	RID get_position_texture_rd_rid() const;

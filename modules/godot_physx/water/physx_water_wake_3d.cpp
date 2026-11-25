@@ -54,8 +54,12 @@ void PhysXWaterWake3D::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_border_damping"), &PhysXWaterWake3D::get_border_damping);
 	ClassDB::bind_method(D_METHOD("set_hull_length", "length"), &PhysXWaterWake3D::set_hull_length);
 	ClassDB::bind_method(D_METHOD("get_hull_length"), &PhysXWaterWake3D::get_hull_length);
+	ClassDB::bind_method(D_METHOD("set_hull_offset", "offset"), &PhysXWaterWake3D::set_hull_offset);
+	ClassDB::bind_method(D_METHOD("get_hull_offset"), &PhysXWaterWake3D::get_hull_offset);
 	ClassDB::bind_method(D_METHOD("set_hull_beam", "beam"), &PhysXWaterWake3D::set_hull_beam);
 	ClassDB::bind_method(D_METHOD("get_hull_beam"), &PhysXWaterWake3D::get_hull_beam);
+	ClassDB::bind_method(D_METHOD("set_hull_profile", "profile"), &PhysXWaterWake3D::set_hull_profile);
+	ClassDB::bind_method(D_METHOD("get_hull_profile"), &PhysXWaterWake3D::get_hull_profile);
 	ClassDB::bind_method(D_METHOD("set_source_count", "count"), &PhysXWaterWake3D::set_source_count);
 	ClassDB::bind_method(D_METHOD("get_source_count"), &PhysXWaterWake3D::get_source_count);
 	ClassDB::bind_method(D_METHOD("set_rest_depth", "depth"), &PhysXWaterWake3D::set_rest_depth);
@@ -70,6 +74,10 @@ void PhysXWaterWake3D::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_bow_foam"), &PhysXWaterWake3D::get_bow_foam);
 	ClassDB::bind_method(D_METHOD("set_propeller_foam", "foam"), &PhysXWaterWake3D::set_propeller_foam);
 	ClassDB::bind_method(D_METHOD("get_propeller_foam"), &PhysXWaterWake3D::get_propeller_foam);
+	ClassDB::bind_method(D_METHOD("set_propeller_thrust", "thrust"), &PhysXWaterWake3D::set_propeller_thrust);
+	ClassDB::bind_method(D_METHOD("get_propeller_thrust"), &PhysXWaterWake3D::get_propeller_thrust);
+	ClassDB::bind_method(D_METHOD("set_propeller_position", "position"), &PhysXWaterWake3D::set_propeller_position);
+	ClassDB::bind_method(D_METHOD("get_propeller_position"), &PhysXWaterWake3D::get_propeller_position);
 	ClassDB::bind_method(D_METHOD("set_foam_persistence", "seconds"), &PhysXWaterWake3D::set_foam_persistence);
 	ClassDB::bind_method(D_METHOD("get_foam_persistence"), &PhysXWaterWake3D::get_foam_persistence);
 	ClassDB::bind_method(D_METHOD("set_foam_slope", "slope"), &PhysXWaterWake3D::set_foam_slope);
@@ -94,13 +102,17 @@ void PhysXWaterWake3D::_bind_methods() {
 	ADD_GROUP("Foam", "");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "bow_foam", PROPERTY_HINT_RANGE, "0,20,0.01,or_greater"), "set_bow_foam", "get_bow_foam");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "propeller_foam", PROPERTY_HINT_RANGE, "0,5,0.01"), "set_propeller_foam", "get_propeller_foam");
+	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "propeller_thrust", PROPERTY_HINT_RANGE, "0,1,0.01"), "set_propeller_thrust", "get_propeller_thrust");
+	ADD_PROPERTY(PropertyInfo(Variant::VECTOR3, "propeller_position", PROPERTY_HINT_NONE, "suffix:m"), "set_propeller_position", "get_propeller_position");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "foam_persistence", PROPERTY_HINT_RANGE, "0.05,30,0.05,suffix:s"), "set_foam_persistence", "get_foam_persistence");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "foam_slope", PROPERTY_HINT_RANGE, "0,2,0.01"), "set_foam_slope", "get_foam_slope");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "foam_slope_gain", PROPERTY_HINT_RANGE, "0,20,0.01"), "set_foam_slope_gain", "get_foam_slope_gain");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "foam_spread", PROPERTY_HINT_RANGE, "0,10,0.01,suffix:m/s"), "set_foam_spread", "get_foam_spread");
 	ADD_GROUP("Hull", "");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "hull_length", PROPERTY_HINT_RANGE, "0,100,0.01,or_greater,suffix:m"), "set_hull_length", "get_hull_length");
+	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "hull_offset", PROPERTY_HINT_RANGE, "-50,50,0.01,or_greater,or_less,suffix:m"), "set_hull_offset", "get_hull_offset");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "hull_beam", PROPERTY_HINT_RANGE, "0,30,0.01,or_greater,suffix:m"), "set_hull_beam", "get_hull_beam");
+	ADD_PROPERTY(PropertyInfo(Variant::PACKED_FLOAT32_ARRAY, "hull_profile"), "set_hull_profile", "get_hull_profile");
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "source_count", PROPERTY_HINT_RANGE, vformat("1,%d,1", MAX_KEEL_SOURCES)), "set_source_count", "get_source_count");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "rest_depth", PROPERTY_HINT_RANGE, "0,1,0.001,suffix:m"), "set_rest_depth", "get_rest_depth");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "wake_depth", PROPERTY_HINT_RANGE, "0,3,0.001,suffix:m"), "set_wake_depth", "get_wake_depth");
@@ -171,7 +183,7 @@ void PhysXWaterWake3D::_build() {
 	}
 	length = hull_length > 0.0f ? hull_length : MAX(zmax - zmin, 0.5f);
 	beam = hull_beam > 0.0f ? hull_beam : MAX(xmax * 2.0f, 0.3f);
-	bow_z = hull_length > 0.0f ? length * 0.5f : zmax;
+	bow_z = hull_length > 0.0f ? length * 0.5f + hull_offset : zmax;
 
 	solver = memnew(WaterWakeSolver);
 	if (!solver->is_available()) {
@@ -186,6 +198,17 @@ void PhysXWaterWake3D::_build() {
 	if (slot < 0) {
 		WARN_PRINT("PhysXWaterWake3D: the water surface already draws its maximum of 4 wakes; this one is simulated but not shown.");
 	}
+}
+
+// The hull's half-beam fraction at `p_t` along it (0 bow, 1 stern) -- 1 with no profile (a box).
+float PhysXWaterWake3D::_profile_at(float p_t) const {
+	if (hull_profile.size() != 8) {
+		return 1.0f;
+	}
+	const float u = CLAMP(p_t, 0.0f, 1.0f) * 7.0f;
+	const int i0 = (int)Math::floor(u);
+	const int i1 = MIN(i0 + 1, 7);
+	return Math::lerp(hull_profile[i0], hull_profile[i1], u - (float)i0);
 }
 
 void PhysXWaterWake3D::_physics_step(double p_delta) {
@@ -213,7 +236,7 @@ void PhysXWaterWake3D::_physics_step(double p_delta) {
 		const Vector3 p = bow - fwd * (length * t);
 		WaterWakeSolver::Source s;
 		s.world_xz = Vector2(p.x, p.z);
-		s.radius = beam * Math::lerp(0.45f, 0.6f, t);
+		s.radius = beam * Math::lerp(0.45f, 0.6f, t) * MAX(_profile_at(t), 0.25f); // (narrower where the hull is)
 		s.depth = depth * Math::lerp(1.0f, 0.55f, t);
 		sources.push_back(s);
 	}
@@ -222,17 +245,24 @@ void PhysXWaterWake3D::_physics_step(double p_delta) {
 	for (int i = 0; i < body->get_child_count() && boat == nullptr; i++) {
 		boat = Object::cast_to<PhysXBoat3D>(body->get_child(i));
 	}
-	if (boat != nullptr && boat->get_max_thrust() > 0.0f && propeller_foam > 0.0f) {
-		const float churn = Math::abs(boat->get_applied_thrust()) / boat->get_max_thrust();
-		if (churn > 0.0f) {
-			const Vector3 prop = xf.xform(boat->get_propeller_position()) - fwd * 0.6f;
-			WaterWakeSolver::Source s;
-			s.world_xz = Vector2(prop.x, prop.z);
-			s.radius = MAX(beam * 0.35f, 0.25f);
-			s.depth = 0.0f;
-			s.foam = propeller_foam * churn;
-			sources.push_back(s);
+	// The stronger of a script's thrust and a sibling boat's.
+	float churn = propeller_thrust;
+	Vector3 prop_local = propeller_position;
+	if (boat != nullptr && boat->get_max_thrust() > 0.0f) {
+		const float boat_churn = Math::abs(boat->get_applied_thrust()) / boat->get_max_thrust();
+		if (boat_churn > churn) {
+			churn = boat_churn;
+			prop_local = boat->get_propeller_position();
 		}
+	}
+	if (churn > 0.0f && propeller_foam > 0.0f) {
+		const Vector3 prop = xf.xform(prop_local) - fwd * 0.6f;
+		WaterWakeSolver::Source s;
+		s.world_xz = Vector2(prop.x, prop.z);
+		s.radius = MAX(beam * 0.35f, 0.25f);
+		s.depth = 0.0f;
+		s.foam = propeller_foam * churn;
+		sources.push_back(s);
 	}
 	// Foam other nodes added (landing spray, splashes).
 	for (const WaterWakeSolver::Source &f : pending_foam) {
@@ -249,7 +279,7 @@ void PhysXWaterWake3D::_physics_step(double p_delta) {
 	const Vector2 center = Vector2(xf.origin.x, xf.origin.z) - heading * (size * 0.25f);
 	const Vector3 stern = bow - fwd * length;
 	solver->step(p_delta, center, sources, wave_speed, damping, border_damping, border_cells, foam_persistence, foam_slope, foam_slope_gain,
-			Vector2(bow.x, bow.z), Vector2(stern.x, stern.z), foam_spread * MIN(speed_frac, 1.0f), MAX(beam * 3.0f, 2.0f), beam * 0.5f, bow_foam * speed_frac * in_water);
+			Vector2(bow.x, bow.z), Vector2(stern.x, stern.z), foam_spread * MIN(speed_frac, 1.0f), MAX(beam * 3.0f, 2.0f), beam * 0.5f, bow_foam * speed_frac * in_water, hull_profile);
 	if (slot >= 0) {
 		const Vector2 o = solver->get_origin();
 		water->set_wake_slot(slot, height_texture, Vector4(o.x, o.y, solver->get_size(), shore_grid_fade));

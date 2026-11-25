@@ -39,7 +39,9 @@
 
 #include <PxPhysicsAPI.h>
 #include <cooking/PxCooking.h>
+#include <extensions/PxDefaultStreams.h>
 #include <float.h>
+#include <foundation/PxPhysicsVersion.h>
 #include <geometry/PxHeightField.h>
 #include <geometry/PxHeightFieldDesc.h>
 #include <geometry/PxHeightFieldSample.h>
@@ -71,6 +73,20 @@ GodotPhysXShape3D::~GodotPhysXShape3D() {
 	_release_meshes();
 }
 
+void GodotPhysXShape3D::remove_owner(GodotPhysXBody3D *p_body) {
+	HashMap<GodotPhysXBody3D *, int>::Iterator it = body_owners.find(p_body);
+	if (it && --it->value <= 0) {
+		body_owners.remove(it);
+	}
+}
+
+void GodotPhysXShape3D::remove_owner(GodotPhysXArea3D *p_area) {
+	HashMap<GodotPhysXArea3D *, int>::Iterator it = area_owners.find(p_area);
+	if (it && --it->value <= 0) {
+		area_owners.remove(it);
+	}
+}
+
 void GodotPhysXShape3D::_release_meshes() {
 	if (convex_mesh) {
 		convex_mesh->release();
@@ -84,6 +100,60 @@ void GodotPhysXShape3D::_release_meshes() {
 		height_field->release();
 		height_field = nullptr;
 	}
+}
+
+// The cooking input for a convex hull from points, the same whether it's cooked now or ahead of time.
+static void _convex_cooking_input(const Vector<Vector3> &p_points, LocalVector<PxVec3> &r_px_points, PxConvexMeshDesc &r_desc, PxCookingParams &r_params) {
+	r_px_points.resize(p_points.size());
+	for (int i = 0; i < p_points.size(); i++) {
+		r_px_points[i] = to_px(p_points[i]);
+	}
+	r_desc.points.count = r_px_points.size();
+	r_desc.points.stride = sizeof(PxVec3);
+	r_desc.points.data = r_px_points.ptr();
+	r_desc.flags = PxConvexFlag::eCOMPUTE_CONVEX | PxConvexFlag::eDISABLE_MESH_VALIDATION | PxConvexFlag::eFAST_INERTIA_COMPUTATION;
+#ifdef GODOT_PHYSX_GPU
+	r_params.buildGPUData = true; // required for GPU dynamics to collide against the mesh
+#endif
+}
+
+PackedByteArray GodotPhysXShape3D::cook_convex(const Vector<Vector3> &p_points) {
+	PxPhysics *physics = GodotPhysXServer3D::get_singleton() ? GodotPhysXServer3D::get_singleton()->get_px_physics() : nullptr;
+	ERR_FAIL_NULL_V(physics, PackedByteArray());
+	if (p_points.size() < 4) {
+		return PackedByteArray();
+	}
+	LocalVector<PxVec3> px_points;
+	PxConvexMeshDesc desc;
+	PxCookingParams params(physics->getTolerancesScale());
+	_convex_cooking_input(p_points, px_points, desc, params);
+	PxDefaultMemoryOutputStream output;
+	if (!PxCookConvexMesh(params, desc, output)) {
+		return PackedByteArray();
+	}
+	PackedByteArray bytes;
+	bytes.resize(output.getSize());
+	memcpy(bytes.ptrw(), output.getData(), output.getSize());
+	return bytes;
+}
+
+String GodotPhysXShape3D::cooked_convex_format() {
+#ifdef GODOT_PHYSX_GPU
+	const char *gpu = " gpu";
+#else
+	const char *gpu = "";
+#endif
+	return vformat("PhysX %d.%d.%d%s", PX_PHYSICS_VERSION_MAJOR, PX_PHYSICS_VERSION_MINOR, PX_PHYSICS_VERSION_BUGFIX, gpu);
+}
+
+bool GodotPhysXShape3D::can_load_cooked_convex(const String &p_format) {
+	const String version = vformat("PhysX %d.%d.%d", PX_PHYSICS_VERSION_MAJOR, PX_PHYSICS_VERSION_MINOR, PX_PHYSICS_VERSION_BUGFIX);
+#ifdef GODOT_PHYSX_GPU
+	return p_format == version + " gpu";
+#else
+	// Hulls with GPU data work without it too.
+	return p_format == version || p_format == version + " gpu";
+#endif
 }
 
 int GodotPhysXShape3D::source_face_index(uint32_t p_cooked_index, bool &r_back) const {
@@ -100,7 +170,13 @@ int GodotPhysXShape3D::source_face_index(uint32_t p_cooked_index, bool &r_back) 
 	return (int)source;
 }
 
-void GodotPhysXShape3D::set_data(const Variant &p_data) {
+bool GodotPhysXShape3D::set_data(const Variant &p_data) {
+	// Godot sends a shape's data again when none of it changed: in debug builds CollisionShape3D::set_shape() gives
+	// the shape its debug colour, and that resends the data. The same faces, heights or points cook to the same mesh,
+	// so keep the one already cooked rather than paying for the cook twice.
+	if ((geom_valid || type == PS3DE::SHAPE_SEPARATION_RAY) && data.get_type() == p_data.get_type() && data == p_data) {
+		return false;
+	}
 	data = p_data;
 	geom_valid = false;
 	geom = GodotPhysXShapeGeometry();
@@ -110,7 +186,7 @@ void GodotPhysXShape3D::set_data(const Variant &p_data) {
 	switch (type) {
 		case PS3DE::SHAPE_SPHERE: {
 			const real_t radius = p_data;
-			ERR_FAIL_COND(radius <= 0.0);
+			ERR_FAIL_COND_V(radius <= 0.0, true);
 			geom.type = PxGeometryType::eSPHERE;
 			geom.sphere = PxSphereGeometry((PxReal)radius);
 			geom_valid = true;
@@ -118,7 +194,7 @@ void GodotPhysXShape3D::set_data(const Variant &p_data) {
 
 		case PS3DE::SHAPE_BOX: {
 			const Vector3 half_extents = p_data;
-			ERR_FAIL_COND(half_extents.x <= 0.0 || half_extents.y <= 0.0 || half_extents.z <= 0.0);
+			ERR_FAIL_COND_V(half_extents.x <= 0.0 || half_extents.y <= 0.0 || half_extents.z <= 0.0, true);
 			geom.type = PxGeometryType::eBOX;
 			geom.box = PxBoxGeometry(to_px(half_extents));
 			geom_valid = true;
@@ -126,10 +202,10 @@ void GodotPhysXShape3D::set_data(const Variant &p_data) {
 
 		case PS3DE::SHAPE_CAPSULE: {
 			const Dictionary d = p_data;
-			ERR_FAIL_COND(!d.has("radius") || !d.has("height"));
+			ERR_FAIL_COND_V(!d.has("radius") || !d.has("height"), true);
 			const real_t radius = d["radius"];
 			const real_t height = d["height"];
-			ERR_FAIL_COND(radius <= 0.0 || height <= 0.0);
+			ERR_FAIL_COND_V(radius <= 0.0 || height <= 0.0, true);
 			// Godot capsule height is the full height including both hemispheres
 			// and its axis is +Y. PhysX capsules use a cylinder half-height
 			// (excluding caps) with a +X axis, so rotate -90 deg about Z.
@@ -152,31 +228,36 @@ void GodotPhysXShape3D::set_data(const Variant &p_data) {
 		} break;
 
 		case PS3DE::SHAPE_CONVEX_POLYGON: {
-			const Vector<Vector3> points = p_data;
-			ERR_FAIL_COND(points.size() < 4);
-			PxPhysics *physics = GodotPhysXServer3D::get_singleton() ? GodotPhysXServer3D::get_singleton()->get_px_physics() : nullptr;
-			ERR_FAIL_NULL(physics);
-
-			LocalVector<PxVec3> px_points;
-			px_points.resize(points.size());
-			for (int i = 0; i < points.size(); i++) {
-				px_points[i] = to_px(points[i]);
+			// Points, or {"points", "cooked"} from cook_convex().
+			Vector<Vector3> points;
+			PackedByteArray cooked;
+			if (p_data.get_type() == Variant::DICTIONARY) {
+				const Dictionary d = p_data;
+				points = d.get("points", Vector<Vector3>());
+				cooked = d.get("cooked", PackedByteArray());
+				data = points;
+			} else {
+				points = p_data;
 			}
+			ERR_FAIL_COND_V(points.size() < 4, true);
+			PxPhysics *physics = GodotPhysXServer3D::get_singleton() ? GodotPhysXServer3D::get_singleton()->get_px_physics() : nullptr;
+			ERR_FAIL_NULL_V(physics, true);
 
-			PxConvexMeshDesc desc;
-			desc.points.count = px_points.size();
-			desc.points.stride = sizeof(PxVec3);
-			desc.points.data = px_points.ptr();
-			desc.flags = PxConvexFlag::eCOMPUTE_CONVEX | PxConvexFlag::eDISABLE_MESH_VALIDATION | PxConvexFlag::eFAST_INERTIA_COMPUTATION;
-
-			PxCookingParams params(physics->getTolerancesScale());
-#ifdef GODOT_PHYSX_GPU
-			params.buildGPUData = true; // required for GPU dynamics to collide against the mesh
-#endif
 			_release_meshes();
-			PxConvexMeshCookingResult::Enum cvx_result = PxConvexMeshCookingResult::eSUCCESS;
-			convex_mesh = PxCreateConvexMesh(params, desc, *PxGetStandaloneInsertionCallback(), &cvx_result);
-			ERR_FAIL_NULL_MSG(convex_mesh, vformat("PhysX: convex hull cooking failed (result %d).", (int)cvx_result));
+			if (!cooked.is_empty()) {
+				// PhysX checks the stream's own header and refuses one it can't read: then the points are cooked.
+				PxDefaultMemoryInputData input(const_cast<PxU8 *>(cooked.ptr()), cooked.size());
+				convex_mesh = physics->createConvexMesh(input);
+			}
+			if (!convex_mesh) {
+				LocalVector<PxVec3> px_points;
+				PxConvexMeshDesc desc;
+				PxCookingParams params(physics->getTolerancesScale());
+				_convex_cooking_input(points, px_points, desc, params);
+				PxConvexMeshCookingResult::Enum cvx_result = PxConvexMeshCookingResult::eSUCCESS;
+				convex_mesh = PxCreateConvexMesh(params, desc, *PxGetStandaloneInsertionCallback(), &cvx_result);
+				ERR_FAIL_NULL_V_MSG(convex_mesh, true, vformat("PhysX: convex hull cooking failed (result %d).", (int)cvx_result));
+			}
 			geom.type = PxGeometryType::eCONVEXMESH;
 			geom.convex = PxConvexMeshGeometry(convex_mesh);
 			geom_valid = true;
@@ -191,9 +272,9 @@ void GodotPhysXShape3D::set_data(const Variant &p_data) {
 			} else {
 				faces = p_data;
 			}
-			ERR_FAIL_COND(faces.size() < 3 || faces.size() % 3 != 0);
+			ERR_FAIL_COND_V(faces.size() < 3 || faces.size() % 3 != 0, true);
 			PxPhysics *physics = GodotPhysXServer3D::get_singleton() ? GodotPhysXServer3D::get_singleton()->get_px_physics() : nullptr;
-			ERR_FAIL_NULL(physics);
+			ERR_FAIL_NULL_V(physics, true);
 
 			const int tri_count = faces.size() / 3;
 			// Back faces on: a flipped copy of every triangle after the
@@ -238,7 +319,7 @@ void GodotPhysXShape3D::set_data(const Variant &p_data) {
 			_release_meshes();
 			PxTriangleMeshCookingResult::Enum tri_result = PxTriangleMeshCookingResult::eSUCCESS;
 			triangle_mesh = PxCreateTriangleMesh(params, desc, *PxGetStandaloneInsertionCallback(), &tri_result);
-			ERR_FAIL_NULL_MSG(triangle_mesh, vformat("PhysX: triangle mesh cooking failed (result %d, %d tris).", (int)tri_result, tri_count));
+			ERR_FAIL_NULL_V_MSG(triangle_mesh, true, vformat("PhysX: triangle mesh cooking failed (result %d, %d tris).", (int)tri_result, tri_count));
 			print_verbose(vformat("PhysX: cooked triangle mesh (%d tris, result %d).", tri_count, (int)tri_result));
 			geom.type = PxGeometryType::eTRIANGLEMESH;
 			geom.trimesh = PxTriangleMeshGeometry(triangle_mesh);
@@ -248,12 +329,12 @@ void GodotPhysXShape3D::set_data(const Variant &p_data) {
 		case PS3DE::SHAPE_CYLINDER: {
 			// PhysX has no native cylinder; approximate with a convex prism.
 			const Dictionary d = p_data;
-			ERR_FAIL_COND(!d.has("radius") || !d.has("height"));
+			ERR_FAIL_COND_V(!d.has("radius") || !d.has("height"), true);
 			const real_t radius = d["radius"];
 			const real_t half_h = (real_t)d["height"] * 0.5;
-			ERR_FAIL_COND(radius <= 0.0 || half_h <= 0.0);
+			ERR_FAIL_COND_V(radius <= 0.0 || half_h <= 0.0, true);
 			PxPhysics *physics = GodotPhysXServer3D::get_singleton() ? GodotPhysXServer3D::get_singleton()->get_px_physics() : nullptr;
-			ERR_FAIL_NULL(physics);
+			ERR_FAIL_NULL_V(physics, true);
 
 			const int sides = 16;
 			LocalVector<PxVec3> pts;
@@ -278,7 +359,7 @@ void GodotPhysXShape3D::set_data(const Variant &p_data) {
 #endif
 			_release_meshes();
 			convex_mesh = PxCreateConvexMesh(params, desc, *PxGetStandaloneInsertionCallback());
-			ERR_FAIL_NULL_MSG(convex_mesh, "PhysX: cylinder (convex) cooking failed.");
+			ERR_FAIL_NULL_V_MSG(convex_mesh, true, "PhysX: cylinder (convex) cooking failed.");
 			geom.type = PxGeometryType::eCONVEXMESH;
 			geom.convex = PxConvexMeshGeometry(convex_mesh);
 			geom_valid = true;
@@ -286,22 +367,30 @@ void GodotPhysXShape3D::set_data(const Variant &p_data) {
 
 		case PS3DE::SHAPE_HEIGHTMAP: {
 			const Dictionary d = p_data;
-			ERR_FAIL_COND(!d.has("width") || !d.has("depth") || !d.has("heights"));
+			ERR_FAIL_COND_V(!d.has("width") || !d.has("depth") || !d.has("heights"), true);
 			const int width = d["width"]; // samples along X
 			const int depth = d["depth"]; // samples along Z
 			const Vector<real_t> heights = d["heights"];
-			ERR_FAIL_COND_MSG(width < 2 || depth < 2, "PhysX: height map must be at least 2x2.");
-			ERR_FAIL_COND_MSG(heights.size() != width * depth,
+			ERR_FAIL_COND_V_MSG(width < 2 || depth < 2, true, "PhysX: height map must be at least 2x2.");
+			ERR_FAIL_COND_V_MSG(heights.size() != width * depth, true,
 					vformat("PhysX: height map has %d samples, expected width*depth = %d.", heights.size(), width * depth));
 
+			const real_t *h_ptr = heights.ptr();
 			real_t min_h = d.get("min_height", 0.0);
 			real_t max_h = d.get("max_height", 0.0);
-			if (min_h >= max_h) { // stale/unset -> derive from the data
+			// Stale/unset -> derive from the data. HeightMapShape3D sends NaN for both when its first sample is a hole.
+			if (!(min_h < max_h)) {
 				min_h = FLT_MAX;
 				max_h = -FLT_MAX;
 				for (int i = 0; i < heights.size(); i++) {
-					min_h = MIN(min_h, heights[i]);
-					max_h = MAX(max_h, heights[i]);
+					if (!Math::is_nan(h_ptr[i])) {
+						min_h = MIN(min_h, h_ptr[i]);
+						max_h = MAX(max_h, h_ptr[i]);
+					}
+				}
+				if (min_h > max_h) { // all holes
+					min_h = 0.0;
+					max_h = 0.0;
 				}
 			}
 			// PhysX samples are PxI16. Map [min_h, max_h] onto the full signed
@@ -315,15 +404,48 @@ void GodotPhysXShape3D::set_data(const Variant &p_data) {
 			// PhysX sample(row, col) = samples[row * nbColumns + col], at local
 			// position (row * rowScale, height * heightScale, col * columnScale).
 			// row = x, col = z; the shape's local pose centers and flips it.
+			bool any_hole = false;
 			for (int z = 0; z < depth; z++) {
 				for (int x = 0; x < width; x++) {
-					const float h = (float)heights[z * width + x];
-					int q = (int)Math::round((h - (float)min_h) * inv_scale) - 32768;
-					q = CLAMP(q, -32768, 32767);
+					const float h = (float)h_ptr[z * width + x];
+					int q;
+					if (Math::is_nan(h)) {
+						q = -32768;
+						any_hole = true;
+					} else {
+						q = CLAMP((int)Math::round((h - (float)min_h) * inv_scale) - 32768, -32768, 32767);
+					}
 					PxHeightFieldSample &s = samples[(uint32_t)(x * depth + z)];
 					s.height = (PxI16)q;
 					s.materialIndex0 = 0;
 					s.materialIndex1 = 0;
+				}
+			}
+			// A NaN height is a hole (Jolt's rule): every triangle with a NaN corner is left out. The sample at
+			// (x, z) carries the materials of its cell's two triangles, which (tess flag off) are
+			// 0: (x, z) (x, z+1) (x+1, z) and 1: (x+1, z+1) (x+1, z) (x, z+1).
+			if (any_hole) {
+				auto mark = [&](int p_x, int p_z, bool p_first, bool p_second) {
+					if (p_x >= 0 && p_z >= 0 && p_x < width - 1 && p_z < depth - 1) {
+						PxHeightFieldSample &s = samples[(uint32_t)(p_x * depth + p_z)];
+						if (p_first) {
+							s.materialIndex0 = PxHeightFieldMaterial::eHOLE;
+						}
+						if (p_second) {
+							s.materialIndex1 = PxHeightFieldMaterial::eHOLE;
+						}
+					}
+				};
+				for (int z = 0; z < depth; z++) {
+					for (int x = 0; x < width; x++) {
+						if (Math::is_nan(h_ptr[z * width + x])) {
+							// The four cells around the sample, and which of their triangles have it as a corner.
+							mark(x, z, true, false);
+							mark(x - 1, z, true, true);
+							mark(x, z - 1, true, true);
+							mark(x - 1, z - 1, false, true);
+						}
+					}
 				}
 			}
 
@@ -336,7 +458,7 @@ void GodotPhysXShape3D::set_data(const Variant &p_data) {
 
 			_release_meshes();
 			height_field = PxCreateHeightField(hf_desc, *PxGetStandaloneInsertionCallback());
-			ERR_FAIL_NULL_MSG(height_field, "PhysX: height field cooking failed.");
+			ERR_FAIL_NULL_V_MSG(height_field, true, "PhysX: height field cooking failed.");
 
 			geom.type = PxGeometryType::eHEIGHTFIELD;
 			geom.heightfield = PxHeightFieldGeometry(height_field, PxMeshGeometryFlags(), height_scale, 1.0f, 1.0f);
@@ -363,6 +485,7 @@ void GodotPhysXShape3D::set_data(const Variant &p_data) {
 			WARN_PRINT_ONCE(vformat("PhysX: shape type %d not implemented; treated as no collision.", (int)type));
 		} break;
 	}
+	return true;
 }
 
 GodotPhysXShape3D::ScaledGeometry GodotPhysXShape3D::scaled_geometry(const Vector3 &p_scale) const {

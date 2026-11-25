@@ -30,9 +30,14 @@
 
 #pragma once
 
+#include "godot_physx_vehicle_control.h"
+#include "physx_vehicle_engine_settings.h"
+
 #include "core/math/vector3.h"
 #include "core/templates/local_vector.h"
 #include "scene/3d/node_3d.h"
+#include "scene/resources/curve.h"
+#include "scene/resources/physics_material.h"
 
 class PhysXVehicleWheel3D;
 
@@ -72,6 +77,12 @@ public:
 		CENTER_OF_MASS_MODE_AUTO,
 		CENTER_OF_MASS_MODE_CUSTOM,
 	};
+	// Engine drive: how the engine's torque is shared between the traction wheels. OPEN: evenly, whatever each wheel
+	// does. LIMITED_SLIP: torque moves away from a wheel spinning faster than its partner (limited_slip_*).
+	enum Differential {
+		DIFFERENTIAL_OPEN,
+		DIFFERENTIAL_LIMITED_SLIP,
+	};
 
 protected:
 	static void _bind_methods();
@@ -93,6 +104,24 @@ public:
 
 	void set_max_engine_torque(real_t p_v);
 	real_t get_max_engine_torque() const { return max_engine_torque; }
+
+	PHYSX_VEHICLE_ENGINE_DECLARE()
+	void set_differential(Differential p_differential);
+	Differential get_differential() const { return differential; }
+	void set_limited_slip_front_bias(real_t p_v);
+	real_t get_limited_slip_front_bias() const { return limited_slip_front_bias; }
+	void set_limited_slip_front_target(real_t p_v);
+	real_t get_limited_slip_front_target() const { return limited_slip_front_target; }
+	void set_limited_slip_rear_bias(real_t p_v);
+	real_t get_limited_slip_rear_bias() const { return limited_slip_rear_bias; }
+	void set_limited_slip_rear_target(real_t p_v);
+	real_t get_limited_slip_rear_target() const { return limited_slip_rear_target; }
+	void set_limited_slip_center_bias(real_t p_v);
+	real_t get_limited_slip_center_bias() const { return limited_slip_center_bias; }
+	void set_limited_slip_center_target(real_t p_v);
+	real_t get_limited_slip_center_target() const { return limited_slip_center_target; }
+	void set_limited_slip_rate(real_t p_v);
+	real_t get_limited_slip_rate() const { return limited_slip_rate; }
 	void set_max_brake_torque(real_t p_v);
 	real_t get_max_brake_torque() const { return max_brake_torque; }
 	void set_max_steer_angle(real_t p_v);
@@ -103,6 +132,9 @@ public:
 	real_t get_front_anti_roll_stiffness() const { return front_anti_roll_stiffness; }
 	void set_rear_anti_roll_stiffness(real_t p_v);
 	real_t get_rear_anti_roll_stiffness() const { return rear_anti_roll_stiffness; }
+	// Where the tires push the chassis: 0 at the suspension mount (default), 1 at the contact patch.
+	void set_tire_force_point(real_t p_v);
+	real_t get_tire_force_point() const { return tire_force_point; }
 
 	// Runtime control inputs, same convention as PxVehicleCommandState: throttle/
 	// brake in [0,1], steer in [-1,1]. Set every tick from script, same pattern
@@ -113,6 +145,9 @@ public:
 	real_t get_throttle() const { return throttle; }
 	void set_brake(real_t p_v) { brake = p_v; }
 	real_t get_brake() const { return brake; }
+	// The rear wheel(s) only, on top of brake: a parking brake, or a slide.
+	void set_handbrake(real_t p_v) { handbrake = p_v; }
+	real_t get_handbrake() const { return handbrake; }
 	void set_steer(real_t p_v) { steer = p_v; }
 	real_t get_steer() const { return steer; }
 	// Direct-drive has no gearbox, just a fixed forward/neutral/reverse
@@ -122,14 +157,21 @@ public:
 	// tuning value.
 	void set_reverse(bool p_v) { reverse = p_v; }
 	bool is_reverse() const { return reverse; }
-
 	void set_collision_layer(uint32_t p_layer);
 	uint32_t get_collision_layer() const { return collision_layer; }
 	void set_collision_mask(uint32_t p_mask);
 	uint32_t get_collision_mask() const { return collision_mask; }
 
+	// The chassis box's contact material (friction / rough / bounce / absorbent); null = friction 0.5, bounce 0.1.
+	// Edited live in place, no rebuild. The wheels' grip is the tire model's, not this.
+	void set_physics_material_override(const Ref<PhysicsMaterial> &p_material);
+	Ref<PhysicsMaterial> get_physics_material_override() const { return physics_material_override; }
+
 	Vector3 get_linear_velocity() const;
+	PHYSX_VEHICLE_CONTROL_DECLARE()
 	real_t get_forward_speed() const;
+	// World-space forward: the chassis's local +Z, as VehicleBody3D (Vector3.MODEL_FRONT).
+	Vector3 get_forward() const;
 
 	// Diagnostics -- see GodotPhysXVehicleProbe's own identical methods for
 	// what these mean. wheel index here matches this node's own `wheels`
@@ -151,18 +193,29 @@ private:
 	Vector3 center_of_mass;
 	bool can_sleep = true;
 	real_t max_engine_torque = 700.0f;
+	Differential differential = DIFFERENTIAL_OPEN;
+	real_t limited_slip_front_bias = 1.3f;
+	real_t limited_slip_front_target = 1.29f;
+	real_t limited_slip_rear_bias = 1.3f;
+	real_t limited_slip_rear_target = 1.29f;
+	real_t limited_slip_center_bias = 1.3f;
+	real_t limited_slip_center_target = 1.29f;
+	real_t limited_slip_rate = 10.0f;
 	real_t max_brake_torque = 6000.0f;
 	real_t max_steer_angle = 0.6f;
 	real_t ackermann_strength = 1.0f;
 	real_t front_anti_roll_stiffness = 0.0f;
 	real_t rear_anti_roll_stiffness = 0.0f;
+	real_t tire_force_point = 0.0f;
 
 	real_t throttle = 0.0f;
 	real_t brake = 0.0f;
+	real_t handbrake = 0.0f;
 	real_t steer = 0.0f;
 	bool reverse = false;
 	uint32_t collision_layer = 1;
 	uint32_t collision_mask = 1;
+	Ref<PhysicsMaterial> physics_material_override;
 
 	// Opaque pointer to the real PxVehicle2 composition (kept out of this
 	// header so nothing outside physx_vehicle_3d.cpp needs vehicle/PxVehicleAPI.h).
@@ -175,8 +228,12 @@ private:
 	// later" convention GodotPhysXBody3D's own shape/mode-change path already
 	// uses. No-op if not yet built.
 	void _rebuild_if_live();
+	void _chassis_material(real_t &r_friction, real_t &r_bounce) const;
+	void _chassis_material_changed();
 	bool _build();
 	void _destroy();
 };
 
 VARIANT_ENUM_CAST(PhysXVehicle3D::CenterOfMassMode);
+VARIANT_ENUM_CAST(PhysXVehicle3D::Drivetrain);
+VARIANT_ENUM_CAST(PhysXVehicle3D::Differential);

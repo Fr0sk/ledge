@@ -83,6 +83,19 @@ public:
 		NORMAL_MODE_PER_VERTEX,
 	};
 
+	// When the surface advances: every physics tick (each tick posts the whole GPU step -- ripple solve, FFT, blits,
+	// foam, readbacks), or once per rendered frame for all of that frame's ticks (the ripple layer still sub-steps
+	// per tick with each tick's bodies; the rest runs once with the summed dt -- see WaterSolverGPU::rt_step).
+	enum StepMode {
+		STEP_MODE_PER_TICK,
+		STEP_MODE_PER_FRAME,
+	};
+	void set_step_mode(StepMode p_mode);
+	StepMode get_step_mode() const { return step_mode; }
+	void set_ripple_rest_threshold(float p_threshold);
+	float get_ripple_rest_threshold() const { return ripple_rest_threshold; }
+	bool is_ripple_resting() const { return solver.is_ripple_resting(); }
+
 	void set_domain_size(Vector2 p_size);
 	Vector2 get_domain_size() const { return domain_size; }
 	void set_grid_resolution(int p_n);
@@ -106,6 +119,9 @@ public:
 	Vector2 get_wind_direction() const { return wind_direction; }
 	void set_wave_amplitude(float p_amp);
 	float get_wave_amplitude() const { return wave_amplitude; }
+	// Extra room around the surface before it is culled, for a material displacing it further than the waves.
+	void set_cull_margin(float p_margin);
+	float get_cull_margin() const { return cull_margin; }
 	// How far the wind has blown over open water, in meters (JONSWAP): sets
 	// how tall and long the wind waves get. 0 = auto: the surface_mesh
 	// footprint's longest side for enclosed water, a fully developed open sea
@@ -139,6 +155,12 @@ public:
 	// from the seabed) leave a foamy sheet at the waterline. 0 = none.
 	void set_shore_foam_band(float p_depth);
 	float get_shore_foam_band() const { return shore_foam_band; }
+	void set_open_sea_beyond(bool p_open);
+	// Wind / direction / height / fetch at once — ONE in-place spectrum update (no rebuild once built).
+	void set_sea_state(float p_wind_speed, Vector2 p_wind_direction, float p_wave_amplitude, float p_fetch);
+	void recenter(Vector3 p_world_position);
+	void remeasure_seabed();
+	bool get_open_sea_beyond() const { return open_sea_beyond; }
 	// Shore foam moves with the water: each crest pushes it up the beach and
 	// the backwash drags it back out, plus this steady seaward undertow (m/s)
 	// that slides it back into the water over time.
@@ -218,6 +240,11 @@ public:
 	// The same, leaving out one wake (a boat's buoyancy reading the water
 	// under it shouldn't sink into its own wake's dip).
 	float sample_height_excluding_wake(Vector3 p_world_pos, ObjectID p_wake) const;
+	// Script-side: the wake as a node (null leaves nothing out).
+	float _sample_height_excluding_wake_bind(Vector3 p_world_pos, Object *p_wake) const;
+	// How fast the ripple + ocean surface rises (m/s, negative falling) above a point, from the last two readbacks.
+	// Wakes are left out. 0 over dry cells and until two readbacks have landed.
+	float sample_vertical_speed(Vector3 p_world_pos) const;
 	// Moving wake grids (PhysXWaterWake3D): up to MAX_WAKES are drawn and
 	// sampled. register_wake() returns a slot (-1 when full).
 	static constexpr int MAX_WAKES = 4;
@@ -235,6 +262,9 @@ public:
 
 private:
 	WaterSolver solver;
+	StepMode step_mode = STEP_MODE_PER_TICK;
+	float ripple_rest_threshold = 0.0f;
+	bool water_time_dirty = false; // per-frame mode: water_time advanced since the material last got it
 	// NOT cached from immediately after configure() -- configure() dispatches
 	// asynchronously (a render-thread post, see water_solver.h), so
 	// solver.is_available() only flips true a frame or two later. _update()
@@ -253,6 +283,7 @@ private:
 	float wind_speed = 8.0f;
 	Vector2 wind_direction = Vector2(1, 0);
 	float wave_amplitude = 1.0f;
+	float cull_margin = 0.0f;
 	float fetch = 0.0f;
 	float render_extent = 0.0f;
 	double water_time = 0.0; // shader clock (water_time), advanced only in a running game
@@ -262,6 +293,10 @@ private:
 	float foam_threshold = 0.7f;
 	float foam_persistence = 2.5f;
 	float shore_foam_band = 0.5f;
+	// Open water past the simulated square (render_extent > domain, no surface_mesh): true = it is open, deep sea
+	// everywhere past the square (full chop, wet, never lifted onto the ground) -- for a sea whose ripple square
+	// follows a focus that may sit over land; false = the square's edge seabed carries on outward (a beach scene).
+	bool open_sea_beyond = false;
 	float shore_undertow = 0.3f;
 	float swash_run_up = 0.3f;
 	float swash_drain_speed = 0.12f;
@@ -294,10 +329,12 @@ private:
 	// Seabed rays need the floor in the physics space, so with
 	// seabed_from_floor the solver is configured on the first physics tick.
 	bool seabed_pending = false;
+	bool seabed_remeasure_pending = false; // remeasure_seabed(): rays on the next tick, then in place
 	Ref<ShaderMaterial> water_material;
 	ObjectID wakes[MAX_WAKES];
 	Vector2 mesh_offset; // see _update_mesh_offset()
 	void _update_mesh_offset();
+	void _update_cull_box();
 	Ref<Texture2DRD> ripple_height_tex;
 	Ref<Texture2DRD> ocean_height_tex;
 	Ref<Texture2DRD> ocean_fade_tex;
@@ -316,7 +353,7 @@ private:
 	// of drawing with freed textures.
 	void _detach_textures();
 
-	bool caustics_enabled = true;
+	bool caustics_enabled = false; // off by default: a draw pass every frame, only worth it over a visible floor
 	Vector3 caustics_sun_direction = Vector3(-0.35f, -1.0f, -0.25f);
 	float caustics_reference_depth = 2.5f;
 
@@ -328,6 +365,18 @@ private:
 	Vector<float> cached_ocean_dz;
 	int cached_ocean_n = 0;
 	Vector2 cached_ocean_domain;
+	// The readback before the cached one, and when each was read: sample_vertical_speed().
+	double cached_ripple_time = 0.0;
+	double cached_ocean_time = 0.0;
+	Vector<float> previous_ripple_height;
+	Vector<float> previous_ocean_height;
+	Vector<float> previous_ocean_dx;
+	Vector<float> previous_ocean_dz;
+	double previous_ripple_time = 0.0;
+	double previous_ocean_time = 0.0;
+	float _ripple_height_at(const Vector<float> &p_height, float p_x, float p_z) const;
+	float _ocean_fade_at(float p_x, float p_z) const;
+	float _ocean_height_at(const Vector<float> &p_height, const Vector<float> &p_dx, const Vector<float> &p_dz, float p_x, float p_z, float p_fade) const;
 
 	int frames_since_refresh = 0;
 	// CPU cache refresh for sample_height() only -- rendering is unthrottled/automatic via the zero-copy textures.
@@ -340,6 +389,7 @@ private:
 	// Footprint triangles of surface_mesh in node-local XZ (degenerates dropped).
 	Vector<Vector2> _collect_footprint() const;
 	void _configure_solver();
+	void _reinit_spectrum();
 	// Casts the seabed rays; fills cell_depth.
 	void _sample_seabed();
 	static PackedByteArray _rasterize_wet_mask(const Vector<Vector2> &p_tris, Vector2 p_center, Vector2 p_domain, int p_n);
@@ -349,7 +399,9 @@ private:
 	Ref<Mesh> _build_footprint_mesh(const Vector<Vector2> &p_tris, const Rect2 &p_bounds, int p_cells) const;
 	void _bind_textures();
 	void _refresh_cpu_cache();
-	void _update(double p_delta);
+	void _update(double p_delta); // one physics tick
+	void _frame_update(); // per-frame mode: the frame's ticks in one step
+	void _after_step();
 	// p_repeat: wrap around instead of clamping at the edge (the FFT ocean is
 	// periodic).
 	float _bilinear_sample(const Vector<float> &p_grid, int p_n, Vector2 p_domain, float p_world_x, float p_world_z, bool p_repeat = false) const;
@@ -360,3 +412,4 @@ private:
 };
 
 VARIANT_ENUM_CAST(PhysXWaterSurface3D::NormalMode);
+VARIANT_ENUM_CAST(PhysXWaterSurface3D::StepMode);

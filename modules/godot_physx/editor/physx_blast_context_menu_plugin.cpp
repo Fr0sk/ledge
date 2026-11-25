@@ -45,11 +45,15 @@
 
 void PhysXBlastFractureMenuPlugin::get_options(const OptionsData &p_data) {
 	if (target_slot == CONTEXT_SLOT_SCENE_TREE) {
-		const Array nodes = p_data.get("selected_nodes", Array());
+		Node *edited_scene = EditorNode::get_singleton()->get_edited_scene();
+		if (!edited_scene) {
+			return;
+		}
+		const TypedArray<Node> nodes = p_data.get("selected_nodes", TypedArray<Node>());
 		if (nodes.size() != 1) {
 			return;
 		}
-		MeshInstance3D *mi = Object::cast_to<MeshInstance3D>(nodes[0].get_validated_object());
+		MeshInstance3D *mi = Object::cast_to<MeshInstance3D>(nodes[0]);
 		if (!mi || mi->get_mesh().is_null()) {
 			return;
 		}
@@ -59,7 +63,8 @@ void PhysXBlastFractureMenuPlugin::get_options(const OptionsData &p_data) {
 		if (paths.size() != 1) {
 			return;
 		}
-		const String type = ResourceLoader::get_resource_type(paths[0]);
+		const String &path = paths[0];
+		const String type = ResourceLoader::get_resource_type(path);
 		if (type.is_empty() || !ClassDB::is_parent_class(type, "Mesh")) {
 			return;
 		}
@@ -67,19 +72,19 @@ void PhysXBlastFractureMenuPlugin::get_options(const OptionsData &p_data) {
 	}
 }
 
-void PhysXBlastFractureMenuPlugin::_on_scene_tree_option(const Dictionary &p_data) {
-	const Array nodes = p_data.get("selected_nodes", Array());
+void PhysXBlastFractureMenuPlugin::_on_scene_tree_option(const OptionsData &p_data) {
+	const TypedArray<Node> nodes = p_data.get("selected_nodes", TypedArray<Node>());
 	if (nodes.is_empty()) {
 		return;
 	}
-	Node *node = Object::cast_to<Node>(nodes[0].get_validated_object());
+	Node *node = Object::cast_to<Node>((Object *)nodes[0]);
 	if (!node || !dialog) {
 		return;
 	}
 	dialog->open_for_node(node);
 }
 
-void PhysXBlastFractureMenuPlugin::_on_filesystem_option(const Dictionary &p_data) {
+void PhysXBlastFractureMenuPlugin::_on_filesystem_option(const OptionsData &p_data) {
 	const PackedStringArray paths = p_data.get("selected_files", PackedStringArray());
 	if (paths.is_empty() || !dialog) {
 		return;

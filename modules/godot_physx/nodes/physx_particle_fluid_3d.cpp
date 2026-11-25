@@ -34,19 +34,24 @@
 #include "../objects/godot_physx_particle_fluid_3d.h"
 #include "../particles/mpm_fluid_solver.h"
 #include "physx_chunk_emitter_3d.h"
+#include "physx_fluid_render_effect.h"
 
 #include "core/config/engine.h"
 #include "core/config/project_settings.h"
 #include "core/object/class_db.h"
 #include "core/templates/hash_map.h"
+#include "scene/3d/gpu_particles_collision_3d.h"
 #include "scene/3d/physics/animatable_body_3d.h"
 #include "scene/3d/physics/collision_object_3d.h"
 #include "scene/3d/physics/collision_shape_3d.h"
 #include "scene/3d/physics/rigid_body_3d.h"
 #include "scene/3d/physics/static_body_3d.h"
+#include "scene/main/scene_tree.h"
 #include "scene/main/viewport.h"
+#include "scene/main/window.h"
 #include "scene/resources/3d/box_shape_3d.h"
 #include "scene/resources/3d/capsule_shape_3d.h"
+#include "scene/resources/3d/cylinder_shape_3d.h"
 #include "scene/resources/3d/primitive_meshes.h"
 #include "scene/resources/3d/sphere_shape_3d.h"
 #include "scene/resources/3d/world_3d.h"
@@ -127,6 +132,7 @@ void PhysXParticleFluid3D::_mpm_configure(bool p_prefill) {
 	s.substeps = mpm_substeps;
 	s.stiffness = mpm_stiffness;
 	s.viscosity = viscosity;
+	s.gravity = Vector3(0, -9.8f, 0) * gravity_scale;
 	s.domain = mpm_domain_size;
 	s.spawn_region = spawn_region_size;
 	s.granular = _is_granular();
@@ -166,11 +172,41 @@ void PhysXParticleFluid3D::_mpm_configure(bool p_prefill) {
 	}
 }
 
-// Resolve a node to an analytic MPM collider. Accepts a CollisionShape3D
-// directly, or a CollisionObject3D (uses its first shape). Sphere, box, capsule
-// and infinite-plane map exactly; anything else falls back to a bounding sphere.
-static bool resolve_mpm_collider(Node3D *p_node, MPMFluidSolver::Collider &out) {
+// Resolve a node to an MPM collider. Accepts a CollisionShape3D directly, a
+// CollisionObject3D (uses its first shape), or a GPUParticlesCollisionSDF3D with a
+// baked texture. Sphere, box, capsule, cylinder and infinite-plane map exactly; anything else
+// falls back to a bounding sphere (see mpm_collider_issue).
+static bool resolve_mpm_collider(Node3D *p_node, MPMFluidSolver &p_solver, MPMFluidSolver::Collider &out) {
 	out.velocity = Vector3();
+
+	if (const GPUParticlesCollisionSDF3D *baked = Object::cast_to<GPUParticlesCollisionSDF3D>(p_node)) {
+		const Ref<Texture3D> texture = baked->get_texture();
+		if (texture.is_null()) {
+			return false;
+		}
+		// The bake fits whole voxels from the box's negative corner, so a box that doesn't divide
+		// evenly isn't quite filled: place the field where its voxels really are.
+		const Vector3 size = baked->get_size();
+		const float voxel = size[size.max_axis_index()] / (float)MAX(texture->get_width(), MAX(texture->get_height(), texture->get_depth()));
+		Vector3i voxels;
+		bool hollow = false;
+		out.baked_offset = p_solver.get_baked_field(texture, voxel, voxels, hollow);
+		if (out.baked_offset < 0) {
+			return false;
+		}
+		if (hollow && voxel * baked->get_thickness() < p_solver.get_cell_size()) {
+			WARN_PRINT_ONCE("MPM fluid: a GPUParticlesCollisionSDF3D holds a hollow mesh whose walls are baked thinner than the fluid's grid cell (2 x particle_size), so fluid leaks through them. Raise its thickness or lower its resolution, and bake it again.");
+		}
+		const Vector3 filled = Vector3(voxels) * voxel;
+		const Transform3D baked_xf = baked->get_global_transform();
+		const Vector3 baked_scale = baked_xf.basis.get_scale().abs();
+		out.shape = MPMFluidSolver::COLLIDER_BAKED;
+		out.position = baked_xf.xform((filled - size) * 0.5f);
+		out.rotation = baked_xf.basis.get_rotation_quaternion();
+		out.extents = filled * 0.5f * baked_scale;
+		out.baked_scale = (baked_scale.x + baked_scale.y + baked_scale.z) / 3.0f;
+		return true;
+	}
 
 	Ref<Shape3D> shape;
 	Transform3D xf = p_node->get_global_transform();
@@ -214,6 +250,12 @@ static bool resolve_mpm_collider(Node3D *p_node, MPMFluidSolver::Collider &out) 
 		out.extents = Vector3(MAX(r, 0.01f), half_h, 0);
 		return true;
 	}
+	Ref<CylinderShape3D> cyl = shape;
+	if (cyl.is_valid()) {
+		out.shape = MPMFluidSolver::COLLIDER_CYLINDER;
+		out.extents = Vector3(MAX(cyl->get_radius() * MAX(scale.x, scale.z), 0.01f), MAX(cyl->get_height() * 0.5f * scale.y, 0.01f), 0);
+		return true;
+	}
 	Ref<WorldBoundaryShape3D> wb = shape;
 	if (wb.is_valid()) {
 		const Plane p = xf.xform(wb->get_plane());
@@ -236,6 +278,43 @@ static bool resolve_mpm_collider(Node3D *p_node, MPMFluidSolver::Collider &out) 
 	out.position = xf.origin;
 	out.extents = Vector3(MAX(radius * uniform_scale, 0.01f), 0, 0);
 	return true;
+}
+
+// What's wrong with listing a node in mpm_colliders, for the node's warnings.
+static String mpm_collider_issue(Node *p_node) {
+	if (Object::cast_to<PhysXChunkEmitter3D>(p_node) != nullptr) {
+		return String();
+	}
+	if (const GPUParticlesCollisionSDF3D *baked = Object::cast_to<GPUParticlesCollisionSDF3D>(p_node)) {
+		return baked->get_texture().is_valid() ? String() : RTR("it has no baked texture yet, so it's ignored. Select it and press Bake SDF.");
+	}
+
+	Ref<Shape3D> shape;
+	int shape_count = 0;
+	if (const CollisionShape3D *cshape = Object::cast_to<CollisionShape3D>(p_node)) {
+		shape = cshape->get_shape();
+	} else if (CollisionObject3D *co = Object::cast_to<CollisionObject3D>(p_node)) {
+		List<uint32_t> owners;
+		co->get_shape_owners(&owners);
+		for (uint32_t owner : owners) {
+			const int count = co->shape_owner_get_shape_count(owner);
+			if (count > 0 && shape.is_null()) {
+				shape = co->shape_owner_get_shape(owner, 0);
+			}
+			shape_count += count;
+		}
+	}
+
+	const bool exact = Object::cast_to<SphereShape3D>(shape.ptr()) != nullptr || Object::cast_to<BoxShape3D>(shape.ptr()) != nullptr ||
+			Object::cast_to<CapsuleShape3D>(shape.ptr()) != nullptr || Object::cast_to<CylinderShape3D>(shape.ptr()) != nullptr ||
+			Object::cast_to<WorldBoundaryShape3D>(shape.ptr()) != nullptr;
+	if (!exact) {
+		return RTR("only sphere, box, capsule, cylinder and world boundary shapes are supported, so it collides as a rough sphere. For a mesh, bake a GPUParticlesCollisionSDF3D around it and list that instead.");
+	}
+	if (shape_count > 1) {
+		return RTR("only its first shape collides. List each of its CollisionShape3D nodes instead.");
+	}
+	return String();
 }
 
 // Where a fed MPM collider came from, so the fluid's reaction impulse can be
@@ -271,7 +350,7 @@ void PhysXParticleFluid3D::_mpm_step(double p_delta) {
 			continue; // expanded below, once the fixed colliders are counted
 		}
 		MPMFluidSolver::Collider c;
-		if (!resolve_mpm_collider(n, c)) {
+		if (!resolve_mpm_collider(n, *mpm, c)) {
 			continue;
 		}
 
@@ -331,7 +410,7 @@ void PhysXParticleFluid3D::_mpm_step(double p_delta) {
 					continue; // already fed from the explicit list
 				}
 				MPMFluidSolver::Collider c;
-				if (!resolve_mpm_collider(n, c)) {
+				if (!resolve_mpm_collider(n, *mpm, c)) {
 					continue;
 				}
 				RigidBody3D *rb = Object::cast_to<RigidBody3D>(n);
@@ -402,7 +481,7 @@ void PhysXParticleFluid3D::_mpm_step(double p_delta) {
 	// look continuous, not track every substep, so re-mesh it every 3rd step
 	// (~20 Hz) and let the sim run full-rate underneath.
 	static const uint32_t SURFACE_EVERY = 3;
-	const bool want_surface = surface_mesh && array_mesh.is_valid() && !_is_granular() && (_mpm_surface_tick++ % SURFACE_EVERY == 0);
+	const bool want_surface = _iso() && array_mesh.is_valid() && !_is_granular() && (_mpm_surface_tick++ % SURFACE_EVERY == 0);
 
 	if (mpm->get_particle_count() == 0) {
 		// Emit mode, nothing spawned yet.
@@ -499,7 +578,7 @@ void PhysXParticleFluid3D::_mpm_step(double p_delta) {
 		rs->multimesh_set_visible_instances(multimesh, 0);
 		return;
 	}
-	if (surface_mesh) {
+	if (_iso()) {
 		// Surface path, but this step's re-mesh was skipped for cost -- keep the
 		// mesh from the last update and don't fall through to the sphere buffer.
 		rs->multimesh_set_visible_instances(multimesh, 0);
@@ -515,6 +594,11 @@ void PhysXParticleFluid3D::_mpm_step(double p_delta) {
 	const int n = mpm->get_particle_count();
 	const int cap = mpm->get_capacity();
 	if (buffer.size() < cap * 12) {
+		return;
+	}
+	if (screen_space && !_is_granular()) {
+		_screen_space_publish(buffer.ptr(), n);
+		rs->multimesh_set_visible_instances(multimesh, 0);
 		return;
 	}
 	rs->multimesh_set_buffer(multimesh, buffer);
@@ -563,7 +647,7 @@ void PhysXParticleFluid3D::_make_fluid() {
 		rs->instance_geometry_set_material_override(particle_instance, particle_override_mat.is_valid() ? particle_override_mat->get_rid() : RID());
 		_apply_gi_mode(particle_instance);
 
-		if (surface_mesh) {
+		if (_iso()) {
 			// Marching-tetrahedra mesh over the solver's density grid, drawn with a
 			// translucent water material. The particle MultiMesh stays hidden.
 			array_mesh = rs->mesh_create();
@@ -671,7 +755,7 @@ void PhysXParticleFluid3D::_make_fluid() {
 	// GPU isosurface mesh path: PhysX marching-cubes a triangle mesh we draw as
 	// an ArrayMesh with an ordinary water material. Granular grains render as the
 	// sphere MultiMesh -- no surface.
-	const bool pbd_surface = surface_mesh && !pbd_granular;
+	const bool pbd_surface = _iso() && !pbd_granular;
 	server->particle_fluid_set_surface_mesh(fluid, pbd_surface);
 	server->particle_fluid_set_surface_anisotropy(fluid, surface_anisotropy && !pbd_granular);
 	if (pbd_surface) {
@@ -800,6 +884,9 @@ void PhysXParticleFluid3D::_apply_params() {
 	server->particle_fluid_set_param(fluid, GodotPhysXParticleFluid3D::PARAM_SURFACE_TENSION, surface_tension);
 	server->particle_fluid_set_param(fluid, GodotPhysXParticleFluid3D::PARAM_COHESION, cohesion);
 	server->particle_fluid_set_param(fluid, GodotPhysXParticleFluid3D::PARAM_VORTICITY, vorticity);
+	server->particle_fluid_set_param(fluid, GodotPhysXParticleFluid3D::PARAM_ADHESION, adhesion);
+	server->particle_fluid_set_param(fluid, GodotPhysXParticleFluid3D::PARAM_FRICTION, surface_friction);
+	server->particle_fluid_set_param(fluid, GodotPhysXParticleFluid3D::PARAM_GRAVITY_SCALE, gravity_scale);
 }
 
 void PhysXParticleFluid3D::spawn() {
@@ -807,7 +894,9 @@ void PhysXParticleFluid3D::spawn() {
 
 	if (_mpm_path()) {
 		_mpm_configure();
-		spawned = mpm != nullptr && mpm->is_available();
+		// Not is_available(): with rendering on its own thread the build hasn't
+		// run yet, and the per-step guards cover the warm-up.
+		spawned = _mpm_configured;
 		return;
 	}
 
@@ -882,6 +971,10 @@ void PhysXParticleFluid3D::_emit_step(double p_delta) {
 		w[i] = origin + j * emission_radius + world_vel * (0.004f * (float)i);
 	}
 	server->particle_fluid_emit(fluid, positions, world_vel);
+	// What it emitted lives on after `emitting` goes false (a one-shot spill): keep rendering + re-meshing it. Without
+	// this the render path (gated on spawned || emitting) froze the liquid mid-air the moment a burst ended -- the
+	// MPM emit sets spawned the same way.
+	spawned = true;
 }
 
 void PhysXParticleFluid3D::_mpm_emit_step(double p_delta) {
@@ -971,6 +1064,26 @@ PackedVector3Array PhysXParticleFluid3D::get_particle_positions() const {
 }
 
 float PhysXParticleFluid3D::get_submersion(const AABB &p_world_aabb) const {
+	if (mpm != nullptr) {
+		// The MPM solver never fills the server's (PBD) fluid object, so count its own particles.
+		const real_t box_vol = p_world_aabb.get_volume();
+		if (!spawned || box_vol <= 0.0) {
+			return 0.0f;
+		}
+		// The render buffer the solver already reads back (asynchronously) every step: no GPU wait, a frame or two
+		// behind. 12 floats per particle (identity basis + origin); the origin is at 3, 7, 11.
+		const PackedFloat32Array mm = mpm->get_multimesh_buffer();
+		const int count = MIN(mpm->get_particle_count(), mm.size() / 12);
+		const float *f = mm.ptr();
+		uint32_t inside = 0;
+		for (int i = 0; i < count; i++) {
+			const float *o = f + i * 12;
+			if (p_world_aabb.has_point(Vector3(o[3], o[7], o[11]))) {
+				inside++;
+			}
+		}
+		return CLAMP((real_t)inside * mpm->get_particle_volume() / box_vol, (real_t)0.0, (real_t)1.0);
+	}
 	GodotPhysXServer3D *server = GodotPhysXServer3D::get_singleton();
 	if (!server || fluid.is_null()) {
 		return 0.0f;
@@ -988,7 +1101,7 @@ void PhysXParticleFluid3D::_update_render() {
 	}
 	RenderingServer *rs = RenderingServer::get_singleton();
 
-	if (surface_mesh && !_is_granular()) {
+	if (_iso() && !_is_granular()) {
 		// The isosurface mesh draws the fluid -- do not read back every particle
 		// position or rebuild the sphere buffer. (Foam is still updated below.)
 		rs->multimesh_set_visible_instances(multimesh, 0);
@@ -1019,15 +1132,41 @@ void PhysXParticleFluid3D::_update_render() {
 			t[10] = 1;
 			t[11] = w.z;
 		}
-		rs->multimesh_set_buffer(multimesh, buffer);
-		rs->multimesh_set_visible_instances(multimesh, n);
+		if (screen_space && !_is_granular()) {
+			_screen_space_publish(buffer.ptr(), n);
+			rs->multimesh_set_visible_instances(multimesh, 0);
+		} else {
+			rs->multimesh_set_buffer(multimesh, buffer);
+			rs->multimesh_set_visible_instances(multimesh, n);
+		}
 	}
 
 	if (foam_multimesh.is_null()) {
 		return;
 	}
+	// In screen space the effect draws the foam over the surface (the spheres
+	// would end up under it).
+	if (screen_space && !_is_granular()) {
+		rs->multimesh_set_visible_instances(foam_multimesh, 0);
+		PackedFloat32Array foam_points;
+		if (foam_enabled) {
+			const Vector<Vector3> foam = server->particle_fluid_get_foam_positions(fluid);
+			const int fn = MIN(foam.size(), foam_particle_count);
+			foam_points.resize(fn * 4);
+			float *fw = foam_points.ptrw();
+			const float radius = _effective_foam_size() * 0.75f; // a soft disc, a little wider than the sphere
+			for (int i = 0; i < fn; i++) {
+				fw[i * 4 + 0] = foam[i].x;
+				fw[i * 4 + 1] = foam[i].y;
+				fw[i * 4 + 2] = foam[i].z;
+				fw[i * 4 + 3] = radius;
+			}
+		}
+		PhysXFluidRenderEffect::set_foam(get_instance_id(), foam_points);
+		return;
+	}
 	// With the isosurface path on, foam is drawn as foam_array_mesh instead.
-	if (!foam_enabled || surface_mesh) {
+	if (!foam_enabled || _iso()) {
 		rs->multimesh_set_visible_instances(foam_multimesh, 0);
 		return;
 	}
@@ -1058,7 +1197,7 @@ void PhysXParticleFluid3D::_update_render() {
 }
 
 void PhysXParticleFluid3D::_update_surface_mesh() {
-	if (!surface_mesh || array_mesh.is_null()) {
+	if (!_iso() || array_mesh.is_null()) {
 		return;
 	}
 	GodotPhysXServer3D *server = GodotPhysXServer3D::get_singleton();
@@ -1174,9 +1313,11 @@ void PhysXParticleFluid3D::_commit_iso_mesh(RID p_mesh, PackedVector3Array &vert
 			if (a.distance_squared_to(b) > max_edge_sq || b.distance_squared_to(c) > max_edge_sq || c.distance_squared_to(a) > max_edge_sq) {
 				continue;
 			}
+			// PhysX's isosurface winds counter-clockwise seen from outside; Godot's front faces are clockwise --
+			// flip each triangle so a back-face-culled material draws the outside (not the inside of the liquid).
 			unstretched.write[u++] = ia;
-			unstretched.write[u++] = ib;
 			unstretched.write[u++] = ic;
+			unstretched.write[u++] = ib;
 			const int ra = find(ia), rb = find(ib), rc = find(ic);
 			parent[rb] = ra;
 			parent[find(ic)] = find(ia);
@@ -1246,6 +1387,20 @@ void PhysXParticleFluid3D::_commit_iso_mesh(RID p_mesh, PackedVector3Array &vert
 }
 
 void PhysXParticleFluid3D::_validate_property(PropertyInfo &p_property) const {
+	const String name = p_property.name;
+	// Each render mode's own settings only.
+	if ((name.begins_with("screen_space_") && !screen_space) || (name == "surface_anisotropy" && !_iso())) {
+		p_property.usage = PROPERTY_USAGE_NO_EDITOR;
+	}
+	// Each solver's own settings only -- for Auto, the solver it picks on this
+	// machine (named in the solver dropdown). Hidden values are still saved.
+	const bool uses_mpm = _resolved_solver() == SOLVER_MPM;
+	if (uses_mpm && (name.begins_with("foam_") || name == "surface_tension" || name == "cohesion" || name == "vorticity" || name == "adhesion" || name == "surface_friction" || name == "surface_anisotropy")) {
+		p_property.usage = PROPERTY_USAGE_NO_EDITOR;
+	}
+	if (!uses_mpm && name.begins_with("mpm_")) {
+		p_property.usage = PROPERTY_USAGE_NO_EDITOR;
+	}
 	// The MPM fluid path is block-sparse and boundless: the grid cell size is
 	// 2 x particle_size and there is no box, so mpm_grid_resolution has no effect.
 	// PhysXGranular3D's dense box grid still uses it (this runs for that subclass
@@ -1261,8 +1416,11 @@ void PhysXParticleFluid3D::_validate_property(PropertyInfo &p_property) const {
 	// the dropdown is just confusing. "Label:value" syntax keeps
 	// SOLVER_MPM's stored int (2) correct even with SOLVER_PBD (1) skipped.
 	GodotPhysXServer3D *server = GodotPhysXServer3D::get_singleton();
-	if (p_property.name == SNAME("solver") && (!server || !server->has_gpu())) {
-		p_property.hint_string = "Auto:0,MPM (compute):2";
+	if (p_property.name == SNAME("solver")) {
+		const bool gpu = server && server->has_gpu();
+		// Name what Auto picks here (granular always picks MPM).
+		const String auto_label = (gpu && !_is_granular()) ? "Auto (PBD here)" : "Auto (MPM here)";
+		p_property.hint_string = gpu ? auto_label + ":0,PBD (CUDA):1,MPM (compute):2" : auto_label + ":0,MPM (compute):2";
 	}
 }
 
@@ -1284,9 +1442,13 @@ void PhysXParticleFluid3D::_notification(int p_what) {
 				// frame under load, which spirals.
 				set_physics_process_internal(true);
 				set_process_internal(true);
+				if (screen_space) {
+					_screen_space_attach();
+				}
 			}
 		} break;
 		case NOTIFICATION_EXIT_WORLD: {
+			_screen_space_detach();
 			set_physics_process_internal(false);
 			set_process_internal(false);
 			_editor_preview_exit();
@@ -1326,6 +1488,10 @@ void PhysXParticleFluid3D::_notification(int p_what) {
 			}
 		} break;
 		case NOTIFICATION_INTERNAL_PHYSICS_PROCESS: {
+			if (screen_space_world.is_valid()) {
+				// The user may swap compositors at any time.
+				PhysXFluidRenderEffect::install(get_world_3d().ptr(), get_viewport() ? get_viewport()->get_camera_3d() : nullptr);
+			}
 			const bool mpm_here = _mpm_path() && !_is_granular();
 			const double pdt = get_physics_process_delta_time();
 			if (emitting) {
@@ -1527,6 +1693,7 @@ void PhysXParticleFluid3D::set_mpm_stiffness(float p_stiffness) {
 void PhysXParticleFluid3D::set_mpm_colliders(const TypedArray<NodePath> &p_colliders) {
 	mpm_colliders = p_colliders;
 	_mpm_prev_pos.clear();
+	update_configuration_warnings();
 }
 
 void PhysXParticleFluid3D::set_particle_count(int p_count) {
@@ -1574,6 +1741,21 @@ void PhysXParticleFluid3D::set_vorticity(float p_v) {
 	_apply_params();
 }
 
+void PhysXParticleFluid3D::set_adhesion(float p_v) {
+	adhesion = MAX(p_v, 0.0f);
+	_apply_params();
+}
+
+void PhysXParticleFluid3D::set_surface_friction(float p_v) {
+	surface_friction = MAX(p_v, 0.0f);
+	_apply_params();
+}
+
+void PhysXParticleFluid3D::set_gravity_scale(float p_v) {
+	gravity_scale = p_v;
+	_apply_params(); // PBD: live; MPM takes it at the next configure (spawn / a grid rebuild), like viscosity
+}
+
 void PhysXParticleFluid3D::set_spawn_region_size(const Vector3 &p_size) {
 	spawn_region_size = p_size.maxf(0.0);
 	if (spawned && _mpm_path() && !_mpm_emit_mode) {
@@ -1613,6 +1795,107 @@ void PhysXParticleFluid3D::set_surface_anisotropy(bool p_enabled) {
 		server->particle_fluid_set_surface_anisotropy(fluid, surface_anisotropy);
 	}
 	update_configuration_warnings();
+}
+
+void PhysXParticleFluid3D::_screen_space_attach() {
+	if (screen_space_world.is_valid() || !is_inside_world() || Engine::get_singleton()->is_editor_hint()) {
+		return;
+	}
+	World3D *world = get_world_3d().ptr();
+	if (world == nullptr) {
+		return;
+	}
+	PhysXFluidRenderEffect::attach_world(world);
+	screen_space_world = world->get_instance_id();
+	PhysXFluidRenderEffect::install(world, get_viewport() ? get_viewport()->get_camera_3d() : nullptr);
+}
+
+void PhysXParticleFluid3D::_screen_space_detach() {
+	PhysXFluidRenderEffect::remove_fluid(get_instance_id());
+	if (screen_space_world.is_valid()) {
+		PhysXFluidRenderEffect::detach_world(screen_space_world);
+		screen_space_world = ObjectID();
+	}
+}
+
+void PhysXParticleFluid3D::_screen_space_publish(const float *p_transforms, int p_count) {
+	PhysXFluidRenderEffect::Snapshot s;
+	s.points.resize(p_count * 4);
+	float *w = s.points.ptrw();
+	const float radius = particle_size * screen_space_radius;
+	for (int i = 0; i < p_count; i++) {
+		w[i * 4 + 0] = p_transforms[i * 12 + 3];
+		w[i * 4 + 1] = p_transforms[i * 12 + 7];
+		w[i * 4 + 2] = p_transforms[i * 12 + 11];
+		w[i * 4 + 3] = radius;
+	}
+	// 10 cm of fluid lets screen_space_tint through.
+	for (int c = 0; c < 3; c++) {
+		s.absorption[c] = -Math::log(CLAMP(screen_space_tint[c], 0.01f, 1.0f)) / 0.1f;
+	}
+	s.refraction = screen_space_refraction;
+	// A StandardMaterial3D (or ORMMaterial3D) override is translated; anything
+	// else leaves the screen_space_* settings (see the configuration warning).
+	const Ref<BaseMaterial3D> mat = get_material_override();
+	if (mat.is_valid()) {
+		const Color albedo = mat->get_albedo().srgb_to_linear();
+		// What's behind shows through as it does through the same material on a
+		// mesh: mixed with the fluid's own lit colour, not filtered by it.
+		s.absorption = Color(0, 0, 0);
+		s.metallic = CLAMP((float)mat->get_metallic(), 0.0f, 1.0f);
+		// Alpha: how fast the fluid turns into its own lit colour -- 5 cm of
+		// fluid reaches the material's alpha; an opaque material, at once.
+		const float a = mat->get_transparency() == BaseMaterial3D::TRANSPARENCY_DISABLED ? 1.0f : CLAMP((float)mat->get_albedo().a, 0.0f, 0.999f);
+		s.surface = Color(albedo.r, albedo.g, albedo.b, a >= 0.999f ? 1000.0f : -Math::log(1.0f - a) / 0.05f);
+		const float r = CLAMP((float)mat->get_roughness(), 0.0f, 1.0f);
+		s.roughness = r;
+		if (mat->get_feature(BaseMaterial3D::FEATURE_REFRACTION)) {
+			s.refraction = mat->get_refraction();
+		}
+		if (mat->get_feature(BaseMaterial3D::FEATURE_EMISSION)) {
+			s.emission = mat->get_emission().srgb_to_linear() * mat->get_emission_energy_multiplier();
+		}
+	}
+	s.thickness_scale = 1.0f / (4.18879f * screen_space_radius * screen_space_radius * screen_space_radius);
+	s.smoothing = MAX(particle_size * screen_space_smoothing, 0.0001f);
+	s.depth_threshold = MAX(radius * 2.0f, 0.0001f);
+	s.fade_thickness = MAX(radius * 3.0f, 0.0001f);
+	s.resolution_divisor = screen_space_resolution == SCREEN_SPACE_RESOLUTION_FULL ? 1 : (screen_space_resolution == SCREEN_SPACE_RESOLUTION_HALF ? 2 : 4);
+	s.center = get_global_position();
+	PhysXFluidRenderEffect::set_fluid(get_instance_id(), s);
+}
+
+void PhysXParticleFluid3D::set_render_mode(RenderMode p_mode) {
+	if (get_render_mode() == p_mode) {
+		return;
+	}
+	_set_screen_space(p_mode == RENDER_MODE_SCREEN_SPACE);
+	set_surface_mesh(p_mode == RENDER_MODE_ISOSURFACE);
+	notify_property_list_changed();
+	update_configuration_warnings();
+}
+
+void PhysXParticleFluid3D::_set_screen_space(bool p_enabled) {
+	if (screen_space == p_enabled) {
+		return;
+	}
+	screen_space = p_enabled;
+	if (screen_space) {
+		_screen_space_attach();
+	} else {
+		_screen_space_detach();
+	}
+	// Rebuild so the isosurface extractor comes up or tears down with it.
+	if (fluid.is_valid() && surface_mesh) {
+		const bool was_spawned = spawned || emitting;
+		_free_fluid();
+		if (is_inside_tree() && !Engine::get_singleton()->is_editor_hint()) {
+			_make_fluid();
+			if (was_spawned && spawn_on_ready) {
+				spawn();
+			}
+		}
+	}
 }
 
 void PhysXParticleFluid3D::set_surface_mesh(bool p_enabled) {
@@ -1690,6 +1973,9 @@ PackedStringArray PhysXParticleFluid3D::get_configuration_warnings() const {
 	GodotPhysXServer3D *server = GodotPhysXServer3D::get_singleton();
 	const bool on_mpm = _resolved_solver() == SOLVER_MPM;
 
+	if (screen_space && get_material_override().is_valid() && Object::cast_to<BaseMaterial3D>(get_material_override().ptr()) == nullptr) {
+		warnings.push_back(RTR("Screen space reads a StandardMaterial3D's colour, transparency, roughness, refraction and emission; this material override isn't one, so the Screen Space settings are used instead."));
+	}
 	const String engine = GLOBAL_GET("physics/3d/physics_engine");
 	if (!on_mpm && engine != "PhysX" && engine != "DEFAULT") {
 		warnings.push_back(RTR("The PBD backend only does anything when Project Settings > Physics > 3D > Physics Engine is set to \"PhysX\"."));
@@ -1703,8 +1989,23 @@ PackedStringArray PhysXParticleFluid3D::get_configuration_warnings() const {
 	if (on_mpm && (int)mpm_colliders.size() > 32) {
 		warnings.push_back(RTR("MPM coupling uses at most 32 colliders (rigid bodies plus any nearby debris chunks); the rest are ignored."));
 	}
-	if (surface_anisotropy && !surface_mesh) {
-		warnings.push_back(RTR("\"Surface Anisotropy\" has no effect unless \"Surface Mesh\" is enabled."));
+	if (on_mpm && is_inside_tree()) {
+		for (int i = 0; i < mpm_colliders.size(); i++) {
+			Node *n = get_node_or_null(mpm_colliders[i]);
+			const String issue = n != nullptr ? mpm_collider_issue(n) : String();
+			if (!issue.is_empty()) {
+				warnings.push_back(vformat(RTR("MPM collider \"%s\": %s"), n->get_name(), issue));
+			}
+		}
+	}
+	if (surface_anisotropy && !_iso()) {
+		warnings.push_back(RTR("\"Surface Anisotropy\" has no effect unless \"Render Mode\" is \"Isosurface\"."));
+	}
+	if (on_mpm && surface_anisotropy) {
+		warnings.push_back(RTR("\"Surface Anisotropy\" only applies to the PBD solver's isosurface; the MPM solver ignores it."));
+	}
+	if (on_mpm && foam_enabled && !_is_granular()) {
+		warnings.push_back(RTR("Foam is enabled, but only the PBD solver makes foam; the MPM solver ignores the Foam settings."));
 	}
 	if (surface_anisotropy && emitting) {
 		warnings.push_back(RTR("\"Surface Anisotropy\" sharpens the isosurface but can mesh fast particles along the emission stream as thin spikes. It is meant for a settled pool; disable it while emitting."));
@@ -1751,6 +2052,12 @@ void PhysXParticleFluid3D::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_cohesion"), &PhysXParticleFluid3D::get_cohesion);
 	ClassDB::bind_method(D_METHOD("set_vorticity", "vorticity"), &PhysXParticleFluid3D::set_vorticity);
 	ClassDB::bind_method(D_METHOD("get_vorticity"), &PhysXParticleFluid3D::get_vorticity);
+	ClassDB::bind_method(D_METHOD("set_adhesion", "adhesion"), &PhysXParticleFluid3D::set_adhesion);
+	ClassDB::bind_method(D_METHOD("get_adhesion"), &PhysXParticleFluid3D::get_adhesion);
+	ClassDB::bind_method(D_METHOD("set_surface_friction", "friction"), &PhysXParticleFluid3D::set_surface_friction);
+	ClassDB::bind_method(D_METHOD("get_surface_friction"), &PhysXParticleFluid3D::get_surface_friction);
+	ClassDB::bind_method(D_METHOD("set_gravity_scale", "scale"), &PhysXParticleFluid3D::set_gravity_scale);
+	ClassDB::bind_method(D_METHOD("get_gravity_scale"), &PhysXParticleFluid3D::get_gravity_scale);
 	ClassDB::bind_method(D_METHOD("set_spawn_region_size", "size"), &PhysXParticleFluid3D::set_spawn_region_size);
 	ClassDB::bind_method(D_METHOD("get_spawn_region_size"), &PhysXParticleFluid3D::get_spawn_region_size);
 	ClassDB::bind_method(D_METHOD("set_spawn_on_ready", "enable"), &PhysXParticleFluid3D::set_spawn_on_ready);
@@ -1766,6 +2073,18 @@ void PhysXParticleFluid3D::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_emission_velocity"), &PhysXParticleFluid3D::get_emission_velocity);
 	ClassDB::bind_method(D_METHOD("set_surface_mesh", "enabled"), &PhysXParticleFluid3D::set_surface_mesh);
 	ClassDB::bind_method(D_METHOD("is_surface_mesh"), &PhysXParticleFluid3D::is_surface_mesh);
+	ClassDB::bind_method(D_METHOD("set_render_mode", "mode"), &PhysXParticleFluid3D::set_render_mode);
+	ClassDB::bind_method(D_METHOD("get_render_mode"), &PhysXParticleFluid3D::get_render_mode);
+	ClassDB::bind_method(D_METHOD("set_screen_space_resolution", "resolution"), &PhysXParticleFluid3D::set_screen_space_resolution);
+	ClassDB::bind_method(D_METHOD("get_screen_space_resolution"), &PhysXParticleFluid3D::get_screen_space_resolution);
+	ClassDB::bind_method(D_METHOD("set_screen_space_radius", "radius"), &PhysXParticleFluid3D::set_screen_space_radius);
+	ClassDB::bind_method(D_METHOD("get_screen_space_radius"), &PhysXParticleFluid3D::get_screen_space_radius);
+	ClassDB::bind_method(D_METHOD("set_screen_space_smoothing", "smoothing"), &PhysXParticleFluid3D::set_screen_space_smoothing);
+	ClassDB::bind_method(D_METHOD("get_screen_space_smoothing"), &PhysXParticleFluid3D::get_screen_space_smoothing);
+	ClassDB::bind_method(D_METHOD("set_screen_space_refraction", "refraction"), &PhysXParticleFluid3D::set_screen_space_refraction);
+	ClassDB::bind_method(D_METHOD("get_screen_space_refraction"), &PhysXParticleFluid3D::get_screen_space_refraction);
+	ClassDB::bind_method(D_METHOD("set_screen_space_tint", "tint"), &PhysXParticleFluid3D::set_screen_space_tint);
+	ClassDB::bind_method(D_METHOD("get_screen_space_tint"), &PhysXParticleFluid3D::get_screen_space_tint);
 	ClassDB::bind_method(D_METHOD("set_surface_anisotropy", "enabled"), &PhysXParticleFluid3D::set_surface_anisotropy);
 	ClassDB::bind_method(D_METHOD("is_surface_anisotropy"), &PhysXParticleFluid3D::is_surface_anisotropy);
 
@@ -1786,6 +2105,12 @@ void PhysXParticleFluid3D::_bind_methods() {
 	BIND_ENUM_CONSTANT(SOLVER_AUTO);
 	BIND_ENUM_CONSTANT(SOLVER_PBD);
 	BIND_ENUM_CONSTANT(SOLVER_MPM);
+	BIND_ENUM_CONSTANT(RENDER_MODE_PARTICLES);
+	BIND_ENUM_CONSTANT(RENDER_MODE_ISOSURFACE);
+	BIND_ENUM_CONSTANT(RENDER_MODE_SCREEN_SPACE);
+	BIND_ENUM_CONSTANT(SCREEN_SPACE_RESOLUTION_FULL);
+	BIND_ENUM_CONSTANT(SCREEN_SPACE_RESOLUTION_HALF);
+	BIND_ENUM_CONSTANT(SCREEN_SPACE_RESOLUTION_QUARTER);
 
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "solver", PROPERTY_HINT_ENUM, "Auto,PBD (CUDA),MPM (compute)"), "set_solver", "get_solver");
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "particle_count", PROPERTY_HINT_RANGE, "1,262144,1"), "set_particle_count", "get_particle_count");
@@ -1806,8 +2131,16 @@ void PhysXParticleFluid3D::_bind_methods() {
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "emission_radius", PROPERTY_HINT_RANGE, "0,2,0.001,or_greater,suffix:m"), "set_emission_radius", "get_emission_radius");
 	ADD_PROPERTY(PropertyInfo(Variant::VECTOR3, "emission_velocity", PROPERTY_HINT_NONE, "suffix:m/s"), "set_emission_velocity", "get_emission_velocity");
 	ADD_GROUP("Rendering", "");
-	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "surface_mesh"), "set_surface_mesh", "is_surface_mesh");
+	ADD_PROPERTY(PropertyInfo(Variant::INT, "render_mode", PROPERTY_HINT_ENUM, "Particles,Isosurface,Screen Space"), "set_render_mode", "get_render_mode");
+	// The old switch: still loaded (true -> render_mode Isosurface), no longer shown or saved.
+	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "surface_mesh", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_NONE), "set_surface_mesh", "is_surface_mesh");
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "surface_anisotropy"), "set_surface_anisotropy", "is_surface_anisotropy");
+	ADD_SUBGROUP("Screen Space", "screen_space_");
+	ADD_PROPERTY(PropertyInfo(Variant::INT, "screen_space_resolution", PROPERTY_HINT_ENUM, "Full,Half,Quarter"), "set_screen_space_resolution", "get_screen_space_resolution");
+	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "screen_space_radius", PROPERTY_HINT_RANGE, "0.25,4,0.01"), "set_screen_space_radius", "get_screen_space_radius");
+	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "screen_space_smoothing", PROPERTY_HINT_RANGE, "0,8,0.01"), "set_screen_space_smoothing", "get_screen_space_smoothing");
+	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "screen_space_refraction", PROPERTY_HINT_RANGE, "0,0.3,0.001"), "set_screen_space_refraction", "get_screen_space_refraction");
+	ADD_PROPERTY(PropertyInfo(Variant::COLOR, "screen_space_tint", PROPERTY_HINT_COLOR_NO_ALPHA), "set_screen_space_tint", "get_screen_space_tint");
 	ADD_GROUP("Foam", "foam_");
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "foam_enabled"), "set_foam_enabled", "is_foam_enabled");
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "foam_particle_count", PROPERTY_HINT_RANGE, "1,262144,1"), "set_foam_particle_count", "get_foam_particle_count");
@@ -1820,6 +2153,9 @@ void PhysXParticleFluid3D::_bind_methods() {
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "surface_tension", PROPERTY_HINT_RANGE, "0,1,0.001,or_greater"), "set_surface_tension", "get_surface_tension");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "cohesion", PROPERTY_HINT_RANGE, "0,1,0.001,or_greater"), "set_cohesion", "get_cohesion");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "vorticity", PROPERTY_HINT_RANGE, "0,50,0.01,or_greater"), "set_vorticity", "get_vorticity");
+	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "adhesion", PROPERTY_HINT_RANGE, "0,1,0.001,or_greater"), "set_adhesion", "get_adhesion");
+	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "surface_friction", PROPERTY_HINT_RANGE, "0,1,0.01,or_greater"), "set_surface_friction", "get_surface_friction");
+	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "gravity_scale", PROPERTY_HINT_RANGE, "-2,4,0.01,or_less,or_greater"), "set_gravity_scale", "get_gravity_scale");
 }
 
 PhysXParticleFluid3D::PhysXParticleFluid3D() {
