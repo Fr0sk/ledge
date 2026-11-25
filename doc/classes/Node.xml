@@ -80,6 +80,15 @@
 				[b]Note:[/b] This method is only called if the node is present in the scene tree (i.e. if it's not an orphan).
 			</description>
 		</method>
+		<method name="_message" qualifiers="virtual">
+			<return type="void" />
+			<param index="0" name="data" type="MessageData" />
+			<description>
+				Called when a [MessageData] is sent to this node with [method send_message], or when it propagates down from one of its ancestors. The message is first delivered to the node [method send_message] was called on, and then to each of its children, depth-first, as long as the message has not been marked as handled with [method MessageData.set_message_as_handled]. Once handled, the message is not delivered to any further nodes.
+				Nodes that cannot process (see [method can_process]) do not receive the message, but the propagation's descent continues below them.
+				For the message to be received by the node, it must be present in the scene tree (i.e. it must not be an orphan).
+			</description>
+		</method>
 		<method name="_physics_process" qualifiers="virtual">
 			<return type="void" />
 			<param index="0" name="delta" type="float" />
@@ -908,6 +917,14 @@
 			<description>
 				Sends a [method rpc] to a specific peer identified by [param peer_id] (see [method MultiplayerPeer.set_target_peer]).
 				May return [constant OK] if the call is successful, [constant ERR_INVALID_PARAMETER] if the arguments passed in the [param method] do not match, [constant ERR_UNCONFIGURED] if the node's [member multiplayer] cannot be fetched (such as when the node is not inside the tree), [constant ERR_CONNECTION_ERROR] if [member multiplayer]'s connection is not available.
+			</description>
+		</method>
+		<method name="send_message">
+			<return type="void" />
+			<param index="0" name="message" type="MessageData" />
+			<description>
+				Delivers the given [param message] to this node through [method _message], and then to all of its children, depth-first, as long as the message has not been marked as handled with [method MessageData.set_message_as_handled].
+				The message is not delivered to nodes that cannot process (see [method can_process]).
 			</description>
 		</method>
 		<method name="set_deferred_thread_group">

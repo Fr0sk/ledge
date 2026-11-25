@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<class name="MessageData" inherits="Resource" api_type="core" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../class.xsd">
+	<brief_description>
+		Abstract base class for messages sent between nodes.
+	</brief_description>
+	<description>
+		Abstract base class of all message data, used with [method Node.send_message] and [method Node._message].
+		Extend it to define custom messages: deliver a message with [method Node.send_message] to any node, and it is passed to that node's [method Node._message] before propagating to the node's children, depth-first. While it travels, every node receives the same [MessageData] instance, so a single object can carry data between the sender and every receiver.
+		The propagation stops as soon as the message is marked as handled with [method set_message_as_handled], when [member handled] is set to [code]true[/code], or when a script's [method Node._message] returns and the message is already handled.
+	</description>
+	<methods>
+		<method name="is_handled" qualifiers="const">
+			<return type="bool" />
+			<description>
+				Returns [code]true[/code] if the message has been marked as handled. A handled message stops propagating to further nodes.
+			</description>
+		</method>
+		<method name="set_handled">
+			<return type="void" />
+			<param index="0" name="handled" type="bool" />
+			<description>
+				Marks the message as handled. A handled message stops propagating to further nodes. Equivalent to setting [member handled] directly.
+			</description>
+		</method>
+		<method name="set_message_as_handled">
+			<return type="void" />
+			<description>
+				Marks the message as handled ([code]true[/code]). A handled message stops propagating to further nodes, so no other node receives it afterward.
+			</description>
+		</method>
+	</methods>
+	<members>
+		<member name="handled" type="bool" setter="set_handled" getter="is_handled" default="false">
+			If [code]true[/code], the message is considered handled and [method Node.send_message] stops delivering it to further nodes.
+		</member>
+	</members>
+</class>

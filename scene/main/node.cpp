@@ -31,6 +31,8 @@
 #include "node.h"
 #include "node.compat.inc"
 
+#include "message_data.h"
+
 STATIC_ASSERT_INCOMPLETE_TYPE(class, Mesh);
 STATIC_ASSERT_INCOMPLETE_TYPE(class, RenderingServer);
 STATIC_ASSERT_INCOMPLETE_TYPE(class, DisplayServer);
@@ -3717,6 +3719,43 @@ void Node::unhandled_input(const Ref<InputEvent> &p_event) {
 void Node::unhandled_key_input(const Ref<InputEvent> &p_key_event) {
 }
 
+void Node::message(const Ref<MessageData> &p_data) {
+}
+
+void Node::_call_message(const Ref<MessageData> &p_data) {
+	// Nodes that cannot process (paused or disabled) do not receive the message, the same way they do not receive input.
+	// Propagation continues regardless so that children with a compatible process mode still receive it.
+	if (can_process()) {
+		GDVIRTUAL_CALL(_message, p_data);
+
+		if (!p_data->is_handled()) {
+			message(p_data);
+		}
+	}
+
+	if (p_data->is_handled()) {
+		return;
+	}
+
+	int child_count = get_child_count();
+	for (int i = 0; i < child_count; i++) {
+		Node *child = get_child(i);
+		if (!child) {
+			continue;
+		}
+		child->_call_message(p_data);
+		if (p_data->is_handled()) {
+			return;
+		}
+	}
+}
+
+void Node::send_message(RequiredParam<MessageData> p_data) {
+	ERR_THREAD_GUARD
+	EXTRACT_PARAM_OR_FAIL(message_data, p_data);
+	_call_message(message_data);
+}
+
 Variant Node::_call_deferred_thread_group_bind(const Variant **p_args, int p_argcount, Callable::CallError &r_error) {
 	if (p_argcount < 1) {
 		r_error.error = Callable::CallError::CALL_ERROR_TOO_FEW_ARGUMENTS;
@@ -3893,6 +3932,7 @@ void Node::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_scene_file_path"), &Node::get_scene_file_path);
 	ClassDB::bind_method(D_METHOD("propagate_notification", "what"), &Node::propagate_notification);
 	ClassDB::bind_method(D_METHOD("propagate_call", "method", "args", "parent_first"), &Node::propagate_call, DEFVAL(Array()), DEFVAL(false));
+	ClassDB::bind_method(D_METHOD("send_message", "message"), &Node::send_message);
 	ClassDB::bind_method(D_METHOD("set_physics_process", "enable"), &Node::set_physics_process);
 	ClassDB::bind_method(D_METHOD("get_physics_process_delta_time"), &Node::get_physics_process_delta_time);
 	ClassDB::bind_method(D_METHOD("is_physics_processing"), &Node::is_physics_processing);
@@ -4165,6 +4205,7 @@ void Node::_bind_methods() {
 	GDVIRTUAL_BIND(_shortcut_input, "event");
 	GDVIRTUAL_BIND(_unhandled_input, "event");
 	GDVIRTUAL_BIND(_unhandled_key_input, "event");
+	GDVIRTUAL_BIND(_message, "data");
 	GDVIRTUAL_BIND(_get_focused_accessibility_element);
 }
 

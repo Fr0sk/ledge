@@ -36,6 +36,7 @@
 #include "core/object/ref_counted.h"
 #include "core/os/thread_safe.h"
 #include "core/templates/iterable.h"
+#include "message_data.h"
 #include "scene/scene_string_names.h" // IWYU pragma: export. Make available to all Nodes.
 
 class MultiplayerAPI;
@@ -410,6 +411,7 @@ protected:
 	void _call_shortcut_input(const Ref<InputEvent> &p_event);
 	void _call_unhandled_input(const Ref<InputEvent> &p_event);
 	void _call_unhandled_key_input(const Ref<InputEvent> &p_event);
+	void _call_message(const Ref<MessageData> &p_data);
 
 	void _validate_property(PropertyInfo &p_property) const;
 	virtual String _to_string() override;
@@ -429,6 +431,7 @@ protected:
 	virtual void shortcut_input(const Ref<InputEvent> &p_key_event);
 	virtual void unhandled_input(const Ref<InputEvent> &p_event);
 	virtual void unhandled_key_input(const Ref<InputEvent> &p_key_event);
+	virtual void message(const Ref<MessageData> &p_data);
 
 	GDVIRTUAL1(_process, double)
 	GDVIRTUAL1(_physics_process, double)
@@ -442,6 +445,7 @@ protected:
 	GDVIRTUAL1(_shortcut_input, RequiredParam<InputEvent>)
 	GDVIRTUAL1(_unhandled_input, RequiredParam<InputEvent>)
 	GDVIRTUAL1(_unhandled_key_input, RequiredParam<InputEvent>)
+	GDVIRTUAL1(_message, RequiredParam<MessageData>)
 
 	GDVIRTUAL0RC(RID, _get_focused_accessibility_element)
 
@@ -653,6 +657,7 @@ public:
 	void propagate_notification(int p_notification);
 
 	void propagate_call(const StringName &p_method, const Array &p_args = Array(), const bool p_parent_first = false);
+	void send_message(RequiredParam<MessageData> p_data);
 
 	/* PROCESSING */
 
