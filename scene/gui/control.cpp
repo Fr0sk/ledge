@@ -47,6 +47,7 @@ STATIC_ASSERT_INCOMPLETE_TYPE(class, RenderingServer);
 #include "scene/main/canvas_layer.h"
 #include "scene/main/scene_tree.h"
 #include "scene/main/window.h"
+#include "scene/resources/audio/audio_stream_randomizer.h"
 #include "scene/theme/theme_db.h"
 #include "scene/theme/theme_owner.h"
 #include "servers/display/accessibility_server.h"
@@ -987,32 +988,49 @@ Control::GrowDirection Control::get_v_grow_direction() const {
 	return data.v_grow;
 }
 
-void Control::_compute_anchors(Rect2 p_rect, const real_t p_offsets[4], real_t (&r_anchors)[4]) {
-	Size2 parent_rect_size = get_parent_anchorable_rect().size;
-	ERR_FAIL_COND(parent_rect_size.x == 0.0);
-	ERR_FAIL_COND(parent_rect_size.y == 0.0);
+void Control::_compute_layout_rect(Rect2 p_rect, bool p_keep_offsets) {
+	Rect2 parent_rect = get_parent_anchorable_rect();
+
+	if (p_keep_offsets) {
+		// If computing anchors, we need to ensure the parent rect size is valid to avoid division by zero.
+		ERR_FAIL_COND(parent_rect.size.x == 0.0);
+		ERR_FAIL_COND(parent_rect.size.y == 0.0);
+	}
 
 	real_t x = p_rect.position.x;
-	if (is_layout_rtl()) {
-		x = parent_rect_size.x - x - p_rect.size.x;
-	}
-	r_anchors[0] = (x - p_offsets[0]) / parent_rect_size.x;
-	r_anchors[1] = (p_rect.position.y - p_offsets[1]) / parent_rect_size.y;
-	r_anchors[2] = (x + p_rect.size.x - p_offsets[2]) / parent_rect_size.x;
-	r_anchors[3] = (p_rect.position.y + p_rect.size.y - p_offsets[3]) / parent_rect_size.y;
-}
+	real_t y = p_rect.position.y;
 
-void Control::_compute_offsets(Rect2 p_rect, const real_t p_anchors[4], real_t (&r_offsets)[4]) {
-	Size2 parent_rect_size = get_parent_anchorable_rect().size;
+	if (_get_layout_mode() != LayoutMode::LAYOUT_MODE_CONTAINER) {
+		float left_grow_factor =
+				(data.h_grow == GROW_DIRECTION_BEGIN) ? 1.0f
+				: (data.h_grow == GROW_DIRECTION_END) ? 0.0f
+													  : 0.5f;
+		float top_grow_factor =
+				(data.v_grow == GROW_DIRECTION_BEGIN) ? 1.0f
+				: (data.v_grow == GROW_DIRECTION_END) ? 0.0f
+													  : 0.5f;
 
-	real_t x = p_rect.position.x;
-	if (is_layout_rtl()) {
-		x = parent_rect_size.x - x - p_rect.size.x;
+		Size2 size_diff = p_rect.size - data.size_cache;
+
+		x -= size_diff.x * (is_layout_rtl() ? (1.0f - left_grow_factor) : left_grow_factor);
+		y -= size_diff.y * top_grow_factor;
 	}
-	r_offsets[0] = x - (p_anchors[0] * parent_rect_size.x);
-	r_offsets[1] = p_rect.position.y - (p_anchors[1] * parent_rect_size.y);
-	r_offsets[2] = x + p_rect.size.x - (p_anchors[2] * parent_rect_size.x);
-	r_offsets[3] = p_rect.position.y + p_rect.size.y - (p_anchors[3] * parent_rect_size.y);
+
+	if (is_layout_rtl()) {
+		x = parent_rect.size.x + (parent_rect.position.x * 2) - x - p_rect.size.x;
+	}
+
+	if (p_keep_offsets) {
+		data.anchor[0] = (x - data.offset[0]) / parent_rect.size.x;
+		data.anchor[1] = (y - data.offset[1]) / parent_rect.size.y;
+		data.anchor[2] = (x + p_rect.size.x - data.offset[2]) / parent_rect.size.x;
+		data.anchor[3] = (y + p_rect.size.y - data.offset[3]) / parent_rect.size.y;
+	} else {
+		data.offset[0] = x - (data.anchor[0] * parent_rect.size.x);
+		data.offset[1] = y - (data.anchor[1] * parent_rect.size.y);
+		data.offset[2] = x + p_rect.size.x - (data.anchor[2] * parent_rect.size.x);
+		data.offset[3] = y + p_rect.size.y - (data.anchor[3] * parent_rect.size.y);
+	}
 }
 
 /// Presets and layout modes.
@@ -1545,11 +1563,7 @@ void Control::set_position(const Point2 &p_point, bool p_keep_offsets) {
 	}
 #endif // TOOLS_ENABLED
 
-	if (p_keep_offsets) {
-		_compute_anchors(Rect2(p_point, data.size_cache), data.offset, data.anchor);
-	} else {
-		_compute_offsets(Rect2(p_point, data.size_cache), data.anchor, data.offset);
-	}
+	_compute_layout_rect(Rect2(p_point, data.size_cache), p_keep_offsets);
 	_size_changed();
 }
 
@@ -1621,11 +1635,7 @@ void Control::set_size(const Size2 &p_size, bool p_keep_offsets) {
 
 	data.expanded_by_desired_size = false;
 
-	if (p_keep_offsets) {
-		_compute_anchors(Rect2(data.pos_cache, new_size), data.offset, data.anchor);
-	} else {
-		_compute_offsets(Rect2(data.pos_cache, new_size), data.anchor, data.offset);
-	}
+	_compute_layout_rect(Rect2(data.pos_cache, new_size), p_keep_offsets);
 	_size_changed();
 }
 
@@ -1645,7 +1655,7 @@ void Control::set_rect(const Rect2 &p_rect) {
 		data.anchor[i] = ANCHOR_BEGIN;
 	}
 
-	_compute_offsets(p_rect, data.anchor, data.offset);
+	_compute_layout_rect(p_rect);
 	if (is_inside_tree()) {
 		_size_changed();
 	}
@@ -1838,8 +1848,7 @@ void Control::update_maximum_size() {
 	}
 	// Same with desired size.
 	if (!data.updating_last_desired_size) {
-		data.updating_last_desired_size = true;
-		callable_mp(this, &Control::_update_desired_size).call_deferred();
+		update_desired_size();
 	}
 
 	callable_mp(this, &Control::_update_maximum_size).call_deferred();
@@ -2155,7 +2164,7 @@ void Control::remove_child_notify(Node *p_child) {
 
 bool Control::is_layout_pending() const {
 	ERR_MAIN_THREAD_GUARD_V(false);
-	return data.layout_pending;
+	return data.layout_pending || !is_inside_tree() || !is_visible_in_tree();
 }
 
 bool Control::is_layout_pending_in_tree() const {
@@ -2193,6 +2202,18 @@ Control *Control::get_layout_pending_control_in_tree() const {
 }
 
 void Control::call_on_all_layout_pending_finished(const Callable &p_callable) {
+	if (!is_inside_tree()) {
+		Callable recheck(memnew(LayoutRecheckCallable(get_instance_id(), p_callable)));
+		connect(SceneStringName(tree_entered), recheck, CONNECT_ONE_SHOT);
+		return;
+	}
+
+	if (!is_visible_in_tree()) {
+		Callable recheck(memnew(LayoutRecheckCallable(get_instance_id(), p_callable)));
+		connect(SceneStringName(visibility_changed), recheck, CONNECT_ONE_SHOT);
+		return;
+	}
+
 	Control *pending_control = get_layout_pending_control_in_tree();
 	if (pending_control != nullptr) {
 		Callable recheck(memnew(LayoutRecheckCallable(get_instance_id(), p_callable)));
@@ -3114,11 +3135,23 @@ void Control::release_focus() {
 
 void Control::play_theme_sound(const Ref<AudioStream> &p_stream) {
 	ERR_MAIN_THREAD_GUARD;
-	if (p_stream.is_null() || p_stream->get_length() == 0 || !get_tree()) {
+	if (p_stream.is_null() || !get_tree()) {
 		return;
 	}
 
-	get_tree()->play_theme_sound(p_stream);
+	// Ignore playback attempt if the sound has no length, so that empty AudioStream resources
+	// can be used to disable sounds on specific controls using theme overrides.
+	// Without this check, no sound would be played, but a
+	// "Failed to instantiate playback." error would also be printed.
+	bool sound_no_length = false;
+	if (!Object::cast_to<AudioStreamRandomizer>(p_stream.ptr())) {
+		// AudioStreamRandomizer has no length defined.
+		sound_no_length = p_stream->get_length() == 0;
+	}
+
+	if (!sound_no_length) {
+		get_tree()->play_theme_sound(p_stream);
+	}
 }
 
 static Control *_next_control(Control *p_from) {

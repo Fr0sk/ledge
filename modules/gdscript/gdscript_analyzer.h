@@ -61,6 +61,7 @@ class GDScriptAnalyzer {
 	HashMap<const GDScriptParser::ClassNode *, Ref<GDScriptParserRef>> external_class_parser_cache;
 	bool static_context = false;
 	GDScriptParser::DataType current_impl_self_type;
+	GDScriptParser::DataType expected_closure_type;
 
 	///who the FUCK thought it was a brilliant idea to make the iterator its own identifier node
 	///COMPLETELY disjoint from a local variable
@@ -123,6 +124,12 @@ class GDScriptAnalyzer {
 	void reduce_identifier(GDScriptParser::IdentifierNode *p_identifier, bool can_be_builtin = false);
 	void reduce_identifier_from_base(GDScriptParser::IdentifierNode *p_identifier, GDScriptParser::DataType *p_base = nullptr);
 	void reduce_lambda(GDScriptParser::LambdaNode *p_lambda);
+	void reduce_with_expected(GDScriptParser::ExpressionNode* p_expression, const GDScriptParser::DataType& p_expected);
+	void apply_expected_closure_type(GDScriptParser::LambdaNode* p_lambda, const GDScriptParser::DataType& p_expected);
+	void apply_signal_signature(GDScriptParser::DataType* r_type, const MethodInfo& p_info, const GDScriptParser::Node* p_source) const;
+	bool is_rigid_generic(const GDScriptParser::DataType* p_type) const;
+	bool has_foreign_open_generics(const GDScriptParser::DataType* p_type) const;
+	GDScriptParser::DataType make_closure_signature_type(GDScriptParser::LambdaNode* p_lambda);
 	void reduce_literal(GDScriptParser::LiteralNode *p_literal);
 	void reduce_preload(GDScriptParser::PreloadNode *p_preload);
 	void reduce_self(GDScriptParser::SelfNode *p_self);
@@ -154,6 +161,7 @@ class GDScriptAnalyzer {
 	GDScriptParser::DataType type_from_property_hint_string(const String &p_type_name) const;
 	GDScriptParser::DataType type_from_property(const PropertyInfo &p_property, bool p_is_arg, const GDScriptParser::Node *p_source) const;
 	GDScriptParser::DataType make_global_class_meta_type(const StringName &p_class_name, const GDScriptParser::Node *p_source) const;
+	GDScriptParser::DataType make_callable_type_with_signature(const MethodInfo& p_info, const GDScriptParser::Node* p_source) const;
 	bool get_function_signature(GDScriptParser::Node *p_source, bool p_is_constructor, GDScriptParser::DataType base_type, const StringName &p_function, GDScriptParser::DataType &r_return_type, List<GDScriptParser::DataType> &r_par_types, int &r_default_arg_count, BitField<MethodFlags> &r_method_flags, StringName *r_native_class = nullptr);
 	bool function_signature_from_info(const MethodInfo &p_info, GDScriptParser::DataType &r_return_type, List<GDScriptParser::DataType> &r_par_types, int &r_default_arg_count, BitField<MethodFlags> &r_method_flags, const GDScriptParser::Node *p_source);
 	void validate_call_arg(const List<GDScriptParser::DataType> &p_par_types, int p_default_args_count, bool p_is_vararg, const GDScriptParser::CallNode *p_call);
@@ -166,6 +174,8 @@ class GDScriptAnalyzer {
 	bool is_type_compatible(const GDScriptParser::DataType &p_target, const GDScriptParser::DataType &p_source, bool p_allow_implicit_conversion = false, const GDScriptParser::Node *p_source_node = nullptr);
 	bool is_type_compatible_strict_collections(const GDScriptParser::DataType &p_target, const GDScriptParser::DataType &p_source);
 	void push_error(const String &p_message, const GDScriptParser::Node *p_origin = nullptr) const;
+	void push_error(const String &p_message, const GDScriptParser::Node *p_origin, int p_start_line, int p_start_column, int p_end_line, int p_end_column) const;
+	/// Marks all lines of `p_node` for being displayed as unsafe in the editor. This has no side effects in the analyzer and is a no-op in template builds.
 	void mark_node_unsafe(const GDScriptParser::Node *p_node) const;
 	void downgrade_node_type_source(GDScriptParser::ExpressionNode *p_node);
 	void mark_lambda_use_self();
@@ -176,12 +186,14 @@ class GDScriptAnalyzer {
 	void check_generic_assignable(GDScriptParser::IdentifierNode* p_generic_decl, const StringName& p_generic_param, GDScriptParser::ExpressionNode* p_initializer, const char* p_kind); ///
 	Ref<GDScriptParserRef> ensure_cached_external_parser_for_class(const GDScriptParser::ClassNode *p_class, const GDScriptParser::ClassNode *p_from_class, const char *p_context, const GDScriptParser::Node *p_source);
 	Ref<GDScriptParserRef> find_cached_external_parser_for_class(const GDScriptParser::ClassNode *p_class, const Ref<GDScriptParserRef> &p_dependant_parser);
+	void ensure_cached_external_parsers_for_datatype(const GDScriptParser::DataType& p_type, const GDScriptParser::ClassNode* p_from_class, const char* p_context, const GDScriptParser::Node* p_source, int p_depth = 0);
 	Ref<GDScriptParserRef> find_cached_external_parser_for_class(const GDScriptParser::ClassNode *p_class, GDScriptParser *p_dependant_parser);
 	Ref<GDScript> get_depended_shallow_script(const String &p_path, Error &r_error);
 
 #ifdef DEBUG_ENABLED
 	void is_shadowing(GDScriptParser::IdentifierNode *p_identifier, const String &p_context, const bool p_in_local_scope);
 	void warn_confusable_temporary_modification(GDScriptParser::ExpressionNode *p_expression);
+	void warn_untyped_callable_assignment(const GDScriptParser::DataType& p_target, const GDScriptParser::DataType& p_source, const GDScriptParser::Node* p_node);
 #endif // DEBUG_ENABLED
 
 public:
@@ -198,7 +210,14 @@ public:
 
 	static bool check_type_compatibility(const GDScriptParser::DataType &p_target, const GDScriptParser::DataType &p_source, bool p_allow_implicit_conversion = false, const GDScriptParser::Node *p_source_node = nullptr, const GDScriptParser::ClassNode* p_class = nullptr, const GDScriptParser::FunctionNode* p_func = nullptr, GDScriptTraitAnalyzer* p_trait_analyzer = nullptr);
 	static GDScriptParser::DataType type_from_metatype(const GDScriptParser::DataType &p_meta_type);
+	static GDScriptParser::DataType substitute_generic_bindings(const GDScriptParser::DataType& p_type, const HashMap<StringName, GDScriptParser::DataType>& p_bindings);
+	static bool make_component_host_type(const GDScriptParser::ClassNode* p_class, GDScriptParser::DataType& r_type);
+	static StringName get_class_native_base(const GDScriptParser::ClassNode* p_class);
+	static bool is_component_class(const GDScriptParser::ClassNode* p_class);
+	void check_static_attach(const GDScriptParser::DataType& p_parent, const GDScriptParser::DataType& p_child, const GDScriptParser::Node* p_error_node);
 	static bool class_exists(const StringName &p_class);
+	static bool is_typed_callable_invoke_method(const StringName& p_method);
+	static bool typed_callable_invoke_returns_void(const StringName& p_method);
 
 	GDScriptAnalyzer(GDScriptParser *p_parser);
 	~GDScriptAnalyzer();

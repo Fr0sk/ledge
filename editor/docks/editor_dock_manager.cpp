@@ -262,7 +262,7 @@ void EditorDockManager::_window_close_request(WindowWrapper *p_wrapper) {
 
 	if (dock->dock_slot_index != EditorDock::DOCK_SLOT_NONE) {
 		dock->is_open = false;
-		focus_dock(dock);
+		force_focus_dock(dock);
 	} else {
 		close_dock(dock);
 	}
@@ -317,7 +317,7 @@ void EditorDockManager::_open_dock_in_window(EditorDock *p_dock, bool p_show_win
 			p_dock->get_window()->set_size(popup_size);
 			p_dock->get_window()->move_to_center();
 		}
-		p_dock->get_window()->grab_focus();
+		focus_dock(p_dock);
 	}
 }
 
@@ -351,18 +351,27 @@ void EditorDockManager::_move_dock(EditorDock *p_dock, Control *p_target, int p_
 			_close_window(p_dock->dock_window);
 		} else {
 			DockTabContainer *parent_tabs = Object::cast_to<DockTabContainer>(parent);
+			EditorDock *previous_dock = nullptr;
 			if (parent_tabs) {
 				p_dock->previous_tab_index = parent_tabs->get_tab_idx_from_control(p_dock);
 
-				// Swap to previous tab when closing current tab.
 				if (parent_tabs->get_current_tab() == p_dock->previous_tab_index && parent_tabs->get_previous_tab() != -1) {
-					parent_tabs->set_current_tab(parent_tabs->get_previous_tab());
+					previous_dock = parent_tabs->get_dock(parent_tabs->get_previous_tab());
 				}
 			}
 			parent->set_block_signals(true);
 			parent->remove_child(p_dock);
 			parent->set_block_signals(false);
 			if (parent_tabs) {
+				if (previous_dock) {
+					// Swap to previous tab when closing current tab.
+					for (int i = 0; i < parent_tabs->get_tab_count(); i++) {
+						if (parent_tabs->get_dock(i) == previous_dock) {
+							parent_tabs->set_current_tab(i);
+							break;
+						}
+					}
+				}
 				parent_tabs->update_visibility();
 			}
 		}
@@ -590,6 +599,8 @@ void EditorDockManager::load_docks_from_config(Ref<ConfigFile> p_layout, const S
 		dock_slots[i]->load_selected_tab(selected_tab_idx);
 	}
 
+	saved_main_hsplit_offsets.clear();
+
 	// Load SplitContainer offsets.
 
 	PackedInt32Array offsets;
@@ -715,6 +726,7 @@ void EditorDockManager::_make_dock_visible(EditorDock *p_dock, bool p_grab_focus
 	if (p_dock->dock_window) {
 		if (p_grab_focus) {
 			p_dock->get_window()->grab_focus();
+			p_dock->emit_signal("_focused");
 		}
 		return;
 	}
@@ -726,6 +738,7 @@ void EditorDockManager::_make_dock_visible(EditorDock *p_dock, bool p_grab_focus
 
 	if (p_grab_focus) {
 		tab_container->get_tab_bar()->grab_focus(true);
+		p_dock->emit_signal("_focused");
 	}
 
 	if (!p_dock->is_visible_in_tree()) {
@@ -790,11 +803,23 @@ void EditorDockManager::set_docks_visible(bool p_show) {
 	if (docks_visible == p_show) {
 		return;
 	}
+
+	if (!p_show) {
+		saved_main_hsplit_offsets = main_hsplit->get_split_offsets();
+	}
+
 	docks_visible = p_show;
 	for (int i = 0; i < EditorDock::DOCK_SLOT_MAX; i++) {
 		// Show and hide in reverse order due to the SplitContainer prioritizing the last split offset.
 		dock_slots[docks_visible ? i : EditorDock::DOCK_SLOT_MAX - i - 1]->update_visibility();
 	}
+
+	if (p_show) {
+		if (saved_main_hsplit_offsets.size() == main_hsplit->get_split_offsets().size()) {
+			main_hsplit->set_split_offsets(saved_main_hsplit_offsets);
+		}
+	}
+
 	_update_layout();
 }
 

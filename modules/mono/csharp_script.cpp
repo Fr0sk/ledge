@@ -2215,7 +2215,13 @@ void GD_CLR_STDCALL CSharpScript::_add_property_info_list_callback(CSharpScript 
 		StringName name = *reinterpret_cast<const StringName *>(&prop.name);
 		String hint_string = *reinterpret_cast<const String *>(&prop.hint_string);
 
-		PropertyInfo pinfo(prop.type, name, prop.hint, hint_string, prop.usage);
+		StringName class_name;
+		const StringName *class_name_ptr = reinterpret_cast<const StringName *>(prop.class_name);
+		if (class_name_ptr != nullptr) {
+			class_name = *class_name_ptr;
+		}
+
+		PropertyInfo pinfo(prop.type, name, prop.hint, hint_string, prop.usage, class_name);
 
 		p_script->member_info[name] = pinfo;
 
@@ -2342,6 +2348,14 @@ bool CSharpScript::_set(const StringName &p_name, const Variant &p_value) {
 void CSharpScript::_get_property_list(List<PropertyInfo> *p_properties) const {
 	p_properties->push_back(PropertyInfo(Variant::STRING, SNAME("script/source"), PROPERTY_HINT_NONE, "", PROPERTY_USAGE_NO_EDITOR | PROPERTY_USAGE_INTERNAL));
 }
+
+#ifdef TOOLS_ENABLED
+void CSharpScript::_resource_path_changed() {
+	// If the script changed its path, update the exports.
+	exports_invalidated = true;
+	_update_exports();
+}
+#endif
 
 void CSharpScript::_bind_methods() {
 	ClassDB::bind_vararg_method(METHOD_FLAGS_DEFAULT, "new", &CSharpScript::_new, MethodInfo("new"));

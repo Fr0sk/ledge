@@ -798,6 +798,9 @@ void RasterizerSceneGLES3::_setup_sky(const RenderDataGLES3 *p_render_data, cons
 
 	bool sun_scatter_enabled = environment_get_fog_enabled(p_render_data->environment) && environment_get_fog_sun_scatter(p_render_data->environment) > 0.001;
 	glBindBufferBase(GL_UNIFORM_BUFFER, SKY_DIRECTIONAL_LIGHT_UNIFORM_LOCATION, sky_globals.directional_light_buffer);
+
+	glActiveTexture(GL_TEXTURE0 + GLES3::Config::get_singleton()->max_texture_image_units - 4);
+	glBindTexture(GL_TEXTURE_2D, GLES3::MaterialStorage::get_singleton()->global_shader_parameters_get_texture());
 	if (shader_data->uses_light || sun_scatter_enabled) {
 		sky_globals.directional_light_count = 0;
 		for (int i = 0; i < (int)p_lights.size(); i++) {
@@ -1362,6 +1365,16 @@ void RasterizerSceneGLES3::_fill_render_list(RenderListType p_render_list, const
 		// This has to be done after _setup_lights was called this frame
 
 		if (p_pass_mode == PASS_MODE_COLOR) {
+			inst->uses_lightmap = false;
+			if (inst->lightmap_instance.is_valid()) {
+				for (uint32_t j = 0; j < p_render_data->lightmaps->size(); j++) {
+					if ((*p_render_data->lightmaps)[j] == inst->lightmap_instance) {
+						inst->uses_lightmap = true;
+						break;
+					}
+				}
+			}
+
 			inst->light_passes.clear();
 			inst->spot_light_gl_cache.clear();
 			inst->omni_light_gl_cache.clear();
@@ -1561,6 +1574,11 @@ void RasterizerSceneGLES3::_update_scene_ubo(GLuint &p_ubo_buffer, GLuint p_inde
 	}
 
 	glBindBuffer(GL_UNIFORM_BUFFER, 0);
+}
+
+void RasterizerSceneGLES3::_bind_global_shader_parameters() {
+	glActiveTexture(GL_TEXTURE0 + GLES3::Config::get_singleton()->max_texture_image_units - 1);
+	glBindTexture(GL_TEXTURE_2D, GLES3::MaterialStorage::get_singleton()->global_shader_parameters_get_texture());
 }
 
 // Needs to be called after _setup_lights so that directional_light_count is accurate.
@@ -2383,10 +2401,7 @@ void RasterizerSceneGLES3::_render_shadow_pass(RID p_light, RID p_shadow_atlas, 
 	glBindFramebuffer(GL_FRAMEBUFFER, shadow_fb);
 	glViewport(atlas_rect.position.x, atlas_rect.position.y, atlas_rect.size.x, atlas_rect.size.y);
 
-	GLuint global_buffer = GLES3::MaterialStorage::get_singleton()->global_shader_parameters_get_uniform_buffer();
-
-	glBindBufferBase(GL_UNIFORM_BUFFER, SCENE_GLOBALS_UNIFORM_LOCATION, global_buffer);
-	glBindBuffer(GL_UNIFORM_BUFFER, 0);
+	_bind_global_shader_parameters();
 
 	scene_state.reset_gl_state();
 	scene_state.enable_gl_depth_test(true);
@@ -2495,6 +2510,7 @@ void RasterizerSceneGLES3::render_scene(const Ref<RenderSceneBuffers> &p_render_
 		render_data.instances = &p_instances;
 		render_data.lights = &p_lights;
 		render_data.reflection_probes = &p_reflection_probes;
+		render_data.lightmaps = &p_lightmaps;
 		render_data.environment = p_environment;
 		render_data.camera_attributes = p_camera_attributes;
 		render_data.shadow_atlas = p_shadow_atlas;
@@ -2534,8 +2550,7 @@ void RasterizerSceneGLES3::render_scene(const Ref<RenderSceneBuffers> &p_render_
 	// Fill Light lists here
 	//////////
 
-	GLuint global_buffer = GLES3::MaterialStorage::get_singleton()->global_shader_parameters_get_uniform_buffer();
-	glBindBufferBase(GL_UNIFORM_BUFFER, SCENE_GLOBALS_UNIFORM_LOCATION, global_buffer);
+	_bind_global_shader_parameters();
 
 	Color clear_color;
 	if (!is_reflection_probe && rb->render_target.is_valid()) {
@@ -2768,11 +2783,6 @@ void RasterizerSceneGLES3::render_scene(const Ref<RenderSceneBuffers> &p_render_
 		glBindFramebuffer(GL_FRAMEBUFFER, fbo);
 		glViewport(0, 0, rb->internal_size.x, rb->internal_size.y);
 
-		// If SSAO is enabled, we definitely need the depth buffer.
-		if (ssao_enabled) {
-			scene_state.used_depth_texture = true;
-		}
-
 		// Do depth prepass if it's explicitly enabled
 		bool use_depth_prepass = config->use_depth_prepass;
 
@@ -2973,7 +2983,7 @@ void RasterizerSceneGLES3::render_scene(const Ref<RenderSceneBuffers> &p_render_
 				if (scene_state.used_depth_texture) {
 					glBlitFramebuffer(0, 0, size.x, size.y,
 							0, 0, size.x, size.y,
-							GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT, GL_NEAREST);
+							GL_DEPTH_BUFFER_BIT, GL_NEAREST);
 					glActiveTexture(GL_TEXTURE0 + config->max_texture_image_units - 7);
 					glBindTexture(GL_TEXTURE_2D, backbuffer_depth);
 				}
@@ -3147,7 +3157,7 @@ void RasterizerSceneGLES3::_render_post_processing(const RenderDataGLES3 *p_rend
 			// Copy depth buffer
 			glBindFramebuffer(GL_READ_FRAMEBUFFER, fbo_int);
 			glBindFramebuffer(GL_DRAW_FRAMEBUFFER, fbo_rt);
-			glBlitFramebuffer(0, 0, internal_size.x, internal_size.y, 0, 0, target_size.x, target_size.y, GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT, GL_NEAREST);
+			glBlitFramebuffer(0, 0, internal_size.x, internal_size.y, 0, 0, target_size.x, target_size.y, GL_DEPTH_BUFFER_BIT, GL_NEAREST);
 		}
 
 		glBindFramebuffer(GL_FRAMEBUFFER, fbo_rt);
@@ -3229,7 +3239,7 @@ void RasterizerSceneGLES3::_render_post_processing(const RenderDataGLES3 *p_rend
 				glFramebufferTextureLayer(GL_READ_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, read_depth, 0, v);
 				glFramebufferTextureLayer(GL_DRAW_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, write_depth, 0, v);
 
-				glBlitFramebuffer(0, 0, internal_size.x, internal_size.y, 0, 0, target_size.x, target_size.y, GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT, GL_NEAREST);
+				glBlitFramebuffer(0, 0, internal_size.x, internal_size.y, 0, 0, target_size.x, target_size.y, GL_DEPTH_BUFFER_BIT, GL_NEAREST);
 			}
 		}
 
@@ -3467,7 +3477,7 @@ void RasterizerSceneGLES3::_render_list_template(RenderListParameters *p_params,
 					}
 				} else if (pass > 0) {
 					uint32_t shadow_id = MAX_DIRECTIONAL_LIGHTS - 1 - (pass - int32_t(inst->light_passes.size()));
-					if (inst->lightmap_instance.is_valid() && scene_state.directional_lights[shadow_id].bake_mode == RSE::LIGHT_BAKE_STATIC) {
+					if (inst->uses_lightmap && scene_state.directional_lights[shadow_id].bake_mode == RSE::LIGHT_BAKE_STATIC) {
 						// Skip shadows for static lights on meshes with a lightmap.
 						continue;
 					}
@@ -3495,12 +3505,20 @@ void RasterizerSceneGLES3::_render_list_template(RenderListParameters *p_params,
 						} break;
 						case GLES3::SceneShaderData::BLEND_MODE_ADD: {
 							glBlendEquation(GL_FUNC_ADD);
-							glBlendFunc(p_pass_mode == PASS_MODE_COLOR_TRANSPARENT ? GL_SRC_ALPHA : GL_ONE, GL_ONE);
+							if (p_render_data->transparent_bg) {
+								glBlendFunc(p_pass_mode == PASS_MODE_COLOR_TRANSPARENT ? GL_SRC_ALPHA : GL_ONE, GL_ONE);
+							} else {
+								glBlendFuncSeparate(p_pass_mode == PASS_MODE_COLOR_TRANSPARENT ? GL_SRC_ALPHA : GL_ONE, GL_ONE, GL_ZERO, GL_ONE);
+							}
 
 						} break;
 						case GLES3::SceneShaderData::BLEND_MODE_SUB: {
 							glBlendEquation(GL_FUNC_REVERSE_SUBTRACT);
-							glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+							if (p_render_data->transparent_bg) {
+								glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE, GL_SRC_ALPHA, GL_ONE);
+							} else {
+								glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE, GL_ZERO, GL_ONE);
+							}
 
 						} break;
 						case GLES3::SceneShaderData::BLEND_MODE_MUL: {
@@ -3554,7 +3572,7 @@ void RasterizerSceneGLES3::_render_list_template(RenderListParameters *p_params,
 			GLuint vertex_array_gl = 0;
 			GLuint index_array_gl = 0;
 			uint64_t vertex_input_mask = shader->vertex_input_mask;
-			if (inst->lightmap_instance.is_valid() || p_pass_mode == PASS_MODE_MATERIAL) {
+			if (((p_pass_mode == PASS_MODE_COLOR || p_pass_mode == PASS_MODE_COLOR_TRANSPARENT) && inst->uses_lightmap) || p_pass_mode == PASS_MODE_MATERIAL) {
 				vertex_input_mask |= 1 << RSE::ARRAY_TEX_UV2;
 			}
 
@@ -3652,15 +3670,7 @@ void RasterizerSceneGLES3::_render_list_template(RenderListParameters *p_params,
 							spec_constants |= SceneShaderGLES3::SECOND_REFLECTION_PROBE;
 						}
 
-						if (inst->decals_count > 0) {
-							spec_constants |= SceneShaderGLES3::USE_DECALS;
-
-							if (decals_filter == RSE::DECAL_FILTER_NEAREST_MIPMAPS || decals_filter == RSE::DECAL_FILTER_LINEAR_MIPMAPS || decals_filter == RSE::DECAL_FILTER_NEAREST_MIPMAPS_ANISOTROPIC || decals_filter == RSE::DECAL_FILTER_LINEAR_MIPMAPS_ANISOTROPIC) {
-								spec_constants |= SceneShaderGLES3::USE_DECAL_MIPMAPS;
-							}
-						}
-
-						if (inst->lightmap_instance.is_valid()) {
+						if (inst->uses_lightmap) {
 							spec_constants |= SceneShaderGLES3::USE_LIGHTMAP;
 
 							GLES3::LightmapInstance *li = GLES3::LightStorage::get_singleton()->get_lightmap_instance(inst->lightmap_instance);
@@ -3698,7 +3708,7 @@ void RasterizerSceneGLES3::_render_list_template(RenderListParameters *p_params,
 					bool disable_lightmaps = true;
 
 					// Additive directional passes may use shadowmasks, so enable lightmaps for them.
-					if (pass >= int32_t(inst->light_passes.size()) && inst->lightmap_instance.is_valid()) {
+					if (pass >= int32_t(inst->light_passes.size()) && inst->uses_lightmap) {
 						GLES3::LightmapInstance *li = GLES3::LightStorage::get_singleton()->get_lightmap_instance(inst->lightmap_instance);
 						GLES3::Lightmap *lm = GLES3::LightStorage::get_singleton()->get_lightmap(li->lightmap);
 
@@ -3745,7 +3755,7 @@ void RasterizerSceneGLES3::_render_list_template(RenderListParameters *p_params,
 							// Disable additive lighting when masks are not overlapping.
 							spec_constants &= ~SceneShaderGLES3::USE_ADDITIVE_LIGHTING;
 						}
-						if (pass == 0 && inst->lightmap_instance.is_valid() && scene_state.directional_lights[shadow_id].bake_mode == RSE::LIGHT_BAKE_STATIC) {
+						if (pass == 0 && inst->uses_lightmap && scene_state.directional_lights[shadow_id].bake_mode == RSE::LIGHT_BAKE_STATIC) {
 							// Disable additive lighting with a static light and a lightmap.
 							spec_constants &= ~SceneShaderGLES3::USE_ADDITIVE_LIGHTING;
 						}
@@ -3766,6 +3776,15 @@ void RasterizerSceneGLES3::_render_list_template(RenderListParameters *p_params,
 						} else if (scene_state.directional_shadow_quality >= RSE::SHADOW_QUALITY_SOFT_LOW) {
 							spec_constants |= SceneShaderGLES3::SHADOW_MODE_PCF_5;
 						}
+					}
+				}
+
+				// Decals apply in all color passes.
+				if (inst->decals_count > 0) {
+					spec_constants |= SceneShaderGLES3::USE_DECALS;
+
+					if (decals_filter == RSE::DECAL_FILTER_NEAREST_MIPMAPS || decals_filter == RSE::DECAL_FILTER_LINEAR_MIPMAPS || decals_filter == RSE::DECAL_FILTER_NEAREST_MIPMAPS_ANISOTROPIC || decals_filter == RSE::DECAL_FILTER_LINEAR_MIPMAPS_ANISOTROPIC) {
+						spec_constants |= SceneShaderGLES3::USE_DECAL_MIPMAPS;
 					}
 				}
 			}
@@ -3817,7 +3836,7 @@ void RasterizerSceneGLES3::_render_list_template(RenderListParameters *p_params,
 						glActiveTexture(GL_TEXTURE0 + config->max_texture_image_units - 3);
 						glBindTexture(GL_TEXTURE_2D, tex);
 
-						if (inst->lightmap_instance.is_valid()) {
+						if (inst->uses_lightmap) {
 							// Use shadowmasks for directional light passes.
 							GLES3::LightmapInstance *li = GLES3::LightStorage::get_singleton()->get_lightmap_instance(inst->lightmap_instance);
 							GLES3::Lightmap *lm = GLES3::LightStorage::get_singleton()->get_lightmap(li->lightmap);
@@ -3868,7 +3887,7 @@ void RasterizerSceneGLES3::_render_list_template(RenderListParameters *p_params,
 						glUniform1uiv(material_storage->shaders.scene_shader.version_get_uniform(SceneShaderGLES3::AREA_LIGHT_INDICES, shader->version, instance_variant, spec_constants), inst->area_light_gl_cache.size(), inst->area_light_gl_cache.ptr());
 					}
 
-					if (inst->lightmap_instance.is_valid()) {
+					if (inst->uses_lightmap) {
 						GLES3::LightmapInstance *li = GLES3::LightStorage::get_singleton()->get_lightmap_instance(inst->lightmap_instance);
 						GLES3::Lightmap *lm = GLES3::LightStorage::get_singleton()->get_lightmap(li->lightmap);
 
@@ -4203,10 +4222,7 @@ void RasterizerSceneGLES3::render_particle_collider_heightfield(RID p_collider, 
 	glBindFramebuffer(GL_FRAMEBUFFER, fb);
 	glViewport(0, 0, fb_size.width, fb_size.height);
 
-	GLuint global_buffer = GLES3::MaterialStorage::get_singleton()->global_shader_parameters_get_uniform_buffer();
-
-	glBindBufferBase(GL_UNIFORM_BUFFER, SCENE_GLOBALS_UNIFORM_LOCATION, global_buffer);
-	glBindBuffer(GL_UNIFORM_BUFFER, 0);
+	_bind_global_shader_parameters();
 
 	scene_state.reset_gl_state();
 	scene_state.enable_gl_depth_test(true);
@@ -4249,10 +4265,7 @@ void RasterizerSceneGLES3::_render_uv2(const PagedArray<RenderGeometryInstance *
 		glBindFramebuffer(GL_FRAMEBUFFER, p_framebuffer);
 		glViewport(p_region.position.x, p_region.position.y, p_region.size.x, p_region.size.y);
 
-		GLuint global_buffer = GLES3::MaterialStorage::get_singleton()->global_shader_parameters_get_uniform_buffer();
-
-		glBindBufferBase(GL_UNIFORM_BUFFER, SCENE_GLOBALS_UNIFORM_LOCATION, global_buffer);
-		glBindBuffer(GL_UNIFORM_BUFFER, 0);
+		_bind_global_shader_parameters();
 
 		scene_state.reset_gl_state();
 		scene_state.enable_gl_depth_test(true);
@@ -4736,7 +4749,7 @@ RasterizerSceneGLES3::RasterizerSceneGLES3() {
 
 	{
 		String global_defines;
-		global_defines += "#define MAX_GLOBAL_SHADER_UNIFORMS 256\n"; // TODO: this is arbitrary for now
+		global_defines += "#define GLOBAL_SHADER_UNIFORM_TEXTURE_WIDTH_SHIFT " + itos(GLES3::GlobalShaderUniforms::TEXTURE_WIDTH_SHIFT) + "\n";
 		global_defines += "\n#define MAX_LIGHT_DATA_STRUCTS " + itos(config->max_renderable_lights) + "\n";
 		global_defines += "\n#define MAX_DIRECTIONAL_LIGHT_DATA_STRUCTS " + itos(MAX_DIRECTIONAL_LIGHTS) + "\n";
 		global_defines += "\n#define MAX_FORWARD_LIGHTS " + itos(config->max_lights_per_object) + "u\n";
@@ -4806,7 +4819,7 @@ void fragment() {
 		sky_globals.roughness_layers = GLOBAL_GET("rendering/reflections/sky_reflections/roughness_layers");
 
 		String global_defines;
-		global_defines += "#define MAX_GLOBAL_SHADER_UNIFORMS 256\n"; // TODO: this is arbitrary for now
+		global_defines += "#define GLOBAL_SHADER_UNIFORM_TEXTURE_WIDTH_SHIFT " + itos(GLES3::GlobalShaderUniforms::TEXTURE_WIDTH_SHIFT) + "\n";
 		global_defines += "\n#define MAX_DIRECTIONAL_LIGHT_DATA_STRUCTS " + itos(sky_globals.max_directional_lights) + "\n";
 		material_storage->shaders.sky_shader.initialize(global_defines);
 		sky_globals.shader_default_version = material_storage->shaders.sky_shader.version_create();

@@ -381,7 +381,7 @@ class DocumentEditorContainer : public MarginContainer {
 	void _autosave_scripts();
 	void _update_autosave_timer();
 	void _reload_scripts(bool p_refresh_only = false);
-	void _auto_format_text(ScriptEditorBase *p_seb);
+	void _auto_format_text(ScriptEditorBase *p_seb) const;
 
 	void _connect_to_scene();
 	void _connect_to_scene_recursive(Node *p_current);
@@ -460,6 +460,7 @@ public:
 
 	Control *get_active_editor() const;
 	Vector<Control *> get_all_editors() const;
+	void focus_active_editor();
 
 	Vector<String> _get_breakpoints();
 	void get_breakpoints(List<String> *p_breakpoints);

@@ -780,6 +780,12 @@ msgstr "Nhóm công nhân"
 msgid "Low Priority Thread Ratio"
 msgstr "Tỷ lệ luồng ưu tiên thấp"
 
+msgid "Target"
+msgstr "Mục tiêu"
+
+msgid "Subject"
+msgstr "Chủ đề"
+
 msgid "Locale"
 msgstr "Vùng vị trí"
 
@@ -864,12 +870,6 @@ msgstr "Tiện ích"
 msgid "Increased Memory Limit"
 msgstr "Tăng giới hạn bộ nhớ"
 
-msgid "Performance Gaming Tier"
-msgstr "Hiệu suất chơi game Cấp độ"
-
-msgid "Performance A 12"
-msgstr "Hiệu suất A 12"
-
 msgid "Enabled"
 msgstr "Bật"
 
@@ -908,6 +908,12 @@ msgstr "Tùy chọn"
 
 msgid "Editing Integer"
 msgstr "Chỉnh Sửa Số Nguyên"
+
+msgid "Updown"
+msgstr "Lên xuống"
+
+msgid "Grabber"
+msgstr "Ghi lại"
 
 msgid "Make Unique"
 msgstr "Duy nhất"
@@ -1050,14 +1056,14 @@ msgstr "Giới hạn"
 msgid "Layout"
 msgstr "Bố cục"
 
-msgid "Fix Alpha Border"
-msgstr "Sửa đường viền Alpha"
-
 msgid "Normal Map"
 msgstr "Bản đồ chuẩn"
 
 msgid "Roughness"
 msgstr "Độ nhám"
+
+msgid "Fix Alpha Border"
+msgstr "Sửa đường viền Alpha"
 
 msgid "HDR as sRGB"
 msgstr "HDR dưới dạng sRGB"
@@ -1118,15 +1124,6 @@ msgstr "Xuất ra"
 
 msgid "Version Control"
 msgstr "Theo dõi phiên bản"
-
-msgid "ID"
-msgstr "ID"
-
-msgid "Alternative ID"
-msgstr "ID thay thế"
-
-msgid "Speed"
-msgstr "Tốc độ"
 
 msgid "Editors"
 msgstr "Trình chỉnh sửa"
@@ -1215,11 +1212,11 @@ msgstr "Nhập tài nguyên khi không tập trung"
 msgid "Update Continuously"
 msgstr "Cập nhật Liên tục"
 
-msgid "Derive Script Globals by Name"
-msgstr "Dẫn xuất toàn cục tập lệnh theo tên"
-
 msgid "Scene Tree"
 msgstr "Cây chứa cảnh"
+
+msgid "Derive Script Globals by Name"
+msgstr "Dẫn xuất toàn cục tập lệnh theo tên"
 
 msgid "Inspector"
 msgstr "Quan Sát Viên"
@@ -2121,8 +2118,53 @@ msgstr "Độ mạnh va chạm"
 msgid "Next"
 msgstr "Tiếp theo"
 
-msgid "Subject"
-msgstr "Chủ đề"
+msgid "ID"
+msgstr "ID"
+
+msgid "Alternative ID"
+msgstr "ID thay thế"
+
+msgid "Speed"
+msgstr "Tốc độ"
+
+msgid "X Draw Order Reversed"
+msgstr "Thứ tự vẽ X bị đảo ngược"
+
+msgid "Use Kinematic Bodies"
+msgstr "Sử dụng Vật thể động học"
+
+msgid "Terrains"
+msgstr "Địa hình"
+
+msgid "UV Clipping"
+msgstr "Cắt UV"
+
+msgid "Points"
+msgstr "Các Điểm"
+
+msgid "One Way"
+msgstr "Một chiều"
+
+msgid "Flip H"
+msgstr "Hiện tại"
+
+msgid "Flip V"
+msgstr "Âm lượng dB"
+
+msgid "Transpose"
+msgstr "Chuyển vị"
+
+msgid "Z Index"
+msgstr "Chỉ số Z"
+
+msgid "Terrain"
+msgstr "Địa hình"
+
+msgid "Miscellaneous"
+msgstr "Khác"
+
+msgid "Probability"
+msgstr "Xác suất"
 
 msgid "Discover Multicast If"
 msgstr "Khám phá đa hướng nếu"
@@ -2243,6 +2285,12 @@ msgstr "Họ thiết bị mục tiêu"
 
 msgid "Storyboard"
 msgstr "Storyboard"
+
+msgid "Performance Gaming Tier"
+msgstr "Hiệu suất chơi game Cấp độ"
+
+msgid "Performance A 12"
+msgstr "Hiệu suất A 12"
 
 msgid "Spotlight 80 X 80"
 msgstr "Spotlight 80 X 80"
@@ -2388,12 +2436,6 @@ msgstr "D3D12 Agility SDK Multiarch"
 msgid "D3D12 Agility SDK Multiarch"
 msgstr "Khung"
 
-msgid "Flip H"
-msgstr "Hiện tại"
-
-msgid "Flip V"
-msgstr "Âm lượng dB"
-
 msgid "Stream Paused"
 msgstr "Độ suy giảm"
 
@@ -2441,9 +2483,6 @@ msgstr "Hình dạng"
 
 msgid "Rect Extents"
 msgstr "Căn chỉnh Y"
-
-msgid "Points"
-msgstr "Các Điểm"
 
 msgid "Colors"
 msgstr "Màu"
@@ -2657,12 +2696,6 @@ msgstr "Hframes"
 
 msgid "Vframes"
 msgstr "Vframes"
-
-msgid "X Draw Order Reversed"
-msgstr "Thứ tự vẽ X bị đảo ngược"
-
-msgid "Use Kinematic Bodies"
-msgstr "Sử dụng Vật thể động học"
 
 msgid "Unit Size"
 msgstr "Kích thước đơn vị"
@@ -2886,9 +2919,6 @@ msgstr "Mạng lưới Ngưỡng LOD"
 msgid "Deprecated"
 msgstr "Đã lỗi thời"
 
-msgid "Target"
-msgstr "Mục tiêu"
-
 msgid "Use Magnet"
 msgstr "Sử dụng Nam châm"
 
@@ -2897,6 +2927,9 @@ msgstr "Nam châm"
 
 msgid "Influence"
 msgstr "Ảnh hưởng"
+
+msgid "Max Length"
+msgstr "Độ dài tối đa"
 
 msgid "Custom AABB"
 msgstr "AABB tùy chỉnh"
@@ -2973,6 +3006,18 @@ msgstr "Cho phép Nhả"
 msgid "Text Overrun Behavior"
 msgstr "Hành vi tràn văn bản"
 
+msgid "Hover"
+msgstr "Di chuột"
+
+msgid "Align to Largest Stylebox"
+msgstr "Căn chỉnh theo hộp kiểu lớn nhất"
+
+msgid "Radio Unchecked"
+msgstr "Radio Chưa kiểm tra"
+
+msgid "Radio Unchecked Disabled"
+msgstr "Radio Chưa kiểm tra Đã tắt"
+
 msgid "Symbol Lookup on Click"
 msgstr "Tra cứu biểu tượng khi nhấp"
 
@@ -2985,8 +3030,44 @@ msgstr "Tiền tố tự động"
 msgid "Pairs"
 msgstr "Cặp"
 
+msgid "Code Folding Color"
+msgstr "Màu đường thực thi"
+
+msgid "Folded EOL Icon"
+msgstr "Biểu tượng EOL đã gập lại"
+
+msgid "Executing Line Color"
+msgstr "Màu điểm ngắt"
+
+msgid "Completion Scroll Color"
+msgstr "Màu cuộn hoàn thành"
+
+msgid "Completion Existing Color"
+msgstr "Màu hiện tại của hoàn thành"
+
+msgid "Line Length Guideline Color"
+msgstr "Dòng hiện tại Màu sắc"
+
+msgid "Brace Mismatch Color"
+msgstr "Màu dấu ngoặc nhọn"
+
 msgid "Can Add Swatches"
 msgstr "Có thể thêm mẫu"
+
+msgid "Center Slider Grabbers"
+msgstr "Thanh trượt Grabber ở giữa"
+
+msgid "Screen Picker"
+msgstr "Bộ chọn màn hình"
+
+msgid "Bar Arrow"
+msgstr "Mũi tên thanh"
+
+msgid "Sample BG"
+msgstr "BG mẫu"
+
+msgid "Overbright Indicator"
+msgstr "Chỉ báo quá sáng"
 
 msgid "Constants"
 msgstr "Các hằng số"
@@ -3012,14 +3093,38 @@ msgstr "Truy cập"
 msgid "Filters"
 msgstr "Bộ lọc"
 
+msgid "Reload"
+msgstr "Tải lại"
+
+msgid "File"
+msgstr "Tệp"
+
 msgid "Show Grid"
 msgstr "Điền ngược"
 
 msgid "Toolbar Menu"
 msgstr "Bước thu nhỏ"
 
+msgid "Menu Panel"
+msgstr "Bảng điều khiển menu"
+
+msgid "Snapping Toggle"
+msgstr "Chuyển đổi chụp"
+
+msgid "Minimap Toggle"
+msgstr "Bản đồ thu nhỏ Chuyển đổi"
+
+msgid "Port Hotzone Inner Extent"
+msgstr "Mép cổng Hotzone bên trong"
+
+msgid "Port Hotzone Outer Extent"
+msgstr "Mở rộng bên ngoài cổng Hotzone"
+
 msgid "Ignore Invalid Connection Type"
 msgstr "Bỏ qua Loại kết nối không hợp lệ"
+
+msgid "Slot"
+msgstr "Khe"
 
 msgid "Select Mode"
 msgstr "Chế độ chọn"
@@ -3042,6 +3147,12 @@ msgstr "Chiều rộng cột cố định"
 msgid "Icon Mode"
 msgstr "Chế độ biểu tượng"
 
+msgid "Cursor Unfocused"
+msgstr "Con trỏ không được lấy nét"
+
+msgid "Cursor"
+msgstr "Con trỏ"
+
 msgid "Ellipsis Char"
 msgstr "Ký tự dấu ba chấm"
 
@@ -3056,9 +3167,6 @@ msgstr "Số dòng tối đa có thể nhìn thấy"
 
 msgid "Placeholder Text"
 msgstr "Văn bản giữ chỗ"
-
-msgid "Max Length"
-msgstr "Độ dài tối đa"
 
 msgid "Context Menu Enabled"
 msgstr "Menu ngữ cảnh được bật"
@@ -3075,6 +3183,12 @@ msgstr "Ghi chú giữa"
 msgid "Secret"
 msgstr "Bí mật"
 
+msgid "Caret Color"
+msgstr "Màu dấu nháy"
+
+msgid "Clear"
+msgstr "Xoá"
+
 msgid "Underline"
 msgstr "Gạch chân"
 
@@ -3090,6 +3204,9 @@ msgstr "Trục kéo dài"
 msgid "Fit to Longest Item"
 msgstr "Vừa với mục dài nhất"
 
+msgid "Arrow"
+msgstr "Mũi tên"
+
 msgid "Submenu Popup Delay"
 msgstr "Trì hoãn bật lên của menu phụ"
 
@@ -3098,6 +3215,18 @@ msgstr "ID menu hệ thống"
 
 msgid "Prefer Native Menu"
 msgstr "Ưu tiên Menu gốc"
+
+msgid "Labeled Separator Left"
+msgstr "Dấu phân cách có nhãn bên trái"
+
+msgid "Labeled Separator Right"
+msgstr "Dấu phân cách có nhãn bên phải"
+
+msgid "Submenu"
+msgstr "Bảng chọn phụ"
+
+msgid "Background"
+msgstr "Nền"
 
 msgid "Allow Greater"
 msgstr "Cho phép lớn hơn"
@@ -3123,6 +3252,24 @@ msgstr "Meta gạch chân"
 msgid "Hint Underlined"
 msgstr "Gợi ý gạch chân"
 
+msgid "Bold Italics Font"
+msgstr "Phông chữ in đậm"
+
+msgid "Table Odd Row BG"
+msgstr "BG hàng lẻ của bảng"
+
+msgid "Table Even Row BG"
+msgstr "BG hàng chẵn của bảng"
+
+msgid "Increment Pressed"
+msgstr "Tăng dần đã nhấn"
+
+msgid "Decrement"
+msgstr "Giảm dần"
+
+msgid "Decrement Pressed"
+msgstr "Giảm dần Nhấn"
+
 msgid "Follow Focus"
 msgstr "Theo dõi tiêu điểm"
 
@@ -3132,8 +3279,26 @@ msgstr "Vùng chết cuộn mặc định"
 msgid "Scrollable"
 msgstr "Có thể cuộn"
 
+msgid "Grabber Area"
+msgstr "Khu vực Grabber"
+
+msgid "Grabber Area Highlight"
+msgstr "Đánh dấu khu vực Grabber"
+
+msgid "Tick"
+msgstr "Đánh dấu"
+
+msgid "Format"
+msgstr "Định dạng"
+
 msgid "Dragger Visibility"
 msgstr "Khả năng hiển thị của trình kéo"
+
+msgid "H Grabber"
+msgstr "H Grabber"
+
+msgid "V Grabber"
+msgstr "V Grabber"
 
 msgid "Tab Close Display Policy"
 msgstr "Chính sách hiển thị đóng tab"
@@ -3141,11 +3306,17 @@ msgstr "Chính sách hiển thị đóng tab"
 msgid "Scrolling Enabled"
 msgstr "Bật cuộn"
 
+msgid "Close"
+msgstr "Đóng"
+
 msgid "Tabs Visible"
 msgstr "Tab có thể nhìn thấy"
 
 msgid "Use Hidden Tabs for Min Size"
 msgstr "Sử dụng tab ẩn để có kích thước tối thiểu"
+
+msgid "Menu"
+msgstr "Menu"
 
 msgid "Past End of File"
 msgstr "Kết thúc tệp trước"
@@ -3156,14 +3327,14 @@ msgstr "Di chuyển khi nhấp chuột phải"
 msgid "Syntax Highlighter"
 msgstr "Nổi màu cú pháp"
 
+msgid "Tab"
+msgstr "Tab"
+
 msgid "Text Edit Idle Detect (sec)"
 msgstr "Phát hiện trạng thái nhàn rỗi khi chỉnh sửa văn bản (giây)"
 
 msgid "Text Edit Undo Stack Max Size"
 msgstr "Kích thước tối đa của ngăn xếp hoàn tác chỉnh sửa văn bản"
-
-msgid "Hover"
-msgstr "Di chuột"
 
 msgid "Radial Fill"
 msgstr "Điền màu"
@@ -3186,6 +3357,9 @@ msgstr "Tiêu đề cột có thể nhìn thấy"
 msgid "Drop Mode Flags"
 msgstr "Cờ chế độ thả"
 
+msgid "Custom Button Font Highlight"
+msgstr "Nét phông chữ nút tùy chỉnh Tô sáng"
+
 msgid "Audio Track"
 msgstr "Rãnh âm thanh"
 
@@ -3194,9 +3368,6 @@ msgstr "Tạm dừng"
 
 msgid "Show Behind Parent"
 msgstr "Hiển thị phía sau phần cha"
-
-msgid "Z Index"
-msgstr "Chỉ số Z"
 
 msgid "Use Parent Material"
 msgstr "Sử dụng vật liệu phần cha"
@@ -3252,9 +3423,6 @@ msgstr "Ánh sáng và bóng đổ"
 msgid "SDF"
 msgstr "SDF"
 
-msgid "Menu"
-msgstr "Menu"
-
 msgid "Own World 3D"
 msgstr "Thế giới riêng 3D"
 
@@ -3300,6 +3468,12 @@ msgstr "Không thể lấy nét"
 msgid "Mouse Passthrough"
 msgstr "Di chuyển chuột"
 
+msgid "Embedded Border"
+msgstr "Đường viền nhúng"
+
+msgid "Embedded Unfocused Border"
+msgstr "Đường viền không lấy nét nhúng"
+
 msgid "Parsed Geometry Type"
 msgstr "Loại hình học đã phân tích"
 
@@ -3327,27 +3501,6 @@ msgstr "Độ dài chuỗi dữ liệu FABRIK"
 msgid "Jiggle Data Chain Length"
 msgstr "Độ dài chuỗi dữ liệu Jiggle"
 
-msgid "Terrains"
-msgstr "Địa hình"
-
-msgid "UV Clipping"
-msgstr "Cắt UV"
-
-msgid "One Way"
-msgstr "Một chiều"
-
-msgid "Transpose"
-msgstr "Chuyển vị"
-
-msgid "Terrain"
-msgstr "Địa hình"
-
-msgid "Miscellaneous"
-msgstr "Khác"
-
-msgid "Probability"
-msgstr "Xác suất"
-
 msgid "Density"
 msgstr "Mật độ"
 
@@ -3356,9 +3509,6 @@ msgstr "Mờ dần cạnh"
 
 msgid "Map Width"
 msgstr "Chiều rộng bản đồ"
-
-msgid "Item"
-msgstr "Mục"
 
 msgid "Subdivide Width"
 msgstr "Chiều rộng chia nhỏ"
@@ -3402,8 +3552,11 @@ msgstr "Độ đục"
 msgid "Fallback Environment"
 msgstr "Môi trường dự phòng"
 
-msgid "Format"
-msgstr "Định dạng"
+msgid "Buffer Length"
+msgstr "Độ dài bộ đệm"
+
+msgid "Random Volume Offset dB"
+msgstr "Độ lệch âm lượng ngẫu nhiên dB"
 
 msgid "Stereo"
 msgstr "Âm thanh nổi"
@@ -3443,9 +3596,6 @@ msgstr "Cần hiệu ứng phản chiếu riêng biệt"
 
 msgid "Bake Interval"
 msgstr "Khoảng thời gian Bake"
-
-msgid "Background"
-msgstr "Nền"
 
 msgid "Canvas Max Layer"
 msgstr "Lớp Canvas Max"
@@ -3663,153 +3813,6 @@ msgstr "Màu tô sáng từ"
 msgid "Symbol Color"
 msgstr "Màu biểu tượng"
 
-msgid "File"
-msgstr "Tệp"
-
-msgid "Align to Largest Stylebox"
-msgstr "Căn chỉnh theo hộp kiểu lớn nhất"
-
-msgid "Arrow"
-msgstr "Mũi tên"
-
-msgid "Radio Unchecked"
-msgstr "Radio Chưa kiểm tra"
-
-msgid "Radio Unchecked Disabled"
-msgstr "Radio Chưa kiểm tra Đã tắt"
-
-msgid "Caret Color"
-msgstr "Màu dấu nháy"
-
-msgid "Clear"
-msgstr "Xoá"
-
-msgid "Tab"
-msgstr "Tab"
-
-msgid "Folded EOL Icon"
-msgstr "Biểu tượng EOL đã gập lại"
-
-msgid "Completion Existing Color"
-msgstr "Màu hiện tại của hoàn thành"
-
-msgid "Completion Scroll Color"
-msgstr "Màu cuộn hoàn thành"
-
-msgid "Executing Line Color"
-msgstr "Màu điểm ngắt"
-
-msgid "Code Folding Color"
-msgstr "Màu đường thực thi"
-
-msgid "Brace Mismatch Color"
-msgstr "Màu dấu ngoặc nhọn"
-
-msgid "Line Length Guideline Color"
-msgstr "Dòng hiện tại Màu sắc"
-
-msgid "Grabber"
-msgstr "Ghi lại"
-
-msgid "Increment Pressed"
-msgstr "Tăng dần đã nhấn"
-
-msgid "Decrement"
-msgstr "Giảm dần"
-
-msgid "Decrement Pressed"
-msgstr "Giảm dần Nhấn"
-
-msgid "Grabber Area"
-msgstr "Khu vực Grabber"
-
-msgid "Grabber Area Highlight"
-msgstr "Đánh dấu khu vực Grabber"
-
-msgid "Tick"
-msgstr "Đánh dấu"
-
-msgid "Updown"
-msgstr "Lên xuống"
-
-msgid "Embedded Border"
-msgstr "Đường viền nhúng"
-
-msgid "Embedded Unfocused Border"
-msgstr "Đường viền không lấy nét nhúng"
-
-msgid "Close"
-msgstr "Đóng"
-
-msgid "Reload"
-msgstr "Tải lại"
-
-msgid "Labeled Separator Left"
-msgstr "Dấu phân cách có nhãn bên trái"
-
-msgid "Labeled Separator Right"
-msgstr "Dấu phân cách có nhãn bên phải"
-
-msgid "Submenu"
-msgstr "Bảng chọn phụ"
-
-msgid "Slot"
-msgstr "Khe"
-
-msgid "Cursor"
-msgstr "Con trỏ"
-
-msgid "Cursor Unfocused"
-msgstr "Con trỏ không được lấy nét"
-
-msgid "Custom Button Font Highlight"
-msgstr "Nét phông chữ nút tùy chỉnh Tô sáng"
-
-msgid "Center Slider Grabbers"
-msgstr "Thanh trượt Grabber ở giữa"
-
-msgid "Screen Picker"
-msgstr "Bộ chọn màn hình"
-
-msgid "Sample BG"
-msgstr "BG mẫu"
-
-msgid "Overbright Indicator"
-msgstr "Chỉ báo quá sáng"
-
-msgid "Bar Arrow"
-msgstr "Mũi tên thanh"
-
-msgid "Bold Italics Font"
-msgstr "Phông chữ in đậm"
-
-msgid "Table Odd Row BG"
-msgstr "BG hàng lẻ của bảng"
-
-msgid "Table Even Row BG"
-msgstr "BG hàng chẵn của bảng"
-
-msgid "H Grabber"
-msgstr "H Grabber"
-
-msgid "V Grabber"
-msgstr "V Grabber"
-
-msgid "Minimap Toggle"
-msgstr "Bản đồ thu nhỏ Chuyển đổi"
-
-msgid "Snapping Toggle"
-msgstr "Chuyển đổi chụp"
-
-msgid "Menu Panel"
-msgstr "Bảng điều khiển menu"
-
-msgid "Port Hotzone Inner Extent"
-msgstr "Mép cổng Hotzone bên trong"
-
-msgid "Port Hotzone Outer Extent"
-msgstr "Mở rộng bên ngoài cổng Hotzone"
-
 msgid "Fallback values"
 msgstr "Giá trị dự phòng"
 
@@ -3818,12 +3821,6 @@ msgstr "Kênh Disable Threshold dB"
 
 msgid "Video Delay Compensation (ms)"
 msgstr "Video Delay Compensation (ms)"
-
-msgid "Random Volume Offset dB"
-msgstr "Độ lệch âm lượng ngẫu nhiên dB"
-
-msgid "Buffer Length"
-msgstr "Độ dài bộ đệm"
 
 msgid "Voice Count"
 msgstr "Số lượng giọng nói"
@@ -3936,9 +3933,6 @@ msgstr "Khối lượng nghịch đảo"
 msgid "Total Angular Damp"
 msgstr "Độ ẩm góc tổng"
 
-msgid "Shape RID"
-msgstr "RID hình dạng"
-
 msgid "Sleep Threshold Linear"
 msgstr "Ngưỡng ngủ tuyến tính"
 
@@ -3950,6 +3944,9 @@ msgstr "Thời gian trước khi ngủ"
 
 msgid "Contact Max Allowed Penetration"
 msgstr "Độ xuyên thấu được phép tối đa tiếp xúc"
+
+msgid "Shape RID"
+msgstr "RID hình dạng"
 
 msgid "Principal Inertia Axes"
 msgstr "Trục quán tính chính"

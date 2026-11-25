@@ -2453,13 +2453,13 @@ void EditorHelp::_class_desc_scroll_to_paragraph(int p_line, bool p_save_history
 		Dictionary state = get_state();
 		// Row 0 is not a state worth saving as a previous state to history.
 		if (int(state["row"]) > 0) {
-			emit_signal(SNAME("_request_save_new_history"), state);
+			call_on_all_layout_pending_finished(callable_mp(this, &EditorHelp::_emit_request_save_new_history).bind(state));
 		}
 	}
 	class_desc->scroll_to_paragraph(p_line);
 	// Save history after scrolling.
 	if (p_save_history) {
-		emit_signal(SNAME("_request_save_new_history"), get_state());
+		call_on_all_layout_pending_finished(callable_mp(this, &EditorHelp::_emit_request_save_new_history).bind(get_state()));
 		if (ScriptEditorNavigationMarker::get_singleton()->is_locating()) {
 			ScriptEditorNavigationMarker::get_singleton()->locate_end();
 		}
@@ -2468,6 +2468,10 @@ void EditorHelp::_class_desc_scroll_to_paragraph(int p_line, bool p_save_history
 
 bool EditorHelp::_need_save_new_history() const {
 	return !ScriptEditorNavigationMarker::get_singleton()->is_initializing() && ScriptEditorNavigationMarker::get_singleton()->is_locating();
+}
+
+void EditorHelp::_emit_request_save_new_history(const Dictionary &p_state) {
+	emit_signal(SNAME("_request_save_new_history"), p_state);
 }
 
 static void _add_text_to_rt(const String &p_bbcode, RichTextLabel *p_rt, const Control *p_owner_node, const String &p_class) {
@@ -3427,7 +3431,7 @@ void EditorHelp::update_doc() {
 
 void EditorHelp::trigger_history_save_on_navigate() {
 	if (_need_save_new_history()) {
-		emit_signal(SNAME("_request_save_new_history"), get_state());
+		call_on_all_layout_pending_finished(callable_mp(this, &EditorHelp::_emit_request_save_new_history).bind(get_state()));
 		if (ScriptEditorNavigationMarker::get_singleton()->is_locating()) {
 			ScriptEditorNavigationMarker::get_singleton()->locate_end();
 		}
@@ -4267,7 +4271,7 @@ void EditorHelpBit::_update_labels() {
 		} else {
 			content->push_meta("open-file:" + help_data.resource_path, RichTextLabel::META_UNDERLINE_ON_HOVER);
 			content->add_image(get_editor_theme_icon(SNAME("Filesystem")));
-			content->add_text(nbsp + TTR("Open in File Manager"));
+			content->add_text(nbsp + OS::get_singleton()->get_platform_string(OS::PLATFORM_STRING_FILE_MANAGER_OPEN));
 			content->pop(); // meta
 		}
 	}
@@ -4504,7 +4508,7 @@ String EditorHelpBit::get_as_plain_text(const String &p_symbol, const String &p_
 		new_help_data = _get_signal_help_data(class_name, item_name);
 	} else if (item_type == "annotation") {
 		new_help_data = _get_annotation_help_data(class_name, item_name);
-	} else if (item_type == "local_constant" || item_type == "local_variable") {
+	} else if (item_type == "local_constant" || item_type == "local_variable" || item_type == "local_method") {
 		new_help_data.description = item_data.get("description", "").operator String().strip_edges();
 		if (item_data.get("is_deprecated", false)) {
 			const String deprecated_message = item_data.get("deprecated_message", "").operator String().strip_edges();
@@ -4811,6 +4815,24 @@ void EditorHelpBit::parse_symbol(const String &p_symbol, const String &p_prologu
 		help_data.doc_type.enumeration = item_data.get("enumeration", "");
 		help_data.doc_type.is_bitfield = item_data.get("is_bitfield", false);
 		help_data.value = item_data.get("value", "");
+	} else if (item_type == "local_method") {
+		symbol_type = TTR("Method");
+		symbol_hint = SYMBOL_HINT_SIGNATURE;
+		help_data.description = item_data.get("description", "").operator String().strip_edges();
+		help_data.doc_type.type = item_data.get("doc_type", "");
+		if (item_data.get("is_vararg", false)) {
+			help_data.qualifiers = "vararg";
+		}
+
+		const Array method_args = item_data.get("arguments", Array());
+		for (const Variant& arg_variant : method_args) {
+			const Dictionary arg_dict = arg_variant;
+			ArgumentData arg;
+			arg.name = arg_dict.get("name", "");
+			arg.doc_type.type = arg_dict.get("type", "");
+			arg.default_value = arg_dict.get("default", "");
+			help_data.arguments.push_back(arg);
+		}
 	} else if (item_type == "resource") {
 		String path = item_name.simplify_path();
 		const bool is_uid = path.begins_with("uid://");
@@ -5151,7 +5173,6 @@ EditorHelpBitTooltip::EditorHelpBitTooltip(Control *p_target, bool p_shortcut) {
 	diagnostics_label->set_theme_type_variation("EditorHelpBitTooltipTitle");
 	diagnostics_label->set_custom_minimum_size(Size2(640 * EDSCALE, 0)); // GH-93031. Set the minimum width even if `fit_content` is true.
 	diagnostics_label->set_fit_content(true);
-	diagnostics_label->set_selection_enabled(true);
 	diagnostics_label->set_context_menu_enabled(false);
 	diagnostics_label->set_use_bbcode(true);
 

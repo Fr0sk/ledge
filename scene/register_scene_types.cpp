@@ -102,6 +102,9 @@
 #include "scene/main/canvas_layer.h"
 #include "scene/main/http_request.h"
 #include "scene/main/instance_placeholder.h"
+#include "scene/main/attach_rules.h"
+#include "scene/main/component.h"
+#include "scene/main/composer.h"
 #include "scene/main/missing_node.h"
 #include "scene/main/multiplayer_api.h"
 #include "scene/main/resource_preloader.h"
@@ -253,7 +256,7 @@
 #include "scene/3d/lightmap_gi.h"
 #include "scene/3d/lightmap_probe.h"
 #include "scene/3d/limit_angular_velocity_modifier_3d.h"
-#include "scene/3d/line_3d.h"
+#include "scene/3d/line_base_3d.h"
 #include "scene/3d/look_at_modifier_3d.h"
 #include "scene/3d/marker_3d.h"
 #include "scene/3d/mesh_instance_3d.h"
@@ -467,12 +470,17 @@ void register_scene_types() {
 	GDREGISTER_VIRTUAL_CLASS(CompositorEffect);
 
 	GDREGISTER_ABSTRACT_CLASS(MultiplayerPeer);
-	GDREGISTER_CLASS(MultiplayerPeerExtension);
+	GDREGISTER_VIRTUAL_CLASS(MultiplayerPeerExtension);
 	GDREGISTER_ABSTRACT_CLASS(MultiplayerAPI);
-	GDREGISTER_CLASS(MultiplayerAPIExtension);
+	GDREGISTER_VIRTUAL_CLASS(MultiplayerAPIExtension);
 
 	GDREGISTER_CLASS(HTTPRequest);
 	GDREGISTER_CLASS(Timer);
+	GDREGISTER_CLASS(Component);
+	GDREGISTER_CLASS(Composer);
+#ifdef DEBUG_ENABLED
+	Node::attach_validator = &AttachRules::validate;
+#endif
 	GDREGISTER_CLASS(CanvasLayer);
 	GDREGISTER_CLASS(ResourcePreloader);
 	GDREGISTER_CLASS(Window);
@@ -679,7 +687,7 @@ void register_scene_types() {
 	GDREGISTER_CLASS(LightmapProbe);
 	GDREGISTER_ABSTRACT_CLASS(Lightmapper);
 
-	GDREGISTER_CLASS(Line3D);
+	GDREGISTER_ABSTRACT_CLASS(LineBase3D);
 	GDREGISTER_CLASS(Trail3D);
 
 	GDREGISTER_CLASS(GPUParticles3D);
@@ -810,7 +818,9 @@ void register_scene_types() {
 	GDREGISTER_CLASS(BlitMaterial);
 
 	// SpriteFrames is needed by both AnimatedSprite2D and AnimatedSprite3D.
+#if !defined(_2D_DISABLED) || !defined(_3D_DISABLED)
 	GDREGISTER_CLASS(SpriteFrames);
+#endif // !defined(_2D_DISABLED) || !defined(_3D_DISABLED)
 
 	/* REGISTER 2D */
 
@@ -957,6 +967,7 @@ void register_scene_types() {
 	GDREGISTER_VIRTUAL_CLASS(CameraAttributes);
 	GDREGISTER_CLASS(CameraAttributesPhysical);
 	GDREGISTER_CLASS(CameraAttributesPractical);
+	GDREGISTER_CLASS(Curve2D);
 	GDREGISTER_CLASS(World2D);
 	GDREGISTER_CLASS(Sky);
 	GDREGISTER_CLASS(CompressedTexture2D);
@@ -1053,7 +1064,6 @@ void register_scene_types() {
 
 #ifndef _2D_DISABLED
 	GDREGISTER_CLASS(AudioStreamPlayer2D);
-	GDREGISTER_CLASS(Curve2D);
 	GDREGISTER_CLASS(Path2D);
 	GDREGISTER_CLASS(PathFollow2D);
 
@@ -1069,9 +1079,13 @@ void register_scene_types() {
 	GDREGISTER_CLASS(ConcavePolygonShape2D);
 #endif // PHYSICS_2D_DISABLED
 
+#endif // _2D_DISABLED
+
 #if !defined(NAVIGATION_2D_DISABLED) || !defined(NAVIGATION_3D_DISABLED)
 	GDREGISTER_CLASS(NavigationMesh);
 #endif // !defined(NAVIGATION_2D_DISABLED) || !defined(NAVIGATION_3D_DISABLED)
+
+#ifndef _2D_DISABLED
 
 #ifndef NAVIGATION_2D_DISABLED
 	GDREGISTER_CLASS(NavigationMeshSourceGeometryData2D);

@@ -299,11 +299,17 @@ private:
 	OptionButton *renderer = nullptr;
 
 #ifdef ANDROID_ENABLED
-	VBoxContainer *base_vbox = nullptr; // It only contains the title_bar and main_box.
+	VBoxContainer *base_vbox = nullptr; // It only contains the title_bar, main_box, and vk_spacer.
 	BoxContainer *main_box = nullptr; // It only contains the touch_actions_panel and main_vbox.
 	TouchActionsPanel *touch_actions_panel = nullptr;
 	void _touch_actions_panel_mode_changed();
+
+	Control *vk_spacer = nullptr;
+	int last_vk_height = -1;
+	void _screen_orientation_changed(int p_new_orientation);
 #endif
+
+	bool portrait_mode = false;
 
 	ConfirmationDialog *video_restart_dialog = nullptr;
 
@@ -439,7 +445,7 @@ private:
 	EditorBottomPanel *bottom_panel = nullptr;
 
 	Tree *disk_changed_list = nullptr;
-	LocalVector<String> disk_changed_scenes;
+	HashSet<String> disk_changed_scenes;
 	bool disk_changed_project = false;
 	ConfirmationDialog *disk_changed = nullptr;
 	ConfirmationDialog *project_data_missing = nullptr;
@@ -458,6 +464,7 @@ private:
 	bool requested_first_scan = false;
 	bool waiting_for_first_scan = true;
 	bool load_editor_layout_done = false;
+	bool resource_counter_queued = false;
 
 	HashSet<Ref<Translation>> tracked_translations;
 	bool pending_translation_notification = false;
@@ -631,7 +638,6 @@ private:
 	void _update_recent_scenes();
 	void _open_recent_scene(int p_idx);
 
-	void _dropped_files(const Vector<String> &p_files);
 	void _add_dropped_files_recursive(const Vector<String> &p_files, String to_path);
 
 	void _update_vsync_mode();
@@ -641,6 +647,8 @@ private:
 	void _translation_resources_changed();
 	void _queue_translation_notification();
 	void _propagate_translation_notification();
+	void _queue_resource_counter_changed();
+	void _emit_resource_counter_changed();
 
 	void _renderer_selected(int p_index);
 	void _update_renderer_color();
@@ -753,6 +761,7 @@ protected:
 public:
 	// Public for use as signal callback.
 	void _on_plugin_ready(Object *p_script, const String &p_activate_name);
+	void _dropped_files(const Vector<String> &p_files);
 
 	void init_plugins();
 
@@ -880,6 +889,8 @@ public:
 	void set_edited_scene_root(Node *p_scene, bool p_auto_add);
 	Node *get_edited_scene() { return editor_data.get_edited_scene_root(); }
 
+	void soft_reload_edited_scene();
+
 	String get_preview_locale() const;
 	bool is_pseudolocalization_enabled() const;
 	void set_preview_locale(const String &p_locale, bool p_pseudolocalization);
@@ -938,6 +949,7 @@ public:
 	HashMap<int, SceneModificationsEntry> scenes_modification_table;
 	List<String> scenes_reimported;
 	List<String> resources_reimported;
+	List<String> uninstanced_scenes_reimported;
 
 	void update_node_from_node_modification_entry(Node *p_node, ModificationNodeEntry &p_node_modification);
 
@@ -989,6 +1001,9 @@ public:
 	void show_save_accept(const String &p_text, const String &p_ok_text = TTRC("OK"));
 	void show_warning(const String &p_text, const String &p_title = TTRC("Warning!"));
 
+	void collect_contract_errors(Vector<String>& r_errors);
+	bool validate_contracts_for_run();
+
 	void _copy_warning(const String &p_str);
 
 	Error export_preset(const String &p_preset, const String &p_path, bool p_debug, bool p_pack_only, bool p_android_build_template, bool p_patch, const Vector<String> &p_patches);
@@ -1018,6 +1033,7 @@ public:
 	void find_all_instances_inheriting_path_in_node(Node *p_root, Node *p_node, const String &p_instance_path, HashSet<Node *> &p_instance_list);
 	void preload_reimporting_with_path_in_edited_scenes(const List<String> &p_scenes);
 	void reload_instances_with_path_in_edited_scenes();
+	void reload_uninstanced_scenes();
 
 	bool is_exiting() const { return exiting; }
 
@@ -1069,6 +1085,8 @@ public:
 	bool validate_custom_directory();
 	void run_editor_script(const Ref<Script> &p_script);
 	bool is_scene_unsaved(int p_idx);
+
+	bool is_portrait() const { return portrait_mode; }
 };
 
 struct EditorProgressBG {

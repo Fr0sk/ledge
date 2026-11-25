@@ -35,6 +35,7 @@
 #include "gdscript_function.h"
 #include "gdscript_optimiser.h"
 #include "gdscript_parser.h"
+#include "program_index.h"
 
 #include "core/object/gdtype.h"
 #include "core/templates/hash_set.h"
@@ -172,6 +173,7 @@ class GDScriptCompiler {
 	bool _is_local_or_parameter(CodeGen &codegen, const StringName &p_name);
 
 	int inline_budget_used = 0;
+	RGIndex::DependencySet inline_deps;
 
 	///the next two values can be cranked by YOU! (yes, you!) to tune inlining!
 	static constexpr int INLINE_BUDGET_MAX = 4000; ///how aggressively to inline functions within functions
@@ -186,6 +188,12 @@ class GDScriptCompiler {
 	void _set_error(const String &p_error, const GDScriptParser::Node *p_node);
 
 	GDScriptDataType _gdtype_from_datatype(const GDScriptParser::DataType &p_datatype, GDScript *p_owner, bool p_handle_metatype = true);
+
+	const GDScriptParser::FunctionNode* reified_generic_function = nullptr;
+	const GDScriptParser::ClassNode* reified_generic_class = nullptr;
+	GDScriptParser::DataType current_impl_target;
+	int _generic_param_index_in_scope(const GDScriptParser::DataType& p_type) const;
+	GDScriptDataType _type_argument_from_datatype(const GDScriptParser::DataType& p_type, GDScript* p_owner);
 
 	GDScriptCodeGenerator::Address _parse_expression(CodeGen &codegen, Error &r_error, const GDScriptParser::ExpressionNode *p_expression, bool p_root = false, bool p_initializer = false);
 	GDScriptCodeGenerator::Address _parse_match_pattern(CodeGen &codegen, Error &r_error, const GDScriptParser::PatternNode *p_pattern, const GDScriptCodeGenerator::Address &p_value_addr, const GDScriptCodeGenerator::Address &p_type_addr, const GDScriptCodeGenerator::Address &p_previous_test, bool p_is_first, bool p_is_nested);
@@ -214,6 +222,7 @@ class GDScriptCompiler {
 
 public:
 	static void convert_to_initializer_type(Variant &p_variant, const GDScriptParser::VariableNode *p_node);
+	static void collect_specialized_generic_exports(const GDScriptParser::ClassNode* p_class, HashMap<StringName, PropertyInfo>& r_specialized);
 	static void make_scripts(GDScript *p_script, const GDScriptParser::ClassNode *p_class, bool p_keep_state);
 	Error compile(const GDScriptParser *p_parser, GDScript *p_script, bool p_keep_state = false);
 

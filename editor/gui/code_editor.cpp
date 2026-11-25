@@ -221,7 +221,7 @@ bool FindReplaceBar::_search(uint32_t p_flags, int p_from_line, int p_from_col) 
 		if (!preserve_cursor && !is_selection_only()) {
 			text_editor->unfold_line(pos.y);
 			text_editor->select(pos.y, pos.x, pos.y, pos.x + text.length());
-			text_editor->center_viewport_to_caret(0);
+			base_text_editor->center_viewport_to_caret();
 			text_editor->set_code_hint("");
 
 			line_col_changed_for_result = true;
@@ -1051,7 +1051,7 @@ void CodeTextEditor::_complete_request() {
 		} else if (e.insert_text.begins_with("#") || e.insert_text.begins_with("//")) {
 			font_color = completion_comment_color;
 		}
-		text_editor->add_code_completion_option((CodeEdit::CodeCompletionKind)e.kind, e.display, e.insert_text, font_color, _get_completion_icon(e), e.default_value, e.location);
+		text_editor->add_code_completion_option_with_detail((CodeEdit::CodeCompletionKind)e.kind, e.display, e.insert_text, font_color, _get_completion_icon(e), e.default_value, e.location, e.detail);
 	}
 	text_editor->update_code_completion_options(forced);
 }

@@ -34,6 +34,7 @@
 #include "drivers/metal/metal_device_properties.h"
 #include "drivers/metal/metal_utils.h"
 #include "drivers/metal/pixel_formats.h"
+#include "drivers/metal/rendering_shader_container_metal.h"
 #include "drivers/metal/sha256_digest.h"
 
 #ifdef DEBUG_ENABLED
@@ -86,6 +87,15 @@ struct ClearAttKey {
 	_FORCE_INLINE_ void enable_layered_rendering() { flags::set(flags, CLEAR_FLAGS_LAYERED); }
 
 	_FORCE_INLINE_ bool is_enabled(uint32_t p_idx) const { return pixel_formats[p_idx] != 0; }
+
+	_FORCE_INLINE_ bool has_color_attachment() const {
+		for (uint32_t i = 0; i < COLOR_COUNT; i++) {
+			if (is_enabled(i)) {
+				return true;
+			}
+		}
+		return false;
+	}
 	_FORCE_INLINE_ bool is_depth_enabled() const { return pixel_formats[DEPTH_INDEX] != 0; }
 	_FORCE_INLINE_ bool is_stencil_enabled() const { return pixel_formats[STENCIL_INDEX] != 0; }
 	_FORCE_INLINE_ bool is_layered_rendering_enabled() const { return flags::any(flags, CLEAR_FLAGS_LAYERED); }
@@ -554,16 +564,74 @@ struct RenderStateBase {
 		DIRTY_PIPELINE = 1 << 0,
 		DIRTY_UNIFORMS = 1 << 1,
 		DIRTY_PUSH     = 1 << 2,
-		DIRTY_DEPTH    = 1 << 3,
-		DIRTY_VERTEX   = 1 << 4,
-		DIRTY_VIEWPORT = 1 << 5,
-		DIRTY_SCISSOR  = 1 << 6,
-		DIRTY_BLEND    = 1 << 7,
-		DIRTY_RASTER   = 1 << 8,
-		DIRTY_ALL      = (1 << 9) - 1,
+		DIRTY_VERTEX   = 1 << 3,
+		DIRTY_VIEWPORT = 1 << 4,
+		DIRTY_SCISSOR  = 1 << 5,
+		DIRTY_RASTER   = 1 << 6,
+		DIRTY_ALL      = (1 << 7) - 1,
 	};
 	// clang-format on
 	BitField<DirtyFlag> dirty = DIRTY_NONE;
+};
+
+/// Alternating fences between render graph levels.
+/// Every encoder in level k waits on fences[(k + 1) & 1] and updates fences[k & 1].
+/// Command buffers recorded in order share one, so levels stay ordered across them.
+class MDLevelFences {
+	MTL::Fence *_fences[2] = { nullptr, nullptr };
+	uint32_t _level = 0;
+	// true when a fence was updated in the prior level and therefore must be
+	// waited in the current level.
+	bool _updated[2] = { false, false };
+	bool _level_dirty = false;
+
+public:
+	void create(MTL::Device *p_device);
+	~MDLevelFences();
+
+	/// Returns the fence an encoder in the current level must wait on, or nullptr.
+	/// Pass true for p_current_level when the encoder continues the one just closed.
+	MTL::Fence *to_wait(bool p_current_level) const {
+		uint32_t i = (p_current_level ? _level : _level + 1) & 1;
+		return _updated[i] ? _fences[i] : nullptr;
+	}
+
+	/// Returns the fence an encoder in the current level must update.
+	MTL::Fence *to_update() {
+		uint32_t i = _level & 1;
+		_updated[i] = true;
+		_level_dirty = true;
+		return _fences[i];
+	}
+
+	/// Closes the current level and opens the next one.
+	void advance() {
+		// Must stay a no-op on a clean level: external_pass() relies on the
+		// next level still waiting F_prev when nothing here updated F_cur.
+		if (_level_dirty) {
+			_level_dirty = false;
+			_level++;
+		}
+	}
+
+	/// Returns the single fence an external pass must both wait on and update.
+	/// No encoder may be open, as _level_dirty only reflects closed encoders.
+	MTL::Fence *external_pass() {
+		if (_level_dirty) {
+			// An encoder in this level already waited F_prev and updated F_cur, so
+			// waiting F_cur transitively covers the prior level, and updating F_cur
+			// is what the next level waits on.
+			return to_update();
+		}
+		// Nothing in this level has updated F_cur yet, so the pass joins the prior
+		// level from the fence's point of view: it waits F_prev and updates F_prev.
+		// Any later encoder in this level waits F_prev and so orders after the
+		// pass; if the level stays clean, the next level is still this one and
+		// waits F_prev too.
+		uint32_t i = (_level + 1) & 1;
+		_updated[i] = true;
+		return _fences[i];
+	}
 };
 
 /// Abstract base class for Metal command buffers, shared between MTL3 and MTL4 implementations.
@@ -578,7 +646,7 @@ protected:
 
 	uint8_t push_constant_data[MAX_PUSH_CONSTANT_SIZE] = {};
 	uint32_t push_constant_data_len = 0;
-	uint32_t push_constant_binding = UINT32_MAX;
+	MetalPushConstantBinding push_constant_binding;
 
 	::RenderingDeviceDriverMetal *device_driver = nullptr;
 
@@ -596,17 +664,9 @@ protected:
 
 #pragma mark - Level Fences
 
-	// Alternating fences between render graph levels.
-	// Every encoder in level k waits on _fences[(k + 1) & 1]
-	// and updates _fences[k & 1]. _fence_level is used for k.
-	//
-	// Unused for hazard tracking
-	NS::SharedPtr<MTL::Fence> _fences[2];
-	uint32_t _fence_level = 0;
-	// true when a fence was updated in the prior level and therefore must be
-	// waited in the current level.
-	bool _fence_updated[2] = { false, false };
-	bool _fence_level_dirty = false;
+	// nullptr for hazard tracking, and for command buffers that record
+	// concurrently, which are ordered by semaphores.
+	MDLevelFences *_level_fences = nullptr;
 	// true when the next encoder continues the encoder just closed and must
 	// therefore wait F_cur rather than F_prev. Metal does not order encoders, so
 	// subpasses split across encoders require an explicit dependency.
@@ -617,7 +677,6 @@ protected:
 	bool _fence_wait_issued = false;
 #endif
 
-	void _create_level_fences(MTL::Device *p_device);
 	MTL::Fence *_fence_to_wait();
 	MTL::Fence *_fence_to_update();
 
@@ -774,6 +833,7 @@ struct API_AVAILABLE(macos(11.0), ios(14.0), tvos(14.0), visionos(2.0)) UniformS
 	LocalVector<UniformInfo> uniforms;
 	LocalVector<uint32_t> dynamic_uniforms;
 	uint32_t buffer_size = 0;
+	BitField<RDD::ShaderStage> active_stages = {};
 };
 
 class API_AVAILABLE(macos(11.0), ios(14.0), tvos(14.0), visionos(2.0)) DynamicOffsetLayout {
@@ -884,8 +944,7 @@ public:
 	CharString name;
 	Vector<UniformSet> sets;
 	struct {
-		BitField<RDD::ShaderStage> stages = {};
-		uint32_t binding = UINT32_MAX;
+		MetalPushConstantBinding stage_binding;
 		uint32_t size = 0;
 	} push_constants;
 	DynamicOffsetLayout dynamic_offset_layout;
@@ -979,10 +1038,10 @@ public:
 class API_AVAILABLE(macos(11.0), ios(14.0), tvos(14.0), visionos(2.0)) MDRenderPipeline final : public MDPipeline {
 public:
 	NS::SharedPtr<MTL::RenderPipelineState> state;
-	NS::SharedPtr<MTL::DepthStencilState> depth_stencil;
 	SampleCount sample_count = SampleCount1;
 
-	struct {
+	struct RasterState {
+		MTL::DepthStencilState *depth_stencil = nullptr;
 		MTL::CullMode cull_mode = MTL::CullModeNone;
 		MTL::TriangleFillMode fill_mode = MTL::TriangleFillModeFill;
 		MTL::DepthClipMode clip_mode = MTL::DepthClipModeClip;
@@ -993,7 +1052,7 @@ public:
 			bool enabled = false;
 		} depth_test;
 
-		struct {
+		struct DepthBias {
 			bool enabled = false;
 			float depth_bias = 0.0;
 			float slope_scale = 0.0;
@@ -1001,14 +1060,28 @@ public:
 
 			template <typename T>
 			_FORCE_INLINE_ void apply(T *p_enc) const {
-				if (!enabled) {
-					return;
+				if (enabled) {
+					p_enc->setDepthBias(depth_bias, slope_scale, clamp);
+				} else {
+					// When disabled, the bias must be returned to the default value.
+					p_enc->setDepthBias(0.0, 0.0, 0.0);
 				}
-				p_enc->setDepthBias(depth_bias, slope_scale, clamp);
+			}
+
+			_FORCE_INLINE_ bool operator==(const DepthBias &p_rhs) const {
+				if (!enabled && !p_rhs.enabled) {
+					return true;
+				}
+				return enabled == p_rhs.enabled && depth_bias == p_rhs.depth_bias &&
+						slope_scale == p_rhs.slope_scale && clamp == p_rhs.clamp;
+			}
+
+			_FORCE_INLINE_ bool operator!=(const DepthBias &p_rhs) const {
+				return !(*this == p_rhs);
 			}
 		} depth_bias;
 
-		struct {
+		struct Stencil {
 			bool enabled = false;
 			uint32_t front_reference = 0;
 			uint32_t back_reference = 0;
@@ -1020,9 +1093,17 @@ public:
 				}
 				p_enc->setStencilReferenceValues(front_reference, back_reference);
 			}
+
+			_FORCE_INLINE_ bool operator==(const Stencil &p_rhs) const {
+				return front_reference == p_rhs.front_reference && back_reference == p_rhs.back_reference;
+			}
+
+			_FORCE_INLINE_ bool operator!=(const Stencil &p_rhs) const {
+				return !(*this == p_rhs);
+			}
 		} stencil;
 
-		struct {
+		struct Blend {
 			bool enabled = false;
 			float r = 0.0;
 			float g = 0.0;
@@ -1033,20 +1114,62 @@ public:
 			_FORCE_INLINE_ void apply(T *p_enc) const {
 				p_enc->setBlendColor(r, g, b, a);
 			}
+
+			_FORCE_INLINE_ void set_color(const Color &p_color) {
+				r = p_color.r;
+				g = p_color.g;
+				b = p_color.b;
+				a = p_color.a;
+			}
+
+			_FORCE_INLINE_ bool operator==(const Blend &p_rhs) const {
+				return r == p_rhs.r && g == p_rhs.g && b == p_rhs.b && a == p_rhs.a;
+			}
+
+			_FORCE_INLINE_ bool operator!=(const Blend &p_rhs) const {
+				return !(*this == p_rhs);
+			}
 		} blend;
 
 		template <typename T>
-		_FORCE_INLINE_ void apply(T *p_enc) const {
-			p_enc->setCullMode(cull_mode);
-			p_enc->setTriangleFillMode(fill_mode);
-			p_enc->setDepthClipMode(clip_mode);
-			p_enc->setFrontFacingWinding(winding);
-			depth_bias.apply(p_enc);
-			stencil.apply(p_enc);
-			blend.apply(p_enc);
+		_FORCE_INLINE_ void apply(T *p_enc, RasterState &r_last) const {
+			if (depth_stencil != r_last.depth_stencil) {
+				p_enc->setDepthStencilState(depth_stencil);
+				r_last.depth_stencil = depth_stencil;
+			}
+			if (cull_mode != r_last.cull_mode) {
+				p_enc->setCullMode(cull_mode);
+				r_last.cull_mode = cull_mode;
+			}
+			if (fill_mode != r_last.fill_mode) {
+				p_enc->setTriangleFillMode(fill_mode);
+				r_last.fill_mode = fill_mode;
+			}
+			if (clip_mode != r_last.clip_mode) {
+				p_enc->setDepthClipMode(clip_mode);
+				r_last.clip_mode = clip_mode;
+			}
+			if (winding != r_last.winding) {
+				p_enc->setFrontFacingWinding(winding);
+				r_last.winding = winding;
+			}
+			if (depth_bias != r_last.depth_bias) {
+				depth_bias.apply(p_enc);
+				r_last.depth_bias = depth_bias;
+			}
+			if (stencil.enabled && stencil != r_last.stencil) {
+				stencil.apply(p_enc);
+				r_last.stencil = stencil;
+			}
+			if (blend != r_last.blend) {
+				blend.apply(p_enc);
+				r_last.blend = blend;
+			}
 		}
+	};
 
-	} raster_state;
+	RasterState raster_state;
+	NS::SharedPtr<MTL::DepthStencilState> depth_stencil;
 
 	MDRenderShader *shader = nullptr;
 

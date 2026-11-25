@@ -365,7 +365,7 @@ private:
 	bool empty_selection_clipboard_enabled = true;
 
 	// Overridable actions.
-	String cut_copy_line = "";
+	static inline String cut_copy_line = "";
 
 	// Context menu.
 	PopupMenu *menu = nullptr;
@@ -498,7 +498,6 @@ private:
 	void _emit_caret_changed();
 
 	void _show_virtual_keyboard();
-	void _reset_caret_blink_timer();
 	void _toggle_draw_caret();
 
 	int _get_column_x_offset_for_line(int p_char, int p_line, int p_column) const;
@@ -582,7 +581,7 @@ private:
 	HScrollBar *h_scroll = nullptr;
 	VScrollBar *v_scroll = nullptr;
 
-	Vector2i content_size_cache;
+	Size2 content_size_cache;
 	bool fit_content_height = false;
 	bool fit_content_width = false;
 	bool scroll_past_end_of_file_enabled = false;
@@ -598,13 +597,13 @@ private:
 	int first_visible_col = 0;
 
 	bool scrolling = false;
-	bool updating_scrolls = false;
 
 	void _update_scrollbars();
-	int _get_control_height() const;
+	double _get_text_area_height() const;
 
 	void _v_scroll_input();
-	void _scroll_moved(double p_to_val);
+	void _h_scroll_moved();
+	void _v_scroll_moved();
 
 	double _get_visible_lines_offset() const;
 	double _get_v_scroll_offset() const;
@@ -623,6 +622,7 @@ private:
 	int minimap_width = 80;
 	Point2 minimap_char_size = Point2(1, 2);
 	int minimap_line_spacing = 1;
+	int minimap_margin = 2; // The margin is part of the minimap.
 
 	// Minimap scroll.
 	bool minimap_clicked = false;
@@ -755,6 +755,7 @@ private:
 	bool _clear_carets_and_selection();
 
 protected:
+	void _reset_caret_blink_timer();
 	void _notification(int p_what);
 	static void _bind_methods();
 
@@ -872,7 +873,6 @@ public:
 	/* Text */
 	// Text properties.
 	RID get_text_canvas_item() const;
-	const Ref<TextParagraph> get_line_data(int p_line) const { return text.get_line_data(p_line); }
 
 	bool has_ime_text() const;
 	void cancel_ime();
@@ -1166,6 +1166,7 @@ public:
 	// Visible lines.
 	void set_line_as_first_visible(int p_line, int p_wrap_index = 0);
 	int get_first_visible_line() const;
+	int get_first_visible_line_wrap_index() const;
 
 	void set_line_as_center_visible(int p_line, int p_wrap_index = 0);
 

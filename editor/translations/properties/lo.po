@@ -4,12 +4,13 @@
 # This file is distributed under the same license as the Godot source code.
 #
 # BoneNI <bounkirdni@gmail.com>, 2026.
+# Bone NI <bounkirdni@gmail.com>, 2026.
 msgid ""
 msgstr ""
 "Project-Id-Version: Godot Engine editor properties\n"
 "Report-Msgid-Bugs-To: https://github.com/godotengine/godot\n"
-"PO-Revision-Date: 2026-08-06 05:30+0000\n"
-"Last-Translator: BoneNI <bounkirdni@gmail.com>\n"
+"PO-Revision-Date: 2026-08-10 14:28+0000\n"
+"Last-Translator: Bone NI <bounkirdni@gmail.com>\n"
 "Language-Team: Lao <https://hosted.weblate.org/projects/godot-engine/godot-"
 "properties/lo/>\n"
 "Language: lo\n"
@@ -17,7 +18,7 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8-bit\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
-"X-Generator: Weblate 2026.8.1.dev0\n"
+"X-Generator: Weblate 2026.9.dev0\n"
 
 msgid "Application"
 msgstr "ແອັບພລິເຄຊັນ"
@@ -454,6 +455,9 @@ msgstr "ຂຽນທັບປຸ່ມປັບສຽງ"
 msgid "Disable Scroll Deadzone"
 msgstr "ປິດ Scroll Deadzone"
 
+msgid "Windows"
+msgstr "Windows"
+
 msgid "Navigation"
 msgstr "ການນຳທາງ"
 
@@ -569,7 +573,7 @@ msgid "Enable Magnetometer"
 msgstr "ເປີດໃຊ້ເຄື່ອງວັດແທກສະໜາມແມ່ເຫຼັກ (Magnetometer)"
 
 msgid "Joypads"
-msgstr "Joypads"
+msgstr "ຈອຍບັງຄັບ"
 
 msgid "Device"
 msgstr "ອຸປະກອນ"
@@ -614,7 +618,7 @@ msgid "Echo"
 msgstr "ການເຮັດຊ້ຳ (Echo)"
 
 msgid "Button Mask"
-msgstr "Button Mask"
+msgstr "ໜ້າກາກປຸ່ມ"
 
 msgid "Position"
 msgstr "ຕຳແໜ່ງ"
@@ -824,10 +828,28 @@ msgid "Threading"
 msgstr "ການໃຊ້ເທຣດ (Threading)"
 
 msgid "Worker Pool"
-msgstr "Worker Pool"
+msgstr "ກຸ່ມຜູ້ເຮັດວຽກ"
 
 msgid "Low Priority Thread Ratio"
 msgstr "ອັດຕາສ່ວນເທຣດບຸລິມະສິດຖອດ"
+
+msgid "Target"
+msgstr "ເປົ້າໝາຍ"
+
+msgid "Start Offset"
+msgstr "ໄລຍະຫ່າງເລີ່ມຕົ້ນ"
+
+msgid "Max Results"
+msgstr "ຜົນລັບສູງສຸດ"
+
+msgid "Subject"
+msgstr "ຫົວຂໍ້"
+
+msgid "Names"
+msgstr "ຊື່"
+
+msgid "Strings"
+msgstr "ຂໍ້ຄວາມ (Strings)"
 
 msgid "Locale"
 msgstr "ພາສາທ້ອງຖິ່ນ (Locale)"
@@ -890,16 +912,13 @@ msgid "In Handle"
 msgstr "In Handle"
 
 msgid "Out Handle"
-msgstr "Out Handle"
+msgstr "ມືຈັບຂາອອກ"
 
 msgid "Handle Mode"
 msgstr "ໂໝດ Handle"
 
 msgid "Stream"
 msgstr "ສະຕຣີມ (Stream)"
-
-msgid "Start Offset"
-msgstr "ໄລຍະຫ່າງເລີ່ມຕົ້ນ"
 
 msgid "End Offset"
 msgstr "ໄລຍະຫ່າງສິ້ນສຸດ"
@@ -1048,12 +1067,6 @@ msgstr "ຄວາມສາມາດ"
 msgid "Access Wi-Fi"
 msgstr "ເຂົ້າເຖິງ Wi-Fi"
 
-msgid "Performance Gaming Tier"
-msgstr "ລະດັບປະສິດທິພາບການຫຼິ້ນເກມ"
-
-msgid "Performance A 12"
-msgstr "ປະສິດທິພາບ A 12"
-
 msgid "Shader Baker"
 msgstr "ຕົວເບກເຊດເດີ (Shader Baker)"
 
@@ -1071,24 +1084,6 @@ msgstr "ເຂົ້າເຖິງໄດ້ຈາກການແບ່ງປັ
 
 msgid "Privacy"
 msgstr "ຄວາມເປັນສ່ວນຕົວ"
-
-msgid "Camera Usage Description"
-msgstr "ຄຳອະທິບາຍການໃຊ້ກ້ອງ"
-
-msgid "Camera Usage Description Localized"
-msgstr "ຄຳອະທິບາຍການໃຊ້ກ້ອງຕາມພາສາທ້ອງຖິ່ນ"
-
-msgid "Microphone Usage Description"
-msgstr "ຄຳອະທິບາຍການໃຊ້ໄມໂຄຣໂຟນ"
-
-msgid "Microphone Usage Description Localized"
-msgstr "ຄຳອະທິບາຍການໃຊ້ໄມໂຄຣໂຟນຕາມພາສາທ້ອງຖິ່ນ"
-
-msgid "Photolibrary Usage Description"
-msgstr "ຄຳອະທິບາຍການໃຊ້ຄັງຮູບພາບ"
-
-msgid "Photolibrary Usage Description Localized"
-msgstr "ຄຳອະທິບາຍການໃຊ້ຄັງຮູບພາບຕາມພາສາທ້ອງຖິ່ນ"
 
 msgid "Tracking Enabled"
 msgstr "ເປີດໃຊ້ການຕິດຕາມ"
@@ -1149,6 +1144,31 @@ msgstr "ກຳລັງແກ້ໄຂເລກຖ້ວນ"
 
 msgid "Deferred Drag Mode"
 msgstr "ໂໝດການລາກແບບໜ່ວງ"
+
+msgid "Font Uneditable Color"
+msgstr "ສີຟອນທີ່ແກ້ໄຂບໍ່ໄດ້"
+
+msgid "Font"
+msgstr "ຕົວອັກສອນ"
+
+msgid "Font Size"
+msgstr "ຂະໜາດຕົວອັກສອນ"
+
+msgctxt "Ordinary"
+msgid "Normal"
+msgstr "ປົກກະຕິ"
+
+msgid "Focus"
+msgstr "ໂຟກັສ"
+
+msgid "Updown"
+msgstr "ຂຶ້ນລົງ"
+
+msgid "Grabber Highlight"
+msgstr "ຕົວຈັບແບບເນັ້ນ"
+
+msgid "Grabber"
+msgstr "ຕົວຈັບ"
 
 msgid "Zoom"
 msgstr "ຊູມ"
@@ -1370,7 +1390,7 @@ msgid "Shadow Meshes"
 msgstr "ເມັສເງົາ"
 
 msgid "Lightmap UV"
-msgstr "Lightmap UV"
+msgstr "UV ຜັງແສງ"
 
 msgid "LODs"
 msgstr "LODs"
@@ -1547,7 +1567,7 @@ msgid "Modulate Color Glyphs"
 msgstr "ປັບແຕ່ງສີຕົວອັກສອນ (Glyphs)"
 
 msgid "Hinting"
-msgstr "Hinting"
+msgstr "ການປັບຄົມ (Hinting)"
 
 msgid "Subpixel Positioning"
 msgstr "ການກຳນົດຕຳແໜ່ງ Subpixel"
@@ -1556,7 +1576,7 @@ msgid "Keep Rounding Remainders"
 msgstr "ຮັກສາຄ່າເສດການປັດເສດ"
 
 msgid "Oversampling"
-msgstr "Oversampling"
+msgstr "ການສຸ່ມຕົວຢ່າງເກີນ"
 
 msgid "Metadata Overrides"
 msgstr "ການແທນທີ່ເມຕາເດຕາ"
@@ -1592,7 +1612,7 @@ msgid "Embolden"
 msgstr "ເຮັດໃຫ້ໜາ"
 
 msgid "Face Index"
-msgstr "Face Index"
+msgstr "ດັດຊະນີໃບໜ້າຕົວອັກສອນ"
 
 msgid "Transform"
 msgstr "ການແປງ (Transform)"
@@ -1607,10 +1627,10 @@ msgid "Delimiter"
 msgstr "ຕົວຂັ້ນ (Delimiter)"
 
 msgid "Unescape Keys"
-msgstr "Unescape Keys"
+msgstr "ຖອດລະຫັດຄີ"
 
 msgid "Unescape Translations"
-msgstr "Unescape Translations"
+msgstr "ຖອດລະຫັດການແປ"
 
 msgid "Character Ranges"
 msgstr "ໄລຍະຕົວອັກສອນ"
@@ -1631,10 +1651,10 @@ msgid "Character Margin"
 msgstr "ຂອບຂອງຕົວອັກສອນ"
 
 msgid "Ascent"
-msgstr "Ascent"
+msgstr "ໄລຍະຫ່າງດ້ານເທິງ"
 
 msgid "Descent"
-msgstr "Descent"
+msgstr "ໄລຍະຫ່າງດ້ານລຸ່ມ"
 
 msgid "High Quality"
 msgstr "ຄຸນນະພາບສູງ"
@@ -1672,6 +1692,15 @@ msgstr "ການຈັດວາງ"
 msgid "Layout"
 msgstr "ການອອກແບບ (Layout)"
 
+msgid "Normal Map"
+msgstr "ແຜນຜັງພື້ນຜິວ (Normal Map)"
+
+msgid "Roughness"
+msgstr "ຄວາມຂຸຂະ (Roughness)"
+
+msgid "Src Normal"
+msgstr "ພື້ນຜິວຕົ້ນສະບັບ"
+
 msgid "Base Scale"
 msgstr "ຂະໜາດພື້ນຖານ"
 
@@ -1685,16 +1714,7 @@ msgid "Fix Alpha Border"
 msgstr "ແກ້ໄຂຂອບອັລຟາ (Alpha Border)"
 
 msgid "Premult Alpha"
-msgstr "Premult Alpha"
-
-msgid "Normal Map"
-msgstr "Normal Map"
-
-msgid "Roughness"
-msgstr "ຄວາມຂຸຂະ (Roughness)"
-
-msgid "Src Normal"
-msgstr "Src Normal"
+msgstr "ຄ່າອັນຟາແບບຄຳນວນລ່ວງໜ້າ"
 
 msgid "Process"
 msgstr "ຂະບວນການ (Process)"
@@ -1803,7 +1823,7 @@ msgid "Draw Warning"
 msgstr "ແຕ້ມຄຳເຕືອນ"
 
 msgid "Keying"
-msgstr "Keying"
+msgstr "ການໃສ່ຄີຟຣີມ"
 
 msgid "Deletable"
 msgstr "ລົບໄດ້"
@@ -1877,42 +1897,6 @@ msgstr "ຊື່ປລັກອິນ"
 msgid "Autoload on Startup"
 msgstr "ໂໂຫຼດອັດຕະໂນມັດຕອນເລີ່ມຕົ້ນ"
 
-msgid "ID"
-msgstr "ID"
-
-msgid "Texture"
-msgstr "ພື້ນຜິວ (Texture)"
-
-msgid "Margins"
-msgstr "ຂອບ"
-
-msgid "Separation"
-msgstr "ໄລຍະຫ່າງ"
-
-msgid "Texture Region Size"
-msgstr "ຂະໜາດຂອບເຂດພື້ນຜິວ"
-
-msgid "Use Texture Padding"
-msgstr "ໃຊ້ການເຕີມພື້ນທີ່ພື້ນຜິວ (Padding)"
-
-msgid "Atlas Coords"
-msgstr "ພິກັດ Atlas"
-
-msgid "Size in Atlas"
-msgstr "ຂະໜາດໃນ Atlas"
-
-msgid "Alternative ID"
-msgstr "ID ທາງເລືອກ"
-
-msgid "Speed"
-msgstr "ຄວາມໄວ"
-
-msgid "Frames Count"
-msgstr "ຈຳນວນເຟຣມ"
-
-msgid "Duration"
-msgstr "ໄລຍະເວລາ"
-
 msgid "Current Group Idx"
 msgstr "ດັດຊະນີກຸ່ມປັດຈຸບັນ"
 
@@ -1923,7 +1907,7 @@ msgid "Editors"
 msgstr "ຕົວແກ້ໄຂ"
 
 msgid "3D Gizmos"
-msgstr "3D Gizmos"
+msgstr "ກິຊໂມ 3 ມິຕິ"
 
 msgid "Gizmo Colors"
 msgstr "ສີຂອງ Gizmo"
@@ -2117,11 +2101,11 @@ msgstr "ພັບເມນູຫຼັກ"
 msgid "Show Renderer Selector"
 msgstr "ສະແດງຕົວເລືອກ Renderer"
 
-msgid "Derive Script Globals by Name"
-msgstr "ກຳນົດຄ່າໂກລບອນຂອງສະຄຣິບຕາມຊື່"
-
 msgid "Scene Tree"
 msgstr "ຜັງສາກ (Scene Tree)"
+
+msgid "Derive Script Globals by Name"
+msgstr "ກຳນົດຄ່າໂກລບອນຂອງສະຄຣິບຕາມຊື່"
 
 msgid "Ask Before Revoking Unique Name"
 msgstr "ຖາມກ່ອນການຍົກເລີກຊື່ທີ່ເປັນເອກະລັກ"
@@ -2356,9 +2340,6 @@ msgstr "ຂະໜາດຮູບຕົວຢ່າງ"
 
 msgid "Quick Open Dialog"
 msgstr "ໜ້າຕ່າງເປີດດ່ວນ"
-
-msgid "Max Results"
-msgstr "ຜົນລັບສູງສຸດ"
 
 msgid "Instant Preview"
 msgstr "ຕົວຢ່າງທັນທີ"
@@ -2624,11 +2605,11 @@ msgstr "ເປີດສະຄຣິບຫຼັກເມື່ອປ່ຽນສ
 msgid "Drop Preload Resources as UID"
 msgstr "ວາງຊັບພະຍາກອນແບບ Preload ເປັນ UID"
 
-msgid "Documentation"
-msgstr "ເອກະສານປະກອບ"
-
 msgid "Enable Tooltips"
 msgstr "ເປີດໃຊ້ຄຳແນະນຳເຄື່ອງມື (Tooltips)"
+
+msgid "Documentation"
+msgstr "ເອກະສານປະກອບ"
 
 msgid "Script List"
 msgstr "ລາຍການສະຄຣິບ"
@@ -3200,9 +3181,6 @@ msgstr "ການກະທຳເມື່ອຢຸດ"
 msgid "Output"
 msgstr "ຜົນການອອກ (Output)"
 
-msgid "Font Size"
-msgstr "ຂະໜາດຕົວອັກສອນ"
-
 msgid "Always Clear Output on Play"
 msgstr "ລ້າງຜົນການອອກທຸກຄັ້ງເມື່ອຫຼິ້ນ"
 
@@ -3575,17 +3553,11 @@ msgstr "ເປີດໃຊ້ການຕິດຕາມລະນາບ (Plane T
 msgid "Enable Builtin Plane Detection"
 msgstr "ເປີດໃຊ້ການກວດຈັບລະນາບໃນຕົວ"
 
-msgid "Enable Marker Tracking"
-msgstr "ເປີດໃຊ້ການຕິດຕາມມາກເກີ"
-
-msgid "Enable Builtin Marker Tracking"
-msgstr "ເປີດໃຊ້ການຕິດຕາມມາກເກີໃນຕົວ"
-
 msgid "Aruco Dict"
-msgstr "Aruco Dict"
+msgstr "ວັດຈະນານຸກົມ Aruco"
 
 msgid "April Tag Dict"
-msgstr "April Tag Dict"
+msgstr "ວັດຈະນານຸກົມ April Tag"
 
 msgid "Eye Gaze Interaction"
 msgstr "ການໂຕ້ຕອບດ້ວຍການຈ້ອງເບິ່ງ"
@@ -3634,9 +3606,6 @@ msgstr "ໄອຄອນ Native ຂອງ Windows"
 
 msgid "Text Driver"
 msgstr "ໄດຣເວີຂໍ້ຄວາມ"
-
-msgid "Search in File Extensions"
-msgstr "ຄົ້ນຫາໃນນາມສະກຸນໄຟລ໌"
 
 msgid "Mouse Cursor"
 msgstr "ຕົວກະພິບເມົາສ໌"
@@ -4778,6 +4747,9 @@ msgstr "ໂໂປຣໄຟລ໌ການໂຕ້ຕອບ"
 msgid "Actions"
 msgstr "ການກະທຳ"
 
+msgid "Duration"
+msgstr "ໄລຍະເວລາ"
+
 msgid "Binding Path"
 msgstr "ເສັ້ນທາງການຜູກ (Binding)"
 
@@ -4833,7 +4805,7 @@ msgid "Spatial Tracking State"
 msgstr "ສະຖານະການຕິດຕາມທາງພື້ນທີ່"
 
 msgid "April Dict"
-msgstr "April Dict"
+msgstr "ວັດຈະນານຸກົມ April"
 
 msgid "Bounds Size"
 msgstr "ຂະໜາດຂອບເຂດ"
@@ -4955,14 +4927,206 @@ msgstr "ຕົວຕິດຕາມ"
 msgid "Make Local to Pose"
 msgstr "ເຮັດໃຫ້ເປັນ Local ຕາມທ່າທາງ"
 
-msgid "Subject"
-msgstr "ຫົວຂໍ້"
+msgid "ID"
+msgstr "ID"
 
-msgid "Names"
-msgstr "ຊື່"
+msgid "Texture"
+msgstr "ພື້ນຜິວ (Texture)"
 
-msgid "Strings"
-msgstr "ຂໍ້ຄວາມ (Strings)"
+msgid "Margins"
+msgstr "ຂອບ"
+
+msgid "Separation"
+msgstr "ໄລຍະຫ່າງ"
+
+msgid "Texture Region Size"
+msgstr "ຂະໜາດຂອບເຂດພື້ນຜິວ"
+
+msgid "Use Texture Padding"
+msgstr "ໃຊ້ການເຕີມພື້ນທີ່ພື້ນຜິວ (Padding)"
+
+msgid "Atlas Coords"
+msgstr "ພິກັດ Atlas"
+
+msgid "Size in Atlas"
+msgstr "ຂະໜາດໃນ Atlas"
+
+msgid "Alternative ID"
+msgstr "ID ທາງເລືອກ"
+
+msgid "Speed"
+msgstr "ຄວາມໄວ"
+
+msgid "Frames Count"
+msgstr "ຈຳນວນເຟຣມ"
+
+msgid "Tile Set"
+msgstr "ຊຸດໄທລ໌"
+
+msgid "Rendering Quadrant Size"
+msgstr "ຂະໜາດພື້ນທີ່ການປະມວນຜົນ"
+
+msgid "Collision Animatable"
+msgstr "ການຕຳທີ່ເຄື່ອນໄຫວໄດ້"
+
+msgid "Collision Visibility Mode"
+msgstr "ໂໝດການສະແດງຜົນການຕຳ"
+
+msgid "Navigation Visibility Mode"
+msgstr "ໂໝດການສະແດງຜົນການນຳທາງ"
+
+msgid "Occlusion Enabled"
+msgstr "ເປີດໃຊ້ການບັງແສງ"
+
+msgid "Y Sort Origin"
+msgstr "ຈຸດເລີ່ມຕົ້ນການລຽງແກນ Y"
+
+msgid "X Draw Order Reversed"
+msgstr "ລຳດັບການແຕ້ມແກນ X ແບບຍ້ອນກັບ"
+
+msgid "Collision Enabled"
+msgstr "ເປີດໃຊ້ການຕຳ"
+
+msgid "Use Kinematic Bodies"
+msgstr "ໃຊ້ວັດຖຸຄິເນມາຕິກ"
+
+msgid "Physics Quadrant Size"
+msgstr "ຂະໜາດພື້ນທີ່ຟີຊິກ"
+
+msgid "Right Side"
+msgstr "ດ້ານຂວາ"
+
+msgid "Right Corner"
+msgstr "ມຸມຂວາ"
+
+msgid "Bottom Right Side"
+msgstr "ດ້ານຂວາລຸ່ມ"
+
+msgid "Bottom Right Corner"
+msgstr "ມຸມຂວາລຸ່ມ"
+
+msgid "Bottom Side"
+msgstr "ດ້ານລຸ່ມ"
+
+msgid "Bottom Corner"
+msgstr "ມຸມລຸ່ມ"
+
+msgid "Bottom Left Side"
+msgstr "ດ້ານຊ້າຍລຸ່ມ"
+
+msgid "Bottom Left Corner"
+msgstr "ມຸມຊ້າຍລຸ່ມ"
+
+msgid "Left Side"
+msgstr "ດ້ານຊ້າຍ"
+
+msgid "Left Corner"
+msgstr "ມຸມຊ້າຍ"
+
+msgid "Top Left Side"
+msgstr "ດ້ານຊ້າຍເທິງ"
+
+msgid "Top Left Corner"
+msgstr "ມຸມຊ້າຍເທິງ"
+
+msgid "Top Side"
+msgstr "ດ້ານເທິງ"
+
+msgid "Top Corner"
+msgstr "ມຸມເທິງ"
+
+msgid "Top Right Side"
+msgstr "ດ້ານຂວາເທິງ"
+
+msgid "Top Right Corner"
+msgstr "ມຸມຂວາເທິງ"
+
+msgid "Terrains"
+msgstr "ພື້ນຜິວ (Terrains)"
+
+msgid "Custom Data"
+msgstr "ຂໍ້ມູນກຳນົດເອງ"
+
+msgid "Tile Shape"
+msgstr "ຮູບຊົງໄທລ໌ (Tile Shape)"
+
+msgid "Tile Layout"
+msgstr "ການຈັດວາງໄທລ໌"
+
+msgid "Tile Offset Axis"
+msgstr "ແກນໄລຍະຫ່າງຂອງໄທລ໌"
+
+msgid "Tile Size"
+msgstr "ຂະໜາດໄທລ໌"
+
+msgid "UV Clipping"
+msgstr "ການຕັດ UV"
+
+msgid "Occlusion Layers"
+msgstr "ເລເຢີການບັງ (Occlusion Layers)"
+
+msgid "Physics Layers"
+msgstr "ເລເຢີຟີຊິກ"
+
+msgid "Terrain Sets"
+msgstr "ຊຸດພື້ນຜິວ (Terrain Sets)"
+
+msgid "Custom Data Layers"
+msgstr "ເລເຢີຂໍ້ມູນກຳນົດເອງ"
+
+msgid "Scenes"
+msgstr "ຊີນ (Scenes)"
+
+msgid "Scene"
+msgstr "ຊີນ"
+
+msgid "Display Placeholder"
+msgstr "ສະແດງຕົວແທນ (Placeholder)"
+
+msgid "Polygons Count"
+msgstr "ຈຳນວນຮູບຫຼາຍແຈ"
+
+msgid "Points"
+msgstr "ຈຸດ"
+
+msgid "One Way"
+msgstr "ທາງດຽວ"
+
+msgid "One Way Margin"
+msgstr "ຂອບທາງດຽວ"
+
+msgid "Terrains Peering Bit"
+msgstr "ບິດການເຊື່ອມຕໍ່ພື້ນທີ່"
+
+msgid "Flip H"
+msgstr "ພິກແນວນອນ"
+
+msgid "Flip V"
+msgstr "ພິກແນວຕັ້ງ"
+
+msgid "Transpose"
+msgstr "ສະລັບແກນ (Transpose)"
+
+msgid "Texture Origin"
+msgstr "ຈຸດກຳເນີດຂອງ Texture"
+
+msgid "Modulate"
+msgstr "ປັບແຕ່ງສີ"
+
+msgid "Z Index"
+msgstr "ດັດຊະນີ Z"
+
+msgid "Terrain Set"
+msgstr "ຊຸດພື້ນຜິວ"
+
+msgid "Terrain"
+msgstr "ພື້ນຜິວ"
+
+msgid "Miscellaneous"
+msgstr "ອື່ນໆ"
+
+msgid "Probability"
+msgstr "ຄວາມໜ້າຈະເປັນ"
 
 msgid "Discover Multicast If"
 msgstr "ຄົ້ນຫາ Multicast ຜ່ານ"
@@ -5041,6 +5205,9 @@ msgstr "ຊື່ Varying"
 
 msgid "Varying Type"
 msgstr "ປະເພດ Varying"
+
+msgid "Group"
+msgstr "ກຸ່ມ"
 
 msgid "Op Type"
 msgstr "ປະເພດການດຳເນີນການ"
@@ -5229,16 +5396,16 @@ msgid "Launcher Icons"
 msgstr "ໄອຄອນຕົວເປີດ (Launcher)"
 
 msgid "Main 192 X 192"
-msgstr "Main 192 X 192"
+msgstr "ຫຼັກ 192 X 192"
 
 msgid "Adaptive Foreground 432 X 432"
-msgstr "Adaptive Foreground 432 X 432"
+msgstr "ພື້ນໜ້າແບບປັບສະພາບໄດ້ 432 X 432"
 
 msgid "Adaptive Background 432 X 432"
-msgstr "Adaptive Background 432 X 432"
+msgstr "ພື້ນຫຼັງແບບປັບສະພາບໄດ້ 432 X 432"
 
 msgid "Adaptive Monochrome 432 X 432"
-msgstr "Adaptive Monochrome 432 X 432"
+msgstr "ສີຂາວດຳແບບປັບສະພາບໄດ້ 432 X 432"
 
 msgid "Gradle Build"
 msgstr "ການບິວດ໌ດ້ວຍ Gradle"
@@ -5393,6 +5560,12 @@ msgstr "ໃຊ້ສີພື້ນຫຼັງກຳນົດເອງ"
 msgid "Custom BG Color"
 msgstr "ສີພື້ນຫຼັງກຳນົດເອງ"
 
+msgid "Performance Gaming Tier"
+msgstr "ລະດັບປະສິດທິພາບການຫຼິ້ນເກມ"
+
+msgid "Performance A 12"
+msgstr "ປະສິດທິພາບ A 12"
+
 msgid "Settings 58 X 58"
 msgstr "ການຕັ້ງຄ່າ 58 X 58"
 
@@ -5517,7 +5690,7 @@ msgid "Installer Identity"
 msgstr "ຕົວຕົນຜູ້ຕິດຕັ້ງ"
 
 msgid "Apple Team ID"
-msgstr "Apple Team ID"
+msgstr "ໄອດີທີມ Apple"
 
 msgid "Identity"
 msgstr "ຕົວຕົນ"
@@ -5529,7 +5702,7 @@ msgid "Certificate Password"
 msgstr "ລະຫັດຜ່ານໃບຢັ້ງຢືນ"
 
 msgid "Provisioning Profile"
-msgstr "Provisioning Profile"
+msgstr "ໂປຣໄຟລ໌ການອະນຸມັດ"
 
 msgid "Custom File"
 msgstr "ໄຟລ໌ກຳນົດເອງ"
@@ -5565,7 +5738,7 @@ msgid "Debugging"
 msgstr "ການດີບັກ"
 
 msgid "App Sandbox"
-msgstr "App Sandbox"
+msgstr "ແຊນບັອກແອັບ"
 
 msgid "Network Server"
 msgstr "ເຊີບເວີເຄືອຂ່າຍ"
@@ -5613,10 +5786,22 @@ msgid "API UUID"
 msgstr "API UUID"
 
 msgid "API Key"
-msgstr "API Key"
+msgstr "ຄີ API"
 
 msgid "API Key ID"
-msgstr "API Key ID"
+msgstr "ໄອດີຄີ API"
+
+msgid "Microphone Usage Description"
+msgstr "ຄຳອະທິບາຍການໃຊ້ໄມໂຄຣໂຟນ"
+
+msgid "Microphone Usage Description Localized"
+msgstr "ຄຳອະທິບາຍການໃຊ້ໄມໂຄຣໂຟນຕາມພາສາທ້ອງຖິ່ນ"
+
+msgid "Camera Usage Description"
+msgstr "ຄຳອະທິບາຍການໃຊ້ກ້ອງ"
+
+msgid "Camera Usage Description Localized"
+msgstr "ຄຳອະທິບາຍການໃຊ້ກ້ອງຕາມພາສາທ້ອງຖິ່ນ"
 
 msgid "Location Usage Description"
 msgstr "ຄຳອະທິບາຍການໃຊ້ຕຳແໜ່ງ"
@@ -5688,7 +5873,7 @@ msgid "Use TLS"
 msgstr "ໃຊ້ TLS"
 
 msgid "TLS Key"
-msgstr "TLS Key"
+msgstr "ຄີ TLS"
 
 msgid "TLS Certificate"
 msgstr "ໃບຢັ້ງຢືນ TLS"
@@ -5756,9 +5941,6 @@ msgstr "ຂະໜາດ Emscripten Pool"
 msgid "Godot Pool Size"
 msgstr "ຂະໜາດ Godot Pool"
 
-msgid "Windows"
-msgstr "Windows"
-
 msgid "signtool"
 msgstr "signtool"
 
@@ -5818,12 +6000,6 @@ msgstr "ອັດຕາສ່ວນຄວາມໄວ"
 
 msgid "Centered"
 msgstr "ຈັດໄວ້ກາງ"
-
-msgid "Flip H"
-msgstr "ພິກແນວນອນ"
-
-msgid "Flip V"
-msgstr "ພິກແນວຕັ້ງ"
 
 msgid "Current"
 msgstr "ປະຈຸບັນ"
@@ -5998,9 +6174,6 @@ msgstr "ລັດສະໝີວົງມົນ"
 
 msgid "Rect Extents"
 msgstr "ຂອບເຂດຮູບສີ່ແຈ"
-
-msgid "Points"
-msgstr "ຈຸດ"
 
 msgid "Normals"
 msgstr "ເສັ້ນແນວສາກ (Normals)"
@@ -6255,7 +6428,7 @@ msgid "Gizmo Extents"
 msgstr "ຂອບເຂດ Gizmo"
 
 msgid "Multimesh"
-msgstr "Multimesh"
+msgstr "ເມຊຫຼາຍຊັ້ນ"
 
 msgid "Path Desired Distance"
 msgstr "ໄລຍະທາງເສັ້ນທາງທີ່ຕ້ອງການ"
@@ -6348,7 +6521,7 @@ msgid "Vertices"
 msgstr "ຈຸດຍອດ (Vertices)"
 
 msgid "NavigationPolygon"
-msgstr "NavigationPolygon"
+msgstr "ໂພລີກອນນຳທາງ"
 
 msgid "Affect Navigation Mesh"
 msgstr "ສົ່ງຜົນຕໍ່ Navigation Mesh"
@@ -6750,39 +6923,6 @@ msgstr "ພິກັດເຟຣມ"
 msgid "Filter Clip Enabled"
 msgstr "ເປີດໃຊ້ການຕັດຟິລເຕີ"
 
-msgid "Tile Set"
-msgstr "ຊຸດໄທລ໌"
-
-msgid "Rendering Quadrant Size"
-msgstr "ຂະໜາດພື້ນທີ່ການປະມວນຜົນ"
-
-msgid "Collision Animatable"
-msgstr "ການຕຳທີ່ເຄື່ອນໄຫວໄດ້"
-
-msgid "Collision Visibility Mode"
-msgstr "ໂໝດການສະແດງຜົນການຕຳ"
-
-msgid "Navigation Visibility Mode"
-msgstr "ໂໝດການສະແດງຜົນການນຳທາງ"
-
-msgid "Occlusion Enabled"
-msgstr "ເປີດໃຊ້ການບັງແສງ"
-
-msgid "Y Sort Origin"
-msgstr "ຈຸດເລີ່ມຕົ້ນການລຽງແກນ Y"
-
-msgid "X Draw Order Reversed"
-msgstr "ລຳດັບການແຕ້ມແກນ X ແບບຍ້ອນກັບ"
-
-msgid "Collision Enabled"
-msgstr "ເປີດໃຊ້ການຕຳ"
-
-msgid "Use Kinematic Bodies"
-msgstr "ໃຊ້ວັດຖຸຄິເນມາຕິກ"
-
-msgid "Physics Quadrant Size"
-msgstr "ຂະໜາດພື້ນທີ່ຟີຊິກ"
-
 msgid "Show Rect"
 msgstr "ສະແດງຂອບເຂດສີ່ຫຼ່ຽມ"
 
@@ -6916,9 +7056,6 @@ msgstr "ພາລາມິເຕີ"
 msgid "Emission Energy"
 msgstr "ພະລັງງານການປ່ອຍແສງ"
 
-msgid "Modulate"
-msgstr "ປັບແຕ່ງສີ"
-
 msgid "Albedo Mix"
 msgstr "ການປະສົມອັນບີໂດ"
 
@@ -7045,9 +7182,6 @@ msgstr "ຂໍ້ຄວາມ"
 msgid "Outline Modulate"
 msgstr "ສີເສັ້ນຂອບ"
 
-msgid "Font"
-msgstr "ຕົວອັກສອນ"
-
 msgid "Horizontal Alignment"
 msgstr "ການຈັດລຽງແນວນອນ"
 
@@ -7123,6 +7257,9 @@ msgstr "ຄວາມມົວ"
 msgid "Caster Mask"
 msgstr "ໜ້າກາກການປ່ອຍເງົາ"
 
+msgid "Sky Mode"
+msgstr "ໂໝດທ້ອງຟ້າ"
+
 msgid "Directional Shadow"
 msgstr "ເງົາຕາມທິດທາງ"
 
@@ -7143,9 +7280,6 @@ msgstr "ຈຸດເລີ່ມການຈາງຫາຍ"
 
 msgid "Pancake Size"
 msgstr "ຂະໜາດແພນເຄັກ"
-
-msgid "Sky Mode"
-msgstr "ໂໝດທ້ອງຟ້າ"
 
 msgid "Omni"
 msgstr "ຮອບທິດທາງ"
@@ -7729,9 +7863,6 @@ msgstr "ກະດູກຮາກ"
 msgid "Tip Bone"
 msgstr "ກະດູກປາຍ"
 
-msgid "Target"
-msgstr "ເປົ້າໝາຍ"
-
 msgid "Override Tip Basis"
 msgstr "ຂຽນທັບເບຊິສສ່ວນປາຍ"
 
@@ -7759,8 +7890,8 @@ msgstr "ພາຍໃນ"
 msgid "External Force"
 msgstr "ແຮງພາຍນອກ"
 
-msgid "Track Physics Step"
-msgstr "ຕິດຕາມຂັ້ນຕອນຟີຊິກ"
+msgid "Max Length"
+msgstr "ຄວາມຍາວສູງສຸດ"
 
 msgid "Sorting"
 msgstr "ການລຽງລຳດັບ"
@@ -8056,8 +8187,119 @@ msgstr "ການຈັດວາງໄອຄອນລວງຕັ້ງ"
 msgid "Expand Icon"
 msgstr "ຂະຫຍາຍໄອຄອນ"
 
+msgid "Normal Mirrored"
+msgstr "ປົກກະຕິແບບສະທ້ອນ"
+
+msgid "Pressed Mirrored"
+msgstr "ກົດແບບສະທ້ອນ"
+
+msgid "Hover"
+msgstr "ຊີ້"
+
+msgid "Hover Mirrored"
+msgstr "ວາງເມົາສ໌ໃສ່ແບບສະທ້ອນ"
+
+msgid "Hover Pressed"
+msgstr "ວາງເມົາສ໌ໃສ່ແລ້ວກົດ"
+
+msgid "Disabled Mirrored"
+msgstr "ປິດໃຊ້ງານແບບສະທ້ອນ"
+
+msgid "Font Focus Color"
+msgstr "ສີຟອນຕອນໂຟກັດ"
+
+msgid "Font Pressed Color"
+msgstr "ສີຟອນຕອນກົດ"
+
+msgid "Font Hover Color"
+msgstr "ສີຟອນຕອນວາງເມົາສ໌ໃສ່"
+
+msgid "Font Hover Pressed Color"
+msgstr "ສີຟອນຕອນວາງເມົາສ໌ໃສ່ແລ້ວກົດ"
+
+msgid "Font Disabled Color"
+msgstr "ສີຟອນຕອນປິດໃຊ້ງານ"
+
+msgid "Font Outline Color"
+msgstr "ສີຂອບຟອນ"
+
+msgid "Icon Normal Color"
+msgstr "ສີໄອຄອນປົກກະຕີ"
+
+msgid "Icon Focus Color"
+msgstr "ສີໄອຄອນຕອນໂຟກັດ"
+
+msgid "Icon Pressed Color"
+msgstr "ສີໄອຄອນຕອນກົດ"
+
+msgid "Icon Hover Color"
+msgstr "ສີໄອຄອນຕອນວາງເມົາສ໌ໃສ່"
+
+msgid "Icon Hover Pressed Color"
+msgstr "ສີໄອຄອນຕອນວາງເມົາສ໌ໃສ່ແລ້ວກົດ"
+
+msgid "Icon Disabled Color"
+msgstr "ສີໄອຄອນຕອນປິດໃຊ້ງານ"
+
+msgid "H Separation"
+msgstr "ການແຍກຕາມແນວນອນ"
+
+msgid "Icon Max Width"
+msgstr "ຄວາມກວ້າງສູງສຸດຂອງໄອຄອນ"
+
+msgid "Align to Largest Stylebox"
+msgstr "ຈັດວາງຕາມ Stylebox ທີ່ໃຫຍ່ທີ່ສຸດ"
+
 msgid "Use Top Left"
 msgstr "ໃຊ້ດ້ານເທິງຊ້າຍ"
+
+msgid "Check V Offset"
+msgstr "ໄລຍະຫ່າງແນວຕັ້ງຂອງເຄື່ອງໝາຍຖືກ"
+
+msgid "Unchecked"
+msgstr "ບໍ່ໄດ້ເລືອກ"
+
+msgid "Radio Checked"
+msgstr "ປຸ່ມວິທະຍຸທີ່ເລືອກແລ້ວ"
+
+msgid "Radio Unchecked"
+msgstr "ປຸ່ມວິທະຍຸທີ່ບໍ່ໄດ້ເລືອກ"
+
+msgid "Checked Disabled"
+msgstr "ເລືອກແລ້ວແຕ່ປິດໃຊ້ງານ"
+
+msgid "Unchecked Disabled"
+msgstr "ບໍ່ໄດ້ເລືອກແລະປິດໃຊ້ງານ"
+
+msgid "Radio Checked Disabled"
+msgstr "ປຸ່ມວິທະຍຸທີ່ເລືອກແລ້ວແຕ່ປິດໃຊ້ງານ"
+
+msgid "Radio Unchecked Disabled"
+msgstr "ປຸ່ມວິທະຍຸທີ່ບໍ່ໄດ້ເລືອກແລະປິດໃຊ້ງານ"
+
+msgid "Checkbox Checked Color"
+msgstr "ສີຂອງ Checkbox ທີ່ເລືອກແລ້ວ"
+
+msgid "Checkbox Unchecked Color"
+msgstr "ສີຂອງ Checkbox ທີ່ບໍ່ໄດ້ເລືອກ"
+
+msgid "Checked Mirrored"
+msgstr "ເລືອກແລ້ວແບບສະທ້ອນ"
+
+msgid "Unchecked Mirrored"
+msgstr "ບໍ່ໄດ້ເລືອກແບບສະທ້ອນ"
+
+msgid "Checked Disabled Mirrored"
+msgstr "ເລືອກແລ້ວແຕ່ປິດໃຊ້ງານແບບສະທ້ອນ"
+
+msgid "Unchecked Disabled Mirrored"
+msgstr "ບໍ່ໄດ້ເລືອກແລະປິດໃຊ້ງານແບບສະທ້ອນ"
+
+msgid "Button Checked Color"
+msgstr "ສີປຸ່ມທີ່ເລືອກແລ້ວ"
+
+msgid "Button Unchecked Color"
+msgstr "ສີປຸ່ມທີ່ບໍ່ໄດ້ເລືອກ"
 
 msgid "Symbol Lookup on Click"
 msgstr "ຄົ້ນຫາສັນຍະລັກເມື່ອກົດ"
@@ -8125,6 +8367,81 @@ msgstr "ເນັ້ນຄູ່ທີ່ກົງກັນ"
 msgid "Pairs"
 msgstr "ຄູ່"
 
+msgid "Code Folding Color"
+msgstr "ສີການພັບໂຄ້ດ"
+
+msgid "Folded Code Region Color"
+msgstr "ສີຂອບເຂດໂຄ້ດທີ່ພັບໄວ້"
+
+msgid "Can Fold"
+msgstr "ສາມາດພັບໄດ້"
+
+msgid "Folded"
+msgstr "ພັບແລ້ວ"
+
+msgid "Can Fold Code Region"
+msgstr "ສາມາດພັບຂອບເຂດໂຄ້ດໄດ້"
+
+msgid "Folded Code Region"
+msgstr "ຂອບເຂດໂຄ້ດທີ່ພັບໄວ້"
+
+msgid "Folded EOL Icon"
+msgstr "ໄອຄອນຈົບແຖວທີ່ພັບໄວ້"
+
+msgid "Completion Color BG"
+msgstr "ສີພື້ນຫຼັງການເຕີມຄຳອັດຕະໂນມັດ"
+
+msgid "Breakpoint Color"
+msgstr "ສີຈຸດຢຸດ"
+
+msgid "Breakpoint"
+msgstr "ຈຸດຢຸດ"
+
+msgid "Bookmark Color"
+msgstr "ສີບຸກມາກ"
+
+msgid "Bookmark"
+msgstr "ບຸກມາກ"
+
+msgid "Executing Line Color"
+msgstr "ສີແຖວທີ່ກຳລັງປະມວນຜົນ"
+
+msgid "Executing Line"
+msgstr "ແຖວທີ່ກຳລັງປະມວນຜົນ"
+
+msgid "Line Number Color"
+msgstr "ສີເລກແຖວ"
+
+msgid "Completion Max Width"
+msgstr "ຄວາມກວ້າງສູງສຸດຂອງການເຕີມຄຳ"
+
+msgid "Completion Lines"
+msgstr "ຈຳນວນແຖວການເຕີມຄຳ"
+
+msgid "Completion Scroll Width"
+msgstr "ຄວາມກວ້າງແຖບເລື່ອນການເຕີມຄຳ"
+
+msgid "Completion Scroll Color"
+msgstr "ສີແຖບເລື່ອນການເຕີມຄຳ"
+
+msgid "Completion Scroll Hovered Color"
+msgstr "ສີແຖບເລື່ອນການເຕີມຄຳຕອນວາງເມົາສ໌ໃສ່"
+
+msgid "Completion Background Color"
+msgstr "ສີພື້ນຫຼັງຂອງລາຍການເຕີມຄຳ"
+
+msgid "Completion Selected Color"
+msgstr "ສີລາຍການເຕີມຄຳທີ່ເລືອກ"
+
+msgid "Completion Existing Color"
+msgstr "ສີຂໍ້ຄວາມທີ່ມີຢູ່ແລ້ວໃນການເຕີມຄຳ"
+
+msgid "Line Length Guideline Color"
+msgstr "ສີເສັ້ນນຳທາງຄວາມຍາວແຖວ"
+
+msgid "Brace Mismatch Color"
+msgstr "ສີວົງເລັບທີ່ບໍ່ຄູ່ກັນ"
+
 msgid "Edit Alpha"
 msgstr "ແກ້ໄຂຄ່າຄວາມໂປ່ງໃສ (Alpha)"
 
@@ -8160,6 +8477,102 @@ msgstr "ສະແດງຄ່າ Hex"
 
 msgid "Presets Visible"
 msgstr "ສະແດງຄ່າທີ່ຕັ້ງໄວ້ກ່ອນ"
+
+msgid "Label Width"
+msgstr "ຄວາມກວ້າງປ້າຍຊື່"
+
+msgid "SV Width"
+msgstr "ຄວາມກວ້າງ SV"
+
+msgid "SV Height"
+msgstr "ຄວາມສູງ SV"
+
+msgid "H Width"
+msgstr "ຄວາມກວ້າງ H"
+
+msgid "Center Slider Grabbers"
+msgstr "ຈັດຕົວຈັບສະໄລເດີໄວ້ກາງ"
+
+msgid "Sample Focus"
+msgstr "ໂຟກັດຕົວຢ່າງ"
+
+msgid "Picker Focus Rectangle"
+msgstr "ສີ່ຫຼ່ຽມໂຟກັດຕົວເລືອກ"
+
+msgid "Picker Focus Circle"
+msgstr "ວົງມົນໂຟກັດຕົວເລືອກ"
+
+msgid "Focused not Editing Cursor Color"
+msgstr "ສີເຄີເຊີຕອນໂຟກັດແຕ່ບໍ່ໄດ້ແກ້ໄຂ"
+
+msgid "Menu Option"
+msgstr "ຕົວເລືອກເມນູ"
+
+msgid "Screen Picker"
+msgstr "ຕົວເລືອກຈາກໜ້າຈໍ"
+
+msgid "Expanded Arrow"
+msgstr "ລູກສອນຄີ່"
+
+msgid "Folded Arrow"
+msgstr "ລູກສອນພັບ"
+
+msgid "Add Preset"
+msgstr "ເພີ່ມຄ່າທີ່ຕັ້ງໄວ້ລ່ວງໜ້າ"
+
+msgid "Shape Rect"
+msgstr "ຮູບຊົງສີ່ຫຼ່ຽມ"
+
+msgid "Shape Rect Wheel"
+msgstr "ຮູບຊົງສີ່ຫຼ່ຽມແບບວົງລໍ້"
+
+msgid "Shape Circle"
+msgstr "ຮູບຊົງວົງມົນ"
+
+msgid "Bar Arrow"
+msgstr "ລູກສອນແຖບ"
+
+msgid "Sample BG"
+msgstr "ພື້ນຫຼັງຕົວຢ່າງ"
+
+msgid "Sample Revert"
+msgstr "ຄືນຄ່າຕົວຢ່າງ"
+
+msgid "Overbright Indicator"
+msgstr "ຕົວບົ່ງຊີ້ຄວາມສະຫວ່າງເກີນ"
+
+msgid "Picker Cursor"
+msgstr "ເຄີເຊີຕົວເລືອກ"
+
+msgid "Picker Cursor BG"
+msgstr "ພື້ນຫຼັງເຄີເຊີຕົວເລືອກ"
+
+msgid "Color Hue"
+msgstr "ເນື້ອສີ"
+
+msgid "Color Script"
+msgstr "ສະຄຣິບສີ"
+
+msgid "Color Copy"
+msgstr "ກັອບປີ້ສີ"
+
+msgid "Tab Unselected"
+msgstr "ແທັບທີ່ບໍ່ໄດ້ເລືອກ"
+
+msgid "Tab Selected"
+msgstr "ແທັບທີ່ເລືອກ"
+
+msgid "BG"
+msgstr "ພື້ນຫຼັງ"
+
+msgid "Preset FG"
+msgstr "ສີພື້ນໜ້າທີ່ຕັ້ງໄວ້"
+
+msgid "Preset Focus"
+msgstr "ໂຟກັດທີ່ຕັ້ງໄວ້"
+
+msgid "Preset BG"
+msgstr "ພື້ນຫຼັງທີ່ຕັ້ງໄວ້"
 
 msgid "Accessibility Region"
 msgstr "ພື້ນທີ່ການເຂົ້າເຖິງ"
@@ -8245,9 +8658,6 @@ msgstr "ຄຳແນະນຳ"
 msgid "Auto Translate Mode"
 msgstr "ໂໝດການແປອັດຕະໂນມັດ"
 
-msgid "Focus"
-msgstr "ໂຟກັສ"
-
 msgid "Neighbor Left"
 msgstr "ເພື່ອນບ້ານດ້ານຊ້າຍ"
 
@@ -8311,6 +8721,9 @@ msgstr "ປິດເມື່ອກົດ Escape"
 msgid "Autowrap"
 msgstr "ຕັດແຖວອັດຕະໂນມັດ"
 
+msgid "Buttons Separation"
+msgstr "ການແຍກປຸ່ມ"
+
 msgid "Cancel Button Text"
 msgstr "ຂໍ້ຄວາມປຸ່ມຍົກເລີກ"
 
@@ -8365,14 +8778,92 @@ msgstr "ເປີດໃຊ້ຄຳເຕືອນການຂຽນທັບ"
 msgid "Deleting Enabled"
 msgstr "ເປີດໃຊ້ການລຶບ"
 
+msgid "Parent Folder"
+msgstr "ໂຟນເດີຫຼັກ"
+
+msgid "Forward Folder"
+msgstr "ໂຟນເດີຖັດໄປ"
+
+msgid "Back Folder"
+msgstr "ໂຟນເດີກ່ອນໜ້າ"
+
+msgid "Reload"
+msgstr "ໂຫຼດໃໝ່"
+
+msgid "Favorite"
+msgstr "ທີ່ຊື່ນຊອບ"
+
+msgid "Toggle Hidden"
+msgstr "ສະຫຼັບການສະແດງສິ່ງທີ່ເຊື່ອງໄວ້"
+
+msgid "Folder"
+msgstr "ໂຟນເດີ"
+
+msgid "Toggle Filename Filter"
+msgstr "ສະຫຼັບຕົວຕອງຊື່ໄຟລ໌"
+
+msgid "File"
+msgstr "ໄຟລ໌"
+
+msgid "Create Folder"
+msgstr "ສ້າງໂຟນເດີ"
+
+msgid "Sort"
+msgstr "ຈັດລຽງ"
+
+msgid "Favorite Up"
+msgstr "ທີ່ຊື່ນຊອບຂຶ້ນ"
+
+msgid "Favorite Down"
+msgstr "ທີ່ຊື່ນຊອບລົງ"
+
+msgid "Thumbnail Mode"
+msgstr "ໂໝດຮູບຕົວຢ່າງ"
+
+msgid "List Mode"
+msgstr "ໂໝດລາຍການ"
+
+msgid "File Thumbnail"
+msgstr "ຮູບຕົວຢ່າງໄຟລ໌"
+
+msgid "Folder Thumbnail"
+msgstr "ຮູບຕົວຢ່າງໂຟນເດີ"
+
+msgid "Menu Copy Path"
+msgstr "ເມນູ ຄັດລອກເສັ້ນທາງ"
+
+msgid "Menu Delete"
+msgstr "ລືບເມນູ"
+
+msgid "Menu Refresh"
+msgstr "ເມນູ ໂຫຼດຄືນໃໝ່"
+
+msgid "Menu New Folder"
+msgstr "ເມນູໂພນເດີໃໝ່"
+
+msgid "Menu Show in File Manager"
+msgstr "ເມນູ ສະແດງໃນຕົວຈັດການໄຟລ໌"
+
+msgid "Menu Open Bundle"
+msgstr "ເມນູ ເປີດຊຸດ"
+
+msgid "Folder Icon Color"
+msgstr "ສີໄອຄອນໂຟນເດີ"
+
+msgid "File Icon Color"
+msgstr "ສີໄອຄອນໄຟລ໌"
+
+msgid "File Disabled Color"
+msgstr "ສີໄຟລ໌ທີ່ປິດໃຊ້ງານ"
+
 msgid "Last Wrap Alignment"
 msgstr "ການຈັດວາງແຖວສຸດທ້າຍທີ່ຕັດ"
 
 msgid "Reverse Fill"
 msgstr "ຕື່ມຂໍ້ມູນແບບຍ້ອນກັບ"
 
-msgid "Folded"
-msgstr "ພັບແລ້ວ"
+msgid "V Separation"
+msgstr "ການແຍກຕາມແນວຕັ້ງ"
 
 msgid "Title Alignment"
 msgstr "ການຈັດວາງຫົວຂໍ້"
@@ -8389,8 +8880,38 @@ msgstr "ກຸ່ມທີ່ສາມາດພັບໄດ້"
 msgid "Title Text Direction"
 msgstr "ທິດທາງຂໍ້ຄວາມຫົວຂໍ້"
 
+msgid "Title Panel"
+msgstr "ແຜງຫົວຂໍ້"
+
+msgid "Title Hover Panel"
+msgstr "ແຜງຫົວຂໍ້ຕອນວາງເມົາສ໌ໃສ່"
+
+msgid "Title Collapsed Panel"
+msgstr "ແຜງຫົວຂໍ້ຕອນພັບ"
+
+msgid "Title Collapsed Hover Panel"
+msgstr "ແຜງຫົວຂໍ້ຕອນພັບແລະວາງເມົາສ໌ໃສ່"
+
+msgid "Hover Font Color"
+msgstr "ສີຟອນຕອນວາງເມົາສ໌ໃສ່"
+
+msgid "Collapsed Font Color"
+msgstr "ສີຟອນຕອນພັບ"
+
+msgid "Expanded Arrow Mirrored"
+msgstr "ລູກສອນຄີ່ແບບສະທ້ອນ"
+
+msgid "Folded Arrow Mirrored"
+msgstr "ລູກສອນພັບແບບສະທ້ອນ"
+
 msgid "Allow Folding All"
 msgstr "ອະນຸຍາດໃຫ້ພັບທັງໝົດ"
+
+msgid "Resizer"
+msgstr "ຕົວປັບຂະໜາດ"
+
+msgid "Resizer Color"
+msgstr "ສີຕົວປັບຂະໜາດ"
 
 msgid "Show Grid"
 msgstr "ສະແດງເສັ້ນຕາຕະລາງ"
@@ -8449,6 +8970,63 @@ msgstr "ສະແດງປຸ່ມແຜນທີ່ຂະໜາດນ້ອຍ
 msgid "Show Arrange Button"
 msgstr "ສະແດງປຸ່ມຈັດລຽງ"
 
+msgid "Panel Focus"
+msgstr "ແຜງທີ່ໂຟກັດ"
+
+msgid "Grid Major"
+msgstr "ເສັ້ນຕາຕະລາງຫຼັກ"
+
+msgid "Grid Minor"
+msgstr "ເສັ້ນຕາຕະລາງຍ່ອຍ"
+
+msgid "Activity"
+msgstr "ກິດຈະກຳ"
+
+msgid "Connection Hover Tint Color"
+msgstr "ສີຍ້ອມການເຊື່ອມຕໍ່ຕອນວາງເມົາສ໌ໃສ່"
+
+msgid "Connection Hover Thickness"
+msgstr "ຄວາມໜາການເຊື່ອມຕໍ່ຕອນວາງເມົາສ໌ໃສ່"
+
+msgid "Connection Valid Target Tint Color"
+msgstr "ສີຍ້ອມເປົ້າໝາຍການເຊື່ອມຕໍ່ທີ່ໃຊ້ໄດ້"
+
+msgid "Connection Rim Color"
+msgstr "ສີຂອບການເຊື່ອມຕໍ່"
+
+msgid "Selection Fill"
+msgstr "ການເຕີມສີການເລືອກ"
+
+msgid "Selection Stroke"
+msgstr "ເສັ້ນຂອບການເລືອກ"
+
+msgid "Menu Panel"
+msgstr "ແຜງເມນູ"
+
+msgid "Zoom In"
+msgstr "ຊູມເຂົ້າ"
+
+msgid "Zoom Out"
+msgstr "ຊູມອອກ"
+
+msgid "Zoom Reset"
+msgstr "ຣີເຊັດການຊູມ"
+
+msgid "Snapping Toggle"
+msgstr "ສະຫຼັບການດູດຕິດ"
+
+msgid "Grid Toggle"
+msgstr "ສະຫຼັບຕາຕະລາງ"
+
+msgid "Minimap Toggle"
+msgstr "ສະຫຼັບແຜນທີ່ຍ່ອຍ"
+
+msgid "Port Hotzone Inner Extent"
+msgstr "ຂອບເຂດພາຍໃນຂອງ Hotzone ພອດ"
+
+msgid "Port Hotzone Outer Extent"
+msgstr "ຂອບເຂດພາຍນອກຂອງ Hotzone ພອດ"
+
 msgid "Draggable"
 msgstr "ສາມາດລາກໄດ້"
 
@@ -8467,11 +9045,29 @@ msgstr "ຂອບການຫົດຂະໜາດອັດຕະໂນມັດ
 msgid "Drag Margin"
 msgstr "ຂອບການລາກ"
 
+msgid "Panel Selected"
+msgstr "ແຜງທີ່ເລືອກ"
+
+msgid "Titlebar"
+msgstr "ແຖບຫົວຂໍ້"
+
+msgid "Titlebar Selected"
+msgstr "ແຖບຫົວຂໍ້ທີ່ເລືອກ"
+
 msgid "Ignore Invalid Connection Type"
 msgstr "ບໍ່ສົນໃຈປະເພດການເຊື່ອມຕໍ່ທີ່ບໍ່ຖືກຕ້ອງ"
 
 msgid "Slots Focus Mode"
 msgstr "ໂໝດໂຟກັສຊ່ອງສຽບ"
+
+msgid "Slot"
+msgstr "ຊ່ອງ"
+
+msgid "Slot Selected"
+msgstr "ຊ່ອງທີ່ເລືອກ"
+
+msgid "Port H Offset"
+msgstr "ໄລຍະຫ່າງພອດແນວນອນ"
 
 msgid "Select Mode"
 msgstr "ໂໝດການເລືອກ"
@@ -8524,6 +9120,60 @@ msgstr "ຂະໜາດໄອຄອນ"
 msgid "Fixed Icon Size"
 msgstr "ຂະໜາດໄອຄອນຄົງທີ່"
 
+msgid "Scrollbar Margin Left"
+msgstr "ຂອບຊ້າຍແຖບເລື່ອນ"
+
+msgid "Scrollbar Margin Top"
+msgstr "ຂອບເທິງແຖບເລື່ອນ"
+
+msgid "Scrollbar Margin Right"
+msgstr "ຂອບຂວາແຖບເລື່ອນ"
+
+msgid "Scrollbar Margin Bottom"
+msgstr "ຂອບລຸ່ມແຖບເລື່ອນ"
+
+msgid "Scrollbar H Separation"
+msgstr "ການແຍກແຖບເລື່ອນແນວນອນ"
+
+msgid "Font Hovered Color"
+msgstr "ສີຟອນຕອນວາງເມົາສ໌ໃສ່"
+
+msgid "Font Hovered Selected Color"
+msgstr "ສີຟອນຕອນວາງເມົາສ໌ໃສ່ແລະເລືອກ"
+
+msgid "Font Selected Color"
+msgstr "ສີຟອນທີ່ຖືກເລືອກ"
+
+msgid "Scroll Hint"
+msgstr "ຄຳແນະນຳການເລື່ອນ"
+
+msgid "Scroll Hint Color"
+msgstr "ສີຄຳແນະນຳການເລື່ອນ"
+
+msgid "Icon Margin"
+msgstr "ຂອບໄອຄອນ"
+
+msgid "Hovered"
+msgstr "ວາງເມົາສ໌ໃສ່"
+
+msgid "Hovered Selected"
+msgstr "ວາງເມົາສ໌ໃສ່ແລະເລືອກ"
+
+msgid "Hovered Selected Focus"
+msgstr "ວາງເມົາສ໌ໃສ່, ເລືອກ ແລະ ໂຟກັດ"
+
+msgid "Selected Focus"
+msgstr "ເລືອກແລະໂຟກັດ"
+
+msgid "Cursor Unfocused"
+msgstr "ເຄີເຊີຕອນບໍ່ໄດ້ໂຟກັດ"
+
+msgid "Cursor"
+msgstr "ເຄີເຊີ"
+
+msgid "Guide Color"
+msgstr "ສີເສັ້ນນຳທາງ"
+
 msgid "Label Settings"
 msgstr "ການຕັ້ງຄ່າປ້າຍຂໍ້ຄວາມ"
 
@@ -8554,11 +9204,17 @@ msgstr "ພຶດຕິກຳຂອງຕົວອັກສອນທີ່ສະ
 msgid "Visible Ratio"
 msgstr "ອັດຕາສ່ວນການສະແດງ"
 
+msgid "Paragraph Spacing"
+msgstr "ໄລຍະຫ່າງຫຍໍ້ໜ້າ"
+
+msgid "Font Shadow Color"
+msgstr "ສີເງົາຟອນ"
+
+msgid "Shadow Outline Size"
+msgstr "ຂະໜາດຂອບເງົາ"
+
 msgid "Placeholder Text"
 msgstr "ຂໍ້ຄວາມຕົວຢ່າງ"
-
-msgid "Max Length"
-msgstr "ຄວາມຍາວສູງສຸດ"
 
 msgid "Keep Editing on Text Submit"
 msgstr "ແກ້ໄຂຕໍ່ໄປເມື່ອສົ່ງຂໍ້ຄວາມ"
@@ -8635,11 +9291,50 @@ msgstr "ໂໝດການຂະຫຍາຍໄອຄອນ"
 msgid "Right Icon Scale"
 msgstr "ຂະໜາດໄອຄອນດ້ານຂວາ"
 
+msgid "Font Placeholder Color"
+msgstr "ສີຟອນຂໍ້ຄວາມຕົວຢ່າງ"
+
+msgid "Caret Width"
+msgstr "ຄວາມກວ້າງຕົວຊີ້ຕຳແໜ່ງ"
+
+msgid "Caret Color"
+msgstr "ສີຂອງຕົວຊີ້ຕຳແໜ່ງ"
+
+msgid "Minimum Character Width"
+msgstr "ຄວາມກວ້າງຕົວອັກສອນຕໍ່າສຸດ"
+
+msgid "Selection Color"
+msgstr "ສີການເລືອກ"
+
+msgid "Clear"
+msgstr "ລ້າງອອກ"
+
+msgid "Clear Button Color"
+msgstr "ສີປຸ່ມລຶບ"
+
+msgid "Clear Button Color Pressed"
+msgstr "ສີປຸ່ມລຶບຕອນກົດ"
+
 msgid "Underline"
 msgstr "ຂີດກ້ອງ"
 
 msgid "URI"
 msgstr "URI"
+
+msgid "Underline Spacing"
+msgstr "ໄລຍະຫ່າງການຂີດກ້ອງ"
+
+msgid "Margin Left"
+msgstr "ຂອບຊ້າຍ"
+
+msgid "Margin Top"
+msgstr "ຂອບເທິງ"
+
+msgid "Margin Right"
+msgstr "ຂອບຂວາ"
+
+msgid "Margin Bottom"
+msgstr "ຂອບລຸ່ມ"
 
 msgid "Start Index"
 msgstr "ດັດຊະນີເລີ່ມຕົ້ນ"
@@ -8677,6 +9372,15 @@ msgstr "ເປີດໃຊ້ການຄົ້ນຫາແບບຄຸມເຄ
 msgid "Fuzzy Search Max Misses"
 msgstr "ຈຳນວນການບໍ່ກົງກັນສູງສຸດຂອງການຄົ້ນຫາແບບຄຸມເຄືອ"
 
+msgid "Arrow"
+msgstr "ລູກສອນ"
+
+msgid "Arrow Margin"
+msgstr "ຂອບລູກສອນ"
+
+msgid "Modulate Arrow"
+msgstr "ປັບສີລູກສອນ"
+
 msgid "Hide on Item Selection"
 msgstr "ຊ່ອນເມື່ອເລືອກລາຍການ"
 
@@ -8701,17 +9405,71 @@ msgstr "ຫົດຄວາມສູງ"
 msgid "Shrink Width"
 msgstr "ຫົດຄວາມກວ້າງ"
 
+msgid "Separator"
+msgstr "ຕົວແຍກ"
+
+msgid "Labeled Separator Left"
+msgstr "ຕົວແຍກແບບມີປ້າຍຊື່ດ້ານຊ້າຍ"
+
+msgid "Labeled Separator Right"
+msgstr "ຕົວແຍກແບບມີປ້າຍຊື່ດ້ານຂວາ"
+
+msgid "Search Bar Separation"
+msgstr "ການແຍກແຖບຄົ້ນຫາ"
+
+msgid "Item Start Padding"
+msgstr "ໄລຍະຫ່າງເລີ່ມຕົ້ນຂອງລາຍການ"
+
+msgid "Item End Padding"
+msgstr "ໄລຍະຫ່າງສິ້ນສຸດຂອງລາຍການ"
+
+msgid "Gutter Compact"
+msgstr "ຮ່ອງແບບກະທັດຮັດ"
+
+msgid "Indeterminate"
+msgstr "ບໍ່ກຳນົດຄ່າ"
+
+msgid "Indeterminate Disabled"
+msgstr "ບໍ່ກຳນົດແລະປິດໃຊ້ງານ"
+
+msgid "Search"
+msgstr "ຄົ້ນຫາ"
+
+msgid "Submenu"
+msgstr "ເມນູຍ່ອຍ"
+
+msgid "Submenu Mirrored"
+msgstr "ເມນູຍ່ອຍແບບສະທ້ອນ"
+
+msgid "Font Separator"
+msgstr "ຕົວແຍກຟອນ"
+
+msgid "Font Separator Size"
+msgstr "ຂະໜາດຕົວແຍກຟອນ"
+
+msgid "Font Accelerator Color"
+msgstr "ສີຟອນປຸ່ມລັດ"
+
+msgid "Font Separator Color"
+msgstr "ສີຕົວແຍກຟອນ"
+
+msgid "Separator Outline Size"
+msgstr "ຂະໜາດຂອບຕົວແຍກ"
+
+msgid "Font Separator Outline Color"
+msgstr "ສີຂອບຕົວແຍກຟອນ"
+
 msgid "Fill Mode"
 msgstr "ໂໝດການຕື່ມ"
 
 msgid "Show Percentage"
 msgstr "ສະແດງເປີເຊັນ"
 
-msgid "Indeterminate"
-msgstr "ບໍ່ກຳນົດຄ່າ"
-
 msgid "Preview Indeterminate"
 msgstr "ຕົວຢ່າງແບບບໍ່ກຳນົດຄ່າ"
+
+msgid "Background"
+msgstr "ພື້ນຫຼັງ"
 
 msgid "Min Value"
 msgstr "ຄ່າຕ່ຳສຸດ"
@@ -8797,8 +9555,98 @@ msgstr "ເວລາໜ່ວງຂອງແຖບຄວາມຄືບໜ້າ
 msgid "Text Selection"
 msgstr "ການເລືອກຂໍ້ຄວາມ"
 
+msgid "Horizontal Rule"
+msgstr "ເສັ້ນແບ່ງແນວນອນ"
+
+msgid "Normal Font"
+msgstr "ຟອນປົກກະຕີ"
+
+msgid "Normal Font Size"
+msgstr "ຂະໜາດຟອນປົກກະຕີ"
+
+msgid "Shadow Offset X"
+msgstr "ໄລຍະຫ່າງເງົາແນວນອນ"
+
+msgid "Shadow Offset Y"
+msgstr "ໄລຍະຫ່າງເງົາແນວຕັ້ງ"
+
+msgid "Bold Font"
+msgstr "ຟອນໂຕເຂັ້ມ"
+
+msgid "Bold Font Size"
+msgstr "ຂະໜາດຟອນໂຕເຂັ້ມ"
+
+msgid "Bold Italics Font"
+msgstr "ຟອນໂຕເຂັ້ມອຽງ"
+
+msgid "Bold Italics Font Size"
+msgstr "ຂະໜາດຟອນໂຕເຂັ້ມອຽງ"
+
+msgid "Italics Font"
+msgstr "ຟອນໂຕອຽງ"
+
+msgid "Italics Font Size"
+msgstr "ຂະໜາດຟອນໂຕອຽງ"
+
+msgid "Mono Font"
+msgstr "ຟອນຄວາມກວ້າງຄົງທີ່"
+
+msgid "Mono Font Size"
+msgstr "ຂະໜາດຟອນຄວາມກວ້າງຄົງທີ່"
+
+msgid "Text Highlight H Padding"
+msgstr "ໄລຍະຫ່າງແນວນອນການເນັ້ນຂໍ້ຄວາມ"
+
+msgid "Text Highlight V Padding"
+msgstr "ໄລຍະຫ່າງແນວຕັ້ງການເນັ້ນຂໍ້ຄວາມ"
+
+msgid "Underline Alpha"
+msgstr "ຄ່າຄວາມໂປ່ງໃສຂອງເສັ້ນຂີດກ້ອງ"
+
+msgid "Strikethrough Alpha"
+msgstr "ຄ່າຄວາມໂປ່ງໃສຂອງເສັ້ນຂີດຂ້າ"
+
+msgid "Table H Separation"
+msgstr "ການແຍກຕາຕະລາງແນວນອນ"
+
+msgid "Table V Separation"
+msgstr "ການແຍກຕາຕະລາງແນວຕັ້ງ"
+
+msgid "Table Odd Row BG"
+msgstr "ພື້ນຫຼັງແຖບຄີກຂອງຕາຕະລາງ"
+
+msgid "Table Even Row BG"
+msgstr "ພື້ນຫຼັງແຖບຄູ່ຂອງຕາຕະລາງ"
+
+msgid "Table Border"
+msgstr "ຂອບຕາຕະລາງ"
+
 msgid "Custom Step"
 msgstr "ກຳນົດຂັ້ນເອງ"
+
+msgid "Scroll Focus"
+msgstr "ໂຟກັດການເລື່ອນ"
+
+msgid "Grabber Pressed"
+msgstr "ຕົວຈັບຕອນກົດ"
+
+msgid "Increment"
+msgstr "ເພີ່ມຂຶ້ນ"
+
+msgid "Increment Highlight"
+msgstr "ເພີ່ມຂຶ້ນແບບເນັ້ນ"
+
+msgid "Increment Pressed"
+msgstr "ເພີ່ມຂຶ້ນຕອນກົດ"
+
+msgid "Decrement"
+msgstr "ຫຼຸດລົງ"
+
+msgid "Decrement Highlight"
+msgstr "ຫຼຸດລົງແບບເນັ້ນ"
+
+msgid "Decrement Pressed"
+msgstr "ຫຼຸດລົງຕອນກົດ"
 
 msgid "Follow Focus"
 msgstr "ເລື່ອນຕາມໂຟກັສ"
@@ -8833,8 +9681,20 @@ msgstr "ເລື່ອນລວງນອນເປັນຄ່າເລີ່ມ
 msgid "Scroll Deadzone"
 msgstr "ໄລຍະຕາຍຕົວການເລື່ອນ"
 
-msgid "Scroll Hint"
-msgstr "ຄຳແນະນຳການເລື່ອນ"
+msgid "Scrollbar V Separation"
+msgstr "ການແຍກແຖບເລື່ອນແນວຕັ້ງ"
+
+msgid "Scroll Hint Vertical"
+msgstr "ຄຳແນະນຳການເລື່ອນແນວຕັ້ງ"
+
+msgid "Scroll Hint Horizontal"
+msgstr "ຄຳແນະນຳການເລື່ອນແນວນອນ"
+
+msgid "Scroll Hint Vertical Color"
+msgstr "ສີຄຳແນະນຳການເລື່ອນແນວຕັ້ງ"
+
+msgid "Scroll Hint Horizontal Color"
+msgstr "ສີຄຳແນະນຳການເລື່ອນແນວນອນ"
 
 msgid "Default Scroll Deadzone"
 msgstr "ໄລຍະຕາຍຕົວການເລື່ອນເລີ່ມຕົ້ນ"
@@ -8851,6 +9711,30 @@ msgstr "ສະແດງຂີດແບ່ງທີ່ຂອບ"
 msgid "Ticks Position"
 msgstr "ຕຳແໜ່ງຂີດແບ່ງ"
 
+msgid "Slider"
+msgstr "ສະໄລເດີ"
+
+msgid "Grabber Area"
+msgstr "ພື້ນທີ່ຕົວຈັບ"
+
+msgid "Grabber Area Highlight"
+msgstr "ພື້ນທີ່ຕົວຈັບແບບເນັ້ນ"
+
+msgid "Grabber Disabled"
+msgstr "ຕົວຈັບທີ່ປິດໃຊ້ງານ"
+
+msgid "Tick"
+msgstr "ຂີດໝາຍ"
+
+msgid "Center Grabber"
+msgstr "ຈັດຕົວຈັບໄວ້ກາງ"
+
+msgid "Grabber Offset"
+msgstr "ໄລຍະຫ່າງຕົວຈັບ"
+
+msgid "Tick Offset"
+msgstr "ໄລຍະຫ່າງຂີດໝາຍ"
+
 msgid "Update on Text Changed"
 msgstr "ອັບເດດເມື່ອຂໍ້ຄວາມປ່ຽນ"
 
@@ -8859,6 +9743,99 @@ msgstr "ກຳນົດຂັ້ນຂອງລູກສອນເອງ"
 
 msgid "Custom Arrow Round"
 msgstr "ກຳນົດການປັດເສດຂອງລູກສອນເອງ"
+
+msgid "Format"
+msgstr "ຮູບແບບ (Format)"
+
+msgid "Buttons Vertical Separation"
+msgstr "ການແຍກປຸ່ມແນວຕັ້ງ"
+
+msgid "Field and Buttons Separation"
+msgstr "ການແຍກຊ່ອງຂໍ້ມູນແລະປຸ່ມ"
+
+msgid "Buttons Width"
+msgstr "ຄວາມກວ້າງຂອງປຸ່ມ"
+
+msgid "Set Min Buttons Width From Icons"
+msgstr "ຕັ້ງຄວາມກວ້າງປຸ່ມຕໍ່າສຸດຈາກໄອຄອນ"
+
+msgid "Up"
+msgstr "ຂຶ້ນ"
+
+msgid "Up Hover"
+msgstr "ຂຶ້ນຕອນວາງເມົາສ໌ໃສ່"
+
+msgid "Up Pressed"
+msgstr "ຂຶ້ນຕອນກົດ"
+
+msgid "Up Disabled"
+msgstr "ຂຶ້ນແບບປິດໃຊ້ງານ"
+
+msgid "Down"
+msgstr "ລົງ"
+
+msgid "Down Hover"
+msgstr "ລົງຕອນວາງເມົາສ໌ໃສ່"
+
+msgid "Down Pressed"
+msgstr "ລົງຕອນກົດ"
+
+msgid "Down Disabled"
+msgstr "ລົງແບບປິດໃຊ້ງານ"
+
+msgid "Up Background"
+msgstr "ພື້ນຫຼັງປຸ່ມຂຶ້ນ"
+
+msgid "Up Background Hovered"
+msgstr "ພື້ນຫຼັງປຸ່ມຂຶ້ນຕອນວາງເມົາສ໌ໃສ່"
+
+msgid "Up Background Pressed"
+msgstr "ພື້ນຫຼັງປຸ່ມຂຶ້ນຕອນກົດ"
+
+msgid "Up Background Disabled"
+msgstr "ພື້ນຫຼັງປຸ່ມຂຶ້ນແບບປິດໃຊ້ງານ"
+
+msgid "Down Background"
+msgstr "ພື້ນຫຼັງປຸ່ມລົງ"
+
+msgid "Down Background Hovered"
+msgstr "ພື້ນຫຼັງປຸ່ມລົງຕອນວາງເມົາສ໌ໃສ່"
+
+msgid "Down Background Pressed"
+msgstr "ພື້ນຫຼັງປຸ່ມລົງຕອນກົດ"
+
+msgid "Down Background Disabled"
+msgstr "ພື້ນຫຼັງປຸ່ມລົງແບບປິດໃຊ້ງານ"
+
+msgid "Up Icon Modulate"
+msgstr "ປັບສີໄອຄອນຂຶ້ນ"
+
+msgid "Up Hover Icon Modulate"
+msgstr "ປັບສີໄອຄອນຂຶ້ນຕອນວາງເມົາສ໌ໃສ່"
+
+msgid "Up Pressed Icon Modulate"
+msgstr "ປັບສີໄອຄອນຂຶ້ນຕອນກົດ"
+
+msgid "Up Disabled Icon Modulate"
+msgstr "ປັບສີໄອຄອນຂຶ້ນແບບປິດໃຊ້ງານ"
+
+msgid "Down Icon Modulate"
+msgstr "ປັບສີໄອຄອນລົງ"
+
+msgid "Down Hover Icon Modulate"
+msgstr "ປັບສີໄອຄອນລົງຕອນວາງເມົາສ໌ໃສ່"
+
+msgid "Down Pressed Icon Modulate"
+msgstr "ປັບສີໄອຄອນລົງຕອນກົດ"
+
+msgid "Down Disabled Icon Modulate"
+msgstr "ປັບສີໄອຄອນລົງແບບປິດໃຊ້ງານ"
+
+msgid "Field and Buttons Separator"
+msgstr "ຕົວແຍກຊ່ອງຂໍ້ມູນແລະປຸ່ມ"
+
+msgid "Up Down Buttons Separator"
+msgstr "ຕົວແຍກປຸ່ມຂຶ້ນລົງ"
 
 msgid "Split Offsets"
 msgstr "ໄລຍະຫ່າງການແຍກ"
@@ -8889,6 +9866,39 @@ msgstr "ຂອບສິ້ນສຸດ"
 
 msgid "Highlight in Editor"
 msgstr "ເນັ້ນໃນຕົວແກ້ໄຂ"
+
+msgid "Touch Dragger Color"
+msgstr "ສີຕົວລາກສຳຜັດ"
+
+msgid "Touch Dragger Pressed Color"
+msgstr "ສີຕົວລາກສຳຜັດຕອນກົດ"
+
+msgid "Touch Dragger Hover Color"
+msgstr "ສີຕົວລາກສຳຜັດຕອນວາງເມົາສ໌ໃສ່"
+
+msgid "Minimum Grab Thickness"
+msgstr "ຄວາມໜາຂອງການຈັບຕໍ່າສຸດ"
+
+msgid "Autohide"
+msgstr "ເຊື່ອງອັດຕະໂນມັດ"
+
+msgid "Touch Dragger"
+msgstr "ຕົວລາກສຳຜັດ"
+
+msgid "H Touch Dragger"
+msgstr "ຕົວລາກສຳຜັດແນວນອນ"
+
+msgid "V Touch Dragger"
+msgstr "ຕົວລາກສຳຜັດແນວຕັ້ງ"
+
+msgid "H Grabber"
+msgstr "ຕົວຈັບແນວນອນ"
+
+msgid "V Grabber"
+msgstr "ຕົວຈັບແນວຕັ້ງ"
+
+msgid "Split Bar Background"
+msgstr "ພື້ນຫຼັງແຖບແຍກ"
 
 msgid "Split Offset"
 msgstr "ໄລຍະຫ່າງການແຍກ"
@@ -8941,6 +9951,42 @@ msgstr "ເປີດໃຊ້ການຍົກເລີກການເລືອ
 msgid "Tabs"
 msgstr "ແທັບ"
 
+msgid "Hover Switch Wait Msec"
+msgstr "ເວລາລໍຖ້າການສະຫຼັບຕອນວາງເມົາສ໌ໃສ່ (ມິລີວິນາທີ)"
+
+msgid "Tab Hovered"
+msgstr "ແທັບຕອນວາງເມົາສ໌ໃສ່"
+
+msgid "Tab Disabled"
+msgstr "ແທັບທີ່ປິດໃຊ້ງານ"
+
+msgid "Tab Focus"
+msgstr "ແທັບທີ່ໂຟກັດ"
+
+msgid "Drop Mark"
+msgstr "ເຄື່ອງໝາຍການວາງ"
+
+msgid "Drop Mark Color"
+msgstr "ສີເຄື່ອງໝາຍການວາງ"
+
+msgid "Font Unselected Color"
+msgstr "ສີຟອນທີ່ບໍ່ໄດ້ເລືອກ"
+
+msgid "Icon Selected Color"
+msgstr "ສີໄອຄອນທີ່ເລືອກ"
+
+msgid "Icon Hovered Color"
+msgstr "ສີໄອຄອນຕອນວາງເມົາສ໌ໃສ່"
+
+msgid "Icon Unselected Color"
+msgstr "ສີໄອຄອນທີ່ບໍ່ໄດ້ເລືອກ"
+
+msgid "Close"
+msgstr "ປິດ"
+
+msgid "Button Highlight"
+msgstr "ການເນັ້ນປຸ່ມ"
+
 msgid "Tabs Position"
 msgstr "ຕຳແໜ່ງແທັບ"
 
@@ -8952,6 +9998,21 @@ msgstr "ໃຊ້ແທັບທີ່ຊ່ອນຢູ່ເພື່ອຄຳ
 
 msgid "Tab Focus Mode"
 msgstr "ໂໝດໂຟກັສແທັບ"
+
+msgid "Side Margin"
+msgstr "ຂອບດ້ານຂ້າງ"
+
+msgid "Tabbar Background"
+msgstr "ພື້ນຫຼັງແຖບແທັບ"
+
+msgid "Menu"
+msgstr "ເມນູ"
+
+msgid "Menu Highlight"
+msgstr "ການເນັ້ນເມນູ"
+
+msgid "Icon Separation"
+msgstr "ການແຍກໄອຄອນ"
 
 msgid "Empty Selection Clipboard Enabled"
 msgstr "ເປີດໃຊ້ການຄັດລອກຄລິບບອດເຖິງແມ່ນບໍ່ໄດ້ເລືອກຂໍ້ຄວາມ"
@@ -8998,18 +10059,38 @@ msgstr "ຕົວອັກສອນຄວບຄຸມ"
 msgid "Spaces"
 msgstr "ຊ່ອງຫວ່າງ"
 
+msgid "Search Result Color"
+msgstr "ສີຜົນການຄົ້ນຫາ"
+
+msgid "Search Result Border Color"
+msgstr "ສີຂອບຜົນການຄົ້ນຫາ"
+
+msgid "Caret Background Color"
+msgstr "ສີພື້ນຫຼັງຕົວຊີ້ຕຳແໜ່ງ"
+
+msgid "Tab"
+msgstr "ແທັບ"
+
+msgid "Space"
+msgstr "ຍະຫວ່າງ"
+
+msgid "Font Readonly Color"
+msgstr "ສີຟອນສຳລັບອ່ານຢ່າງດຽວ"
+
+msgid "Wrap Offset"
+msgstr "ໄລຍະຫ່າງການຕັດແຖວ"
+
+msgid "Current Line Color"
+msgstr "ສີແຖວປັດຈຸບັນ"
+
+msgid "Word Highlighted Color"
+msgstr "ສີເນັ້ນຄຳສັບ"
+
 msgid "Text Edit Idle Detect (sec)"
 msgstr "ການກວດຈັບການຢຸດເຮັດວຽກຂອງການແກ້ໄຂຂໍ້ຄວາມ (ວິນາທີ)"
 
 msgid "Text Edit Undo Stack Max Size"
 msgstr "ຂະໜາດສູງສຸດຂອງລາຍການ Undo"
-
-msgctxt "Ordinary"
-msgid "Normal"
-msgstr "ປົກກະຕິ"
-
-msgid "Hover"
-msgstr "ຊີ້"
 
 msgid "Focused"
 msgstr "ໂຟກັສແລ້ວ"
@@ -9083,6 +10164,117 @@ msgstr "ເປີດໃຊ້ການເລື່ອນລວງນອນ"
 msgid "Scroll Vertical Enabled"
 msgstr "ເປີດໃຊ້ການເລື່ອນລວງຕັ້ງ"
 
+msgid "Title Button Font"
+msgstr "ຟອນປຸ່ມຫົວຂໍ້"
+
+msgid "Title Button Font Size"
+msgstr "ຂະໜາດຟອນປຸ່ມຫົວຂໍ້"
+
+msgid "Hovered Dimmed"
+msgstr "ວາງເມົາສ໌ໃສ່ແບບມົວ"
+
+msgid "Button Hover"
+msgstr "ປຸ່ມຕອນວາງເມົາສ໌ໃສ່"
+
+msgid "Arrow Collapsed"
+msgstr "ລູກສອນພັບໄວ້"
+
+msgid "Arrow Collapsed Mirrored"
+msgstr "ລູກສອນພັບໄວ້ແບບສະທ້ອນ"
+
+msgid "Select Arrow"
+msgstr "ລູກສອນເລືອກ"
+
+msgid "Custom Button"
+msgstr "ປຸ່ມກຳນົດເອງ"
+
+msgid "Custom Button Hover"
+msgstr "ປຸ່ມກຳນົດເອງຕອນວາງເມົາສ໌ໃສ່"
+
+msgid "Custom Button Pressed"
+msgstr "ປຸ່ມກຳນົດເອງຕອນກົດ"
+
+msgid "Custom Button Font Highlight"
+msgstr "ເນັ້ນຟອນປຸ່ມກຳນົດເອງ"
+
+msgid "Font Hovered Dimmed Color"
+msgstr "ສີຟອນຕອນວາງເມົາສ໌ໃສ່ແບບມົວ"
+
+msgid "Drop on Item Color"
+msgstr "ສີຕອນວາງໃສ່ລາຍການ"
+
+msgid "Drop Position Color"
+msgstr "ສີຕຳແໜ່ງທີ່ວາງ"
+
+msgid "Inner Item Margin Bottom"
+msgstr "ຂອບລຸ່ມລາຍການພາຍໃນ"
+
+msgid "Inner Item Margin Left"
+msgstr "ຂອບຊ້າຍລາຍການພາຍໃນ"
+
+msgid "Inner Item Margin Right"
+msgstr "ຂອບຂວາລາຍການພາຍໃນ"
+
+msgid "Inner Item Margin Top"
+msgstr "ຂອບເທິງລາຍການພາຍໃນ"
+
+msgid "Item Margin"
+msgstr "ຂອບລາຍການ"
+
+msgid "Check H Separation"
+msgstr "ການແຍກເຄື່ອງໝາຍຖືກແນວນອນ"
+
+msgid "Icon H Separation"
+msgstr "ການແຍກໄອຄອນແນວນອນ"
+
+msgid "Button Margin"
+msgstr "ຂອບປຸ່ມ"
+
+msgid "Draw Guides"
+msgstr "ແຕ້ມເສັ້ນນຳທາງ"
+
+msgid "Relationship Line Width"
+msgstr "ຄວາມກວ້າງເສັ້ນຄວາມສຳພັນ"
+
+msgid "Parent HL Line Width"
+msgstr "ຄວາມກວ້າງເສັ້ນເນັ້ນຫຼັກ"
+
+msgid "Children HL Line Width"
+msgstr "ຄວາມກວ້າງເສັ້ນເນັ້ນຍ່ອຍ"
+
+msgid "Parent HL Line Margin"
+msgstr "ຂອບເສັ້ນເນັ້ນຫຼັກ"
+
+msgid "Relationship Line Color"
+msgstr "ສີເສັ້ນຄວາມສຳພັນ"
+
+msgid "Parent HL Line Color"
+msgstr "ສີເສັ້ນເນັ້ນຫຼັກ"
+
+msgid "Children HL Line Color"
+msgstr "ສີເສັ້ນເນັ້ນຍ່ອຍ"
+
+msgid "Dragging Unfold Wait Msec"
+msgstr "ເວລາລໍຖ້າການຄີ່ອອກຕອນລາກ (ມິລີວິນາທີ)"
+
+msgid "Scroll Border"
+msgstr "ຂອບການເລື່ອນ"
+
+msgid "Scroll Speed"
+msgstr "ຄວາມໄວການເລື່ອນ"
+
+msgid "Title Button Normal"
+msgstr "ປຸ່ມຫົວຂໍ້ປົກກະຕີ"
+
+msgid "Title Button Pressed"
+msgstr "ປຸ່ມຫົວຂໍ້ຕອນກົດ"
+
+msgid "Title Button Hover"
+msgstr "ປຸ່ມຫົວຂໍ້ຕອນວາງເມົາສ໌ໃສ່"
+
+msgid "Title Button Color"
+msgstr "ສີປຸ່ມຫົວຂໍ້"
+
 msgid "Audio Track"
 msgstr "ແທຣັກສຽງ"
 
@@ -9125,6 +10317,18 @@ msgstr "ການກະທຳຂຶ້ນເທິງ"
 msgid "Action Down"
 msgstr "ການກະທຳລົງລຸ່ມ"
 
+msgid "Normal Joystick"
+msgstr "ຈອຍສະຕິກປົກກະຕີ"
+
+msgid "Normal Tip"
+msgstr "ປາຍປົກກະຕີ"
+
+msgid "Pressed Joystick"
+msgstr "ຈອຍສະຕິກຕອນກົດ"
+
+msgid "Pressed Tip"
+msgstr "ປາຍຕອນກົດ"
+
 msgid "Self Modulate"
 msgstr "ປັບສີດ້ວຍຕົນເອງ (Self Modulate)"
 
@@ -9145,9 +10349,6 @@ msgstr "ເລເຢີການສະແດງຜົນ"
 
 msgid "Ordering"
 msgstr "ການຈັດລໍາດັບ"
-
-msgid "Z Index"
-msgstr "ດັດຊະນີ Z"
 
 msgid "Z as Relative"
 msgstr "ຄ່າ Z ແບບສຳພັດ"
@@ -9211,9 +10412,6 @@ msgstr "ລໍາດັບຄວາມສໍາຄັນຂອງຟີຊິກ
 
 msgid "Thread Group"
 msgstr "ກຸ່ມເທີຣດ (Thread Group)"
-
-msgid "Group"
-msgstr "ກຸ່ມ"
 
 msgid "Group Order"
 msgstr "ລໍາດັບກຸ່ມ"
@@ -9347,9 +10545,6 @@ msgstr "ເປີດໃຊ້ການເລືອກວັດຖຸ"
 msgid "Scene Traversal"
 msgstr "ການທ່ອງໄປໃນຊີນ (Scene Traversal)"
 
-msgid "Menu"
-msgstr "ເມນູ"
-
 msgid "Wait Time"
 msgstr "ເວລາລໍຖ້າ"
 
@@ -9417,7 +10612,7 @@ msgid "FSR Sharpness"
 msgstr "ຄວາມຄົມຊັດຂອງ FSR"
 
 msgid "Variable Rate Shading"
-msgstr "Variable Rate Shading"
+msgstr "ການແຮເງົາແບບປ່ຽນອັດຕາໄດ້"
 
 msgid "Canvas Items"
 msgstr "ລາຍການແຄນວາສ"
@@ -9444,25 +10639,25 @@ msgid "Disable Input"
 msgstr "ປິດການປ້ອນຂໍ້ມູນ"
 
 msgid "Positional Shadow Atlas"
-msgstr "Positional Shadow Atlas"
+msgstr "ແຜນຜັງເງົາຕາມຕຳແໜ່ງ"
 
 msgid "16 Bits"
 msgstr "16 ບິດ"
 
 msgid "Quad 0"
-msgstr "Quad 0"
+msgstr "ສ່ວນທີ 0"
 
 msgid "Quad 1"
-msgstr "Quad 1"
+msgstr "ສ່ວນທີ 1"
 
 msgid "Quad 2"
-msgstr "Quad 2"
+msgstr "ສ່ວນທີ 2"
 
 msgid "Quad 3"
-msgstr "Quad 3"
+msgstr "ສ່ວນທີ 3"
 
 msgid "Canvas Cull Mask"
-msgstr "Canvas Cull Mask"
+msgstr "ໜ້າກາກຄັດອອກຂອງແຄນວາສ"
 
 msgid "Oversampling Override"
 msgstr "ການແທນທີ່ການສຸ່ມຕົວຢ່າງເກີນ (Oversampling Override)"
@@ -9516,7 +10711,7 @@ msgid "Exclude From Capture"
 msgstr "ຍົກເວັ້ນຈາກການຈັບພາບ (Capture)"
 
 msgid "Popup Wm Hint"
-msgstr "Popup Wm Hint"
+msgstr "ຄຳແນະນຳຕົວຈັດການວິນໂດປ໊ອບອັບ"
 
 msgid "Force Native"
 msgstr "ບັງຄັບໃຊ້ Native"
@@ -9538,6 +10733,39 @@ msgstr "ການສົ່ງອອກ HDR"
 
 msgid "Requested"
 msgstr "ຖືກຮ້ອງຂໍ"
+
+msgid "Embedded Border"
+msgstr "ຂອບທີ່ຝັງໄວ້"
+
+msgid "Embedded Unfocused Border"
+msgstr "ຂອບທີ່ຝັງໄວ້ແບບບໍ່ໄດ້ໂຟກັດ"
+
+msgid "Title Font"
+msgstr "ຟອນຫົວຂໍ້"
+
+msgid "Title Font Size"
+msgstr "ຂະໜາດຟອນຫົວຂໍ້"
+
+msgid "Title Height"
+msgstr "ຄວາມສູງຫົວຂໍ້"
+
+msgid "Title Outline Modulate"
+msgstr "ປັບສີຂອບຫົວຂໍ້"
+
+msgid "Title Outline Size"
+msgstr "ຂະໜາດຂອບຫົວຂໍ້"
+
+msgid "Close Pressed"
+msgstr "ປິດຕອນກົດ"
+
+msgid "Close H Offset"
+msgstr "ໄລຍະຫ່າງແນວນອນຂອງປຸ່ມປິດ"
+
+msgid "Close V Offset"
+msgstr "ໄລຍະຫ່າງແນວຕັ້ງຂອງປຸ່ມປິດ"
+
+msgid "Resize Margin"
+msgstr "ຂອບການປັບຂະໜາດ"
 
 msgid "Swap Cancel OK"
 msgstr "ສະລັບ Cancel ແລະ OK"
@@ -9650,126 +10878,6 @@ msgstr "ພິກທິດທາງການງໍ"
 msgid "Modification Count"
 msgstr "ຈຳນວນການແກ້ໄຂ"
 
-msgid "Right Side"
-msgstr "ດ້ານຂວາ"
-
-msgid "Right Corner"
-msgstr "ມຸມຂວາ"
-
-msgid "Bottom Right Side"
-msgstr "ດ້ານຂວາລຸ່ມ"
-
-msgid "Bottom Right Corner"
-msgstr "ມຸມຂວາລຸ່ມ"
-
-msgid "Bottom Side"
-msgstr "ດ້ານລຸ່ມ"
-
-msgid "Bottom Corner"
-msgstr "ມຸມລຸ່ມ"
-
-msgid "Bottom Left Side"
-msgstr "ດ້ານຊ້າຍລຸ່ມ"
-
-msgid "Bottom Left Corner"
-msgstr "ມຸມຊ້າຍລຸ່ມ"
-
-msgid "Left Side"
-msgstr "ດ້ານຊ້າຍ"
-
-msgid "Left Corner"
-msgstr "ມຸມຊ້າຍ"
-
-msgid "Top Left Side"
-msgstr "ດ້ານຊ້າຍເທິງ"
-
-msgid "Top Left Corner"
-msgstr "ມຸມຊ້າຍເທິງ"
-
-msgid "Top Side"
-msgstr "ດ້ານເທິງ"
-
-msgid "Top Corner"
-msgstr "ມຸມເທິງ"
-
-msgid "Top Right Side"
-msgstr "ດ້ານຂວາເທິງ"
-
-msgid "Top Right Corner"
-msgstr "ມຸມຂວາເທິງ"
-
-msgid "Terrains"
-msgstr "ພື້ນຜິວ (Terrains)"
-
-msgid "Custom Data"
-msgstr "ຂໍ້ມູນກຳນົດເອງ"
-
-msgid "Tile Shape"
-msgstr "ຮູບຊົງໄທລ໌ (Tile Shape)"
-
-msgid "Tile Layout"
-msgstr "ການຈັດວາງໄທລ໌"
-
-msgid "Tile Offset Axis"
-msgstr "ແກນໄລຍະຫ່າງຂອງໄທລ໌"
-
-msgid "Tile Size"
-msgstr "ຂະໜາດໄທລ໌"
-
-msgid "UV Clipping"
-msgstr "ການຕັດ UV (UV Clipping)"
-
-msgid "Occlusion Layers"
-msgstr "ເລເຢີການບັງ (Occlusion Layers)"
-
-msgid "Physics Layers"
-msgstr "ເລເຢີຟີຊິກ"
-
-msgid "Terrain Sets"
-msgstr "ຊຸດພື້ນຜິວ (Terrain Sets)"
-
-msgid "Custom Data Layers"
-msgstr "ເລເຢີຂໍ້ມູນກຳນົດເອງ"
-
-msgid "Scenes"
-msgstr "ຊີນ (Scenes)"
-
-msgid "Scene"
-msgstr "ຊີນ"
-
-msgid "Display Placeholder"
-msgstr "ສະແດງຕົວແທນ (Placeholder)"
-
-msgid "Polygons Count"
-msgstr "ຈຳນວນຮູບຫຼາຍແຈ"
-
-msgid "One Way"
-msgstr "ທາງດຽວ"
-
-msgid "One Way Margin"
-msgstr "ຂອບທາງດຽວ"
-
-msgid "Terrains Peering Bit"
-msgstr "Terrains Peering Bit"
-
-msgid "Transpose"
-msgstr "ສະລັບແກນ (Transpose)"
-
-msgid "Texture Origin"
-msgstr "ຈຸດກຳເນີດຂອງ Texture"
-
-msgid "Terrain Set"
-msgstr "ຊຸດພື້ນຜິວ"
-
-msgid "Terrain"
-msgstr "ພື້ນຜິວ"
-
-msgid "Miscellaneous"
-msgstr "ອື່ນໆ"
-
-msgid "Probability"
-msgstr "ຄວາມໜ້າຈະເປັນ"
-
 msgid "Distance"
 msgstr "ໄລຍະຫ່າງ"
 
@@ -9796,9 +10904,6 @@ msgstr "ຄວາມເລິກຂອງແຜນທີ່"
 
 msgid "Map Data"
 msgstr "ຂໍ້ມູນແຜນທີ່"
-
-msgid "Item"
-msgstr "ລາຍການ"
 
 msgid "Add UV2"
 msgstr "ເພີ່ມ UV2"
@@ -9935,14 +11040,29 @@ msgstr "Atlas"
 msgid "Filter Clip"
 msgstr "ການຕັດດ້ວຍຟິວເຕີ (Filter Clip)"
 
-msgid "Polyphony"
-msgstr "ສຽງປະສານ (Polyphony)"
-
-msgid "Format"
-msgstr "ຮູບແບບ (Format)"
+msgid "Mix Rate Mode"
+msgstr "ໂໝດອັດຕາການປະສົມສຽງ"
 
 msgid "Mix Rate"
 msgstr "ອັດຕາການປະສົມ (Mix Rate)"
+
+msgid "Buffer Length"
+msgstr "ຄວາມຍາວບັບເຟີ"
+
+msgid "Polyphony"
+msgstr "ສຽງປະສານ (Polyphony)"
+
+msgid "Playback Mode"
+msgstr "ໂໝດການຫຼິ້ນ"
+
+msgid "Random Pitch Semitones"
+msgstr "ສຸ່ມລະດັບສຽງ (Semitones)"
+
+msgid "Random Volume Offset dB"
+msgstr "ສຸ່ມລະດັບຄວາມແຮງສຽງ (dB)"
+
+msgid "Streams"
+msgstr "ສະຕຣີມ"
 
 msgid "Stereo"
 msgstr "ສະເຕຣິໂອ (Stereo)"
@@ -10082,9 +11202,6 @@ msgstr "ເສັ້ນໂຄ້ງ Y"
 msgid "Curve Z"
 msgstr "ເສັ້ນໂຄ້ງ Z"
 
-msgid "Background"
-msgstr "ພື້ນຫຼັງ"
-
 msgid "Canvas Max Layer"
 msgstr "ເລເຢີສູງສຸດຂອງແຄນວາສ"
 
@@ -10107,7 +11224,7 @@ msgid "White"
 msgstr "ສີຂາວ"
 
 msgid "Agx White"
-msgstr "Agx White"
+msgstr "Agx ສີຂາວ"
 
 msgid "Agx Contrast"
 msgstr "ຄວາມຄົມຊັດ Agx"
@@ -10260,7 +11377,7 @@ msgid "Volumetric Fog"
 msgstr "ໝອກແບບມີມວນສານ (Volumetric Fog)"
 
 msgid "GI Inject"
-msgstr "GI Inject"
+msgstr "ການນຳເຂົ້າ GI"
 
 msgid "Anisotropy"
 msgstr "Anisotropy"
@@ -10269,10 +11386,10 @@ msgid "Detail Spread"
 msgstr "ການກະຈາຍລາຍລະອຽດ"
 
 msgid "Ambient Inject"
-msgstr "Ambient Inject"
+msgstr "ການນຳເຂົ້າແສງສະພາບແວດລ້ອມ"
 
 msgid "Temporal Reprojection"
-msgstr "Temporal Reprojection"
+msgstr "ການສາຍພາບຊ້ຳແບບຊົ່ວຄາວ"
 
 msgid "Adjustments"
 msgstr "ການປັບແຕ່ງ"
@@ -10294,9 +11411,6 @@ msgstr "ໄລຍະຫ່າງເພີ່ມເຕີມ"
 
 msgid "Glyph"
 msgstr "ຕົວອັກສອນ (Glyph)"
-
-msgid "Space"
-msgstr "ຍະຫວ່າງ"
 
 msgid "Baseline"
 msgstr "ເສັ້ນຖານ (Baseline)"
@@ -10336,9 +11450,6 @@ msgstr "ໃຊ້ HDR"
 
 msgid "To"
 msgstr "ໄປຫາ"
-
-msgid "Paragraph Spacing"
-msgstr "ໄລຍະຫ່າງຫຍໍ້ໜ້າ"
 
 msgid "Stacked Effects"
 msgstr "ເອັບເຟັກແບບຊ້ອນກັນ"
@@ -10395,7 +11506,7 @@ msgid "Texture Force sRGB"
 msgstr "ບັງຄັບ Texture ເປັນ sRGB"
 
 msgid "Texture MSDF"
-msgstr "Texture MSDF"
+msgstr "ເທັກເຈີ MSDF"
 
 msgid "ORM"
 msgstr "ORM"
@@ -10410,22 +11521,22 @@ msgid "On UV2"
 msgstr "ເທິງ UV2"
 
 msgid "Bent Normal Map"
-msgstr "Bent Normal Map"
+msgstr "ແຜນຜັງພື້ນຜິວແບບໂຄ້ງ"
 
 msgid "Rim"
 msgstr "ຂອບ (Rim)"
 
 msgid "Clearcoat"
-msgstr "Clearcoat"
+msgstr "ຊັ້ນເຄືອບໃສ (Clearcoat)"
 
 msgid "Flowmap"
-msgstr "Flowmap"
+msgstr "ແຜນຜັງການໄຫຼ (Flowmap)"
 
 msgid "Ambient Occlusion"
-msgstr "ການບັງແສງໂດຍຮອບ (AO)"
+msgstr "ການບັງແສງສະພາບແວດລ້ອມ"
 
 msgid "Deep Parallax"
-msgstr "Deep Parallax"
+msgstr "ພະລາແລັກແບບເລິກ"
 
 msgid "Min Layers"
 msgstr "ເລເຢີຕໍ່າສຸດ"
@@ -10470,13 +11581,13 @@ msgid "UV1"
 msgstr "UV1"
 
 msgid "Triplanar"
-msgstr "Triplanar"
+msgstr "ສາມລະນັບ (Triplanar)"
 
 msgid "Triplanar Sharpness"
 msgstr "ຄວາມຄົມຊັດ Triplanar"
 
 msgid "World Triplanar"
-msgstr "World Triplanar"
+msgstr "ສາມລະນັບແບບໂລກ"
 
 msgid "UV2"
 msgstr "UV2"
@@ -10494,10 +11605,10 @@ msgid "Particles Anim"
 msgstr "Anim ພາກຕິກເກິນ"
 
 msgid "H Frames"
-msgstr "H Frames"
+msgstr "ເຟຣມແນວນອນ"
 
 msgid "V Frames"
-msgstr "V Frames"
+msgstr "ເຟຣມແນວຕັ້ງ"
 
 msgid "Grow"
 msgstr "ຂະຫຍາຍ (Grow)"
@@ -10515,7 +11626,7 @@ msgid "Use Z Clip Scale"
 msgstr "ໃຊ້ Z Clip Scale"
 
 msgid "Z Clip Scale"
-msgstr "Z Clip Scale"
+msgstr "ອັດຕາສ່ວນການຕັດແກນ Z"
 
 msgid "Use FOV Override"
 msgstr "ໃຊ້ການແທນທີ່ FOV"
@@ -10551,7 +11662,7 @@ msgid "Blend Shape Mode"
 msgstr "ໂໝດ Blend Shape"
 
 msgid "Shadow Mesh"
-msgstr "Shadow Mesh"
+msgstr "ເມຊເງົາ"
 
 msgid "Base Texture"
 msgstr "Texture ພື້ນຖານ"
@@ -10608,13 +11719,13 @@ msgid "Low Hanging Obstacles"
 msgstr "ສິ່ງກີດຂວາງທີ່ຫ້ອຍຕໍ່າ"
 
 msgid "Ledge Spans"
-msgstr "Ledge Spans"
+msgstr "ໄລຍະຂອບ"
 
 msgid "Walkable Low Height Spans"
 msgstr "ພື້ນທີ່ສູງຕໍ່າທີ່ຍ່າງໄດ້"
 
 msgid "Baking AABB"
-msgstr "Baking AABB"
+msgstr "AABB ສຳລັບການອົບ"
 
 msgid "Baking AABB Offset"
 msgstr "ໄລຍະຫ່າງ Baking AABB"
@@ -10883,1107 +11994,6 @@ msgstr "ຟອນເລີ່ມຕົ້ນ"
 msgid "Default Font Size"
 msgstr "ຂະໜາດຟອນເລີ່ມຕົ້ນ"
 
-msgid "File"
-msgstr "ໄຟລ໌"
-
-msgid "Font Pressed Color"
-msgstr "ສີຟອນຕອນກົດ"
-
-msgid "Font Hover Color"
-msgstr "ສີຟອນຕອນວາງເມົາສ໌ໃສ່"
-
-msgid "Font Focus Color"
-msgstr "ສີຟອນຕອນໂຟກັດ"
-
-msgid "Font Hover Pressed Color"
-msgstr "ສີຟອນຕອນວາງເມົາສ໌ໃສ່ແລ້ວກົດ"
-
-msgid "Font Disabled Color"
-msgstr "ສີຟອນຕອນປິດໃຊ້ງານ"
-
-msgid "Font Outline Color"
-msgstr "ສີຂອບຟອນ"
-
-msgid "Icon Normal Color"
-msgstr "ສີໄອຄອນປົກກະຕີ"
-
-msgid "Icon Pressed Color"
-msgstr "ສີໄອຄອນຕອນກົດ"
-
-msgid "Icon Hover Color"
-msgstr "ສີໄອຄອນຕອນວາງເມົາສ໌ໃສ່"
-
-msgid "Icon Hover Pressed Color"
-msgstr "ສີໄອຄອນຕອນວາງເມົາສ໌ໃສ່ແລ້ວກົດ"
-
-msgid "Icon Focus Color"
-msgstr "ສີໄອຄອນຕອນໂຟກັດ"
-
-msgid "Icon Disabled Color"
-msgstr "ສີໄອຄອນຕອນປິດໃຊ້ງານ"
-
-msgid "H Separation"
-msgstr "ການແຍກຕາມແນວນອນ"
-
-msgid "Icon Max Width"
-msgstr "ຄວາມກວ້າງສູງສຸດຂອງໄອຄອນ"
-
-msgid "Align to Largest Stylebox"
-msgstr "ຈັດວາງຕາມ Stylebox ທີ່ໃຫຍ່ທີ່ສຸດ"
-
-msgid "Underline Spacing"
-msgstr "ໄລຍະຫ່າງການຂີດກ້ອງ"
-
-msgid "Normal Mirrored"
-msgstr "ປົກກະຕິແບບສະທ້ອນ"
-
-msgid "Hover Mirrored"
-msgstr "ວາງເມົາສ໌ໃສ່ແບບສະທ້ອນ"
-
-msgid "Pressed Mirrored"
-msgstr "ກົດແບບສະທ້ອນ"
-
-msgid "Disabled Mirrored"
-msgstr "ປິດໃຊ້ງານແບບສະທ້ອນ"
-
-msgid "Arrow"
-msgstr "ລູກສອນ"
-
-msgid "Arrow Margin"
-msgstr "ຂອບລູກສອນ"
-
-msgid "Modulate Arrow"
-msgstr "ປັບສີລູກສອນ"
-
-msgid "Hover Pressed"
-msgstr "ວາງເມົາສ໌ໃສ່ແລ້ວກົດ"
-
-msgid "Checked Disabled"
-msgstr "ເລືອກແລ້ວແຕ່ປິດໃຊ້ງານ"
-
-msgid "Unchecked"
-msgstr "ບໍ່ໄດ້ເລືອກ"
-
-msgid "Unchecked Disabled"
-msgstr "ບໍ່ໄດ້ເລືອກແລະປິດໃຊ້ງານ"
-
-msgid "Radio Checked"
-msgstr "ປຸ່ມວິທະຍຸທີ່ເລືອກແລ້ວ"
-
-msgid "Radio Checked Disabled"
-msgstr "ປຸ່ມວິທະຍຸທີ່ເລືອກແລ້ວແຕ່ປິດໃຊ້ງານ"
-
-msgid "Radio Unchecked"
-msgstr "ປຸ່ມວິທະຍຸທີ່ບໍ່ໄດ້ເລືອກ"
-
-msgid "Radio Unchecked Disabled"
-msgstr "ປຸ່ມວິທະຍຸທີ່ບໍ່ໄດ້ເລືອກແລະປິດໃຊ້ງານ"
-
-msgid "Check V Offset"
-msgstr "ໄລຍະຫ່າງແນວຕັ້ງຂອງເຄື່ອງໝາຍຖືກ"
-
-msgid "Checkbox Checked Color"
-msgstr "ສີຂອງ Checkbox ທີ່ເລືອກແລ້ວ"
-
-msgid "Checkbox Unchecked Color"
-msgstr "ສີຂອງ Checkbox ທີ່ບໍ່ໄດ້ເລືອກ"
-
-msgid "Checked Mirrored"
-msgstr "ເລືອກແລ້ວແບບສະທ້ອນ"
-
-msgid "Checked Disabled Mirrored"
-msgstr "ເລືອກແລ້ວແຕ່ປິດໃຊ້ງານແບບສະທ້ອນ"
-
-msgid "Unchecked Mirrored"
-msgstr "ບໍ່ໄດ້ເລືອກແບບສະທ້ອນ"
-
-msgid "Unchecked Disabled Mirrored"
-msgstr "ບໍ່ໄດ້ເລືອກແລະປິດໃຊ້ງານແບບສະທ້ອນ"
-
-msgid "Button Checked Color"
-msgstr "ສີປຸ່ມທີ່ເລືອກແລ້ວ"
-
-msgid "Button Unchecked Color"
-msgstr "ສີປຸ່ມທີ່ບໍ່ໄດ້ເລືອກ"
-
-msgid "Font Shadow Color"
-msgstr "ສີເງົາຟອນ"
-
-msgid "Shadow Offset X"
-msgstr "ໄລຍະຫ່າງເງົາແນວນອນ"
-
-msgid "Shadow Offset Y"
-msgstr "ໄລຍະຫ່າງເງົາແນວຕັ້ງ"
-
-msgid "Shadow Outline Size"
-msgstr "ຂະໜາດຂອບເງົາ"
-
-msgid "Font Selected Color"
-msgstr "ສີຟອນທີ່ຖືກເລືອກ"
-
-msgid "Font Uneditable Color"
-msgstr "ສີຟອນທີ່ແກ້ໄຂບໍ່ໄດ້"
-
-msgid "Font Placeholder Color"
-msgstr "ສີຟອນຂໍ້ຄວາມຕົວຢ່າງ"
-
-msgid "Caret Color"
-msgstr "ສີຂອງຕົວຊີ້ຕຳແໜ່ງ"
-
-msgid "Selection Color"
-msgstr "ສີການເລືອກ"
-
-msgid "Clear Button Color"
-msgstr "ສີປຸ່ມລຶບ"
-
-msgid "Clear Button Color Pressed"
-msgstr "ສີປຸ່ມລຶບຕອນກົດ"
-
-msgid "Minimum Character Width"
-msgstr "ຄວາມກວ້າງຕົວອັກສອນຕໍ່າສຸດ"
-
-msgid "Caret Width"
-msgstr "ຄວາມກວ້າງຕົວຊີ້ຕຳແໜ່ງ"
-
-msgid "Clear"
-msgstr "ລ້າງອອກ"
-
-msgid "Tab"
-msgstr "ແທັບ"
-
-msgid "Font Readonly Color"
-msgstr "ສີຟອນສຳລັບອ່ານຢ່າງດຽວ"
-
-msgid "Current Line Color"
-msgstr "ສີແຖວປັດຈຸບັນ"
-
-msgid "Caret Background Color"
-msgstr "ສີພື້ນຫຼັງຕົວຊີ້ຕຳແໜ່ງ"
-
-msgid "Word Highlighted Color"
-msgstr "ສີເນັ້ນຄຳສັບ"
-
-msgid "Search Result Color"
-msgstr "ສີຜົນການຄົ້ນຫາ"
-
-msgid "Search Result Border Color"
-msgstr "ສີຂອບຜົນການຄົ້ນຫາ"
-
-msgid "Wrap Offset"
-msgstr "ໄລຍະຫ່າງການຕັດແຖວ"
-
-msgid "Breakpoint"
-msgstr "ຈຸດຢຸດ"
-
-msgid "Bookmark"
-msgstr "ບຸກມາກ"
-
-msgid "Executing Line"
-msgstr "ແຖວທີ່ກຳລັງປະມວນຜົນ"
-
-msgid "Can Fold"
-msgstr "ສາມາດພັບໄດ້"
-
-msgid "Can Fold Code Region"
-msgstr "ສາມາດພັບຂອບເຂດໂຄ້ດໄດ້"
-
-msgid "Folded Code Region"
-msgstr "ຂອບເຂດໂຄ້ດທີ່ພັບໄວ້"
-
-msgid "Folded EOL Icon"
-msgstr "ໄອຄອນຈົບແຖວທີ່ພັບໄວ້"
-
-msgid "Completion Color BG"
-msgstr "ສີພື້ນຫຼັງການເຕີມຄຳອັດຕະໂນມັດ"
-
-msgid "Completion Background Color"
-msgstr "ສີພື້ນຫຼັງຂອງລາຍການເຕີມຄຳ"
-
-msgid "Completion Selected Color"
-msgstr "ສີລາຍການເຕີມຄຳທີ່ເລືອກ"
-
-msgid "Completion Existing Color"
-msgstr "ສີຂໍ້ຄວາມທີ່ມີຢູ່ແລ້ວໃນການເຕີມຄຳ"
-
-msgid "Completion Scroll Color"
-msgstr "ສີແຖບເລື່ອນການເຕີມຄຳ"
-
-msgid "Completion Scroll Hovered Color"
-msgstr "ສີແຖບເລື່ອນການເຕີມຄຳຕອນວາງເມົາສ໌ໃສ່"
-
-msgid "Bookmark Color"
-msgstr "ສີບຸກມາກ"
-
-msgid "Breakpoint Color"
-msgstr "ສີຈຸດຢຸດ"
-
-msgid "Executing Line Color"
-msgstr "ສີແຖວທີ່ກຳລັງປະມວນຜົນ"
-
-msgid "Code Folding Color"
-msgstr "ສີການພັບໂຄ້ດ"
-
-msgid "Folded Code Region Color"
-msgstr "ສີຂອບເຂດໂຄ້ດທີ່ພັບໄວ້"
-
-msgid "Brace Mismatch Color"
-msgstr "ສີວົງເລັບທີ່ບໍ່ຄູ່ກັນ"
-
-msgid "Line Number Color"
-msgstr "ສີເລກແຖວ"
-
-msgid "Line Length Guideline Color"
-msgstr "ສີເສັ້ນນຳທາງຄວາມຍາວແຖວ"
-
-msgid "Completion Lines"
-msgstr "ຈຳນວນແຖວການເຕີມຄຳ"
-
-msgid "Completion Max Width"
-msgstr "ຄວາມກວ້າງສູງສຸດຂອງການເຕີມຄຳ"
-
-msgid "Completion Scroll Width"
-msgstr "ຄວາມກວ້າງແຖບເລື່ອນການເຕີມຄຳ"
-
-msgid "Scroll Focus"
-msgstr "ໂຟກັດການເລື່ອນ"
-
-msgid "Grabber"
-msgstr "ຕົວຈັບ"
-
-msgid "Grabber Highlight"
-msgstr "ຕົວຈັບແບບເນັ້ນ"
-
-msgid "Grabber Pressed"
-msgstr "ຕົວຈັບຕອນກົດ"
-
-msgid "Increment"
-msgstr "ເພີ່ມຂຶ້ນ"
-
-msgid "Increment Highlight"
-msgstr "ເພີ່ມຂຶ້ນແບບເນັ້ນ"
-
-msgid "Increment Pressed"
-msgstr "ເພີ່ມຂຶ້ນຕອນກົດ"
-
-msgid "Decrement"
-msgstr "ຫຼຸດລົງ"
-
-msgid "Decrement Highlight"
-msgstr "ຫຼຸດລົງແບບເນັ້ນ"
-
-msgid "Decrement Pressed"
-msgstr "ຫຼຸດລົງຕອນກົດ"
-
-msgid "Slider"
-msgstr "ສະໄລເດີ"
-
-msgid "Grabber Area"
-msgstr "ພື້ນທີ່ຕົວຈັບ"
-
-msgid "Grabber Area Highlight"
-msgstr "ພື້ນທີ່ຕົວຈັບແບບເນັ້ນ"
-
-msgid "Grabber Disabled"
-msgstr "ຕົວຈັບທີ່ປິດໃຊ້ງານ"
-
-msgid "Tick"
-msgstr "ຂີດໝາຍ"
-
-msgid "Center Grabber"
-msgstr "ຈັດຕົວຈັບໄວ້ກາງ"
-
-msgid "Grabber Offset"
-msgstr "ໄລຍະຫ່າງຕົວຈັບ"
-
-msgid "Tick Offset"
-msgstr "ໄລຍະຫ່າງຂີດໝາຍ"
-
-msgid "Updown"
-msgstr "ຂຶ້ນລົງ"
-
-msgid "Up"
-msgstr "ຂຶ້ນ"
-
-msgid "Up Hover"
-msgstr "ຂຶ້ນຕອນວາງເມົາສ໌ໃສ່"
-
-msgid "Up Pressed"
-msgstr "ຂຶ້ນຕອນກົດ"
-
-msgid "Up Disabled"
-msgstr "ຂຶ້ນແບບປິດໃຊ້ງານ"
-
-msgid "Down"
-msgstr "ລົງ"
-
-msgid "Down Hover"
-msgstr "ລົງຕອນວາງເມົາສ໌ໃສ່"
-
-msgid "Down Pressed"
-msgstr "ລົງຕອນກົດ"
-
-msgid "Down Disabled"
-msgstr "ລົງແບບປິດໃຊ້ງານ"
-
-msgid "Up Background"
-msgstr "ພື້ນຫຼັງປຸ່ມຂຶ້ນ"
-
-msgid "Up Background Hovered"
-msgstr "ພື້ນຫຼັງປຸ່ມຂຶ້ນຕອນວາງເມົາສ໌ໃສ່"
-
-msgid "Up Background Pressed"
-msgstr "ພື້ນຫຼັງປຸ່ມຂຶ້ນຕອນກົດ"
-
-msgid "Up Background Disabled"
-msgstr "ພື້ນຫຼັງປຸ່ມຂຶ້ນແບບປິດໃຊ້ງານ"
-
-msgid "Down Background"
-msgstr "ພື້ນຫຼັງປຸ່ມລົງ"
-
-msgid "Down Background Hovered"
-msgstr "ພື້ນຫຼັງປຸ່ມລົງຕອນວາງເມົາສ໌ໃສ່"
-
-msgid "Down Background Pressed"
-msgstr "ພື້ນຫຼັງປຸ່ມລົງຕອນກົດ"
-
-msgid "Down Background Disabled"
-msgstr "ພື້ນຫຼັງປຸ່ມລົງແບບປິດໃຊ້ງານ"
-
-msgid "Up Icon Modulate"
-msgstr "ປັບສີໄອຄອນຂຶ້ນ"
-
-msgid "Up Hover Icon Modulate"
-msgstr "ປັບສີໄອຄອນຂຶ້ນຕອນວາງເມົາສ໌ໃສ່"
-
-msgid "Up Pressed Icon Modulate"
-msgstr "ປັບສີໄອຄອນຂຶ້ນຕອນກົດ"
-
-msgid "Up Disabled Icon Modulate"
-msgstr "ປັບສີໄອຄອນຂຶ້ນແບບປິດໃຊ້ງານ"
-
-msgid "Down Icon Modulate"
-msgstr "ປັບສີໄອຄອນລົງ"
-
-msgid "Down Hover Icon Modulate"
-msgstr "ປັບສີໄອຄອນລົງຕອນວາງເມົາສ໌ໃສ່"
-
-msgid "Down Pressed Icon Modulate"
-msgstr "ປັບສີໄອຄອນລົງຕອນກົດ"
-
-msgid "Down Disabled Icon Modulate"
-msgstr "ປັບສີໄອຄອນລົງແບບປິດໃຊ້ງານ"
-
-msgid "Field and Buttons Separator"
-msgstr "ຕົວແຍກຊ່ອງຂໍ້ມູນແລະປຸ່ມ"
-
-msgid "Up Down Buttons Separator"
-msgstr "ຕົວແຍກປຸ່ມຂຶ້ນລົງ"
-
-msgid "Buttons Vertical Separation"
-msgstr "ການແຍກປຸ່ມແນວຕັ້ງ"
-
-msgid "Field and Buttons Separation"
-msgstr "ການແຍກຊ່ອງຂໍ້ມູນແລະປຸ່ມ"
-
-msgid "Buttons Width"
-msgstr "ຄວາມກວ້າງຂອງປຸ່ມ"
-
-msgid "Set Min Buttons Width From Icons"
-msgstr "ຕັ້ງຄວາມກວ້າງປຸ່ມຕໍ່າສຸດຈາກໄອຄອນ"
-
-msgid "Scroll Hint Vertical"
-msgstr "ຄຳແນະນຳການເລື່ອນແນວຕັ້ງ"
-
-msgid "Scroll Hint Horizontal"
-msgstr "ຄຳແນະນຳການເລື່ອນແນວນອນ"
-
-msgid "Scroll Hint Vertical Color"
-msgstr "ສີຄຳແນະນຳການເລື່ອນແນວຕັ້ງ"
-
-msgid "Scroll Hint Horizontal Color"
-msgstr "ສີຄຳແນະນຳການເລື່ອນແນວນອນ"
-
-msgid "Normal Joystick"
-msgstr "ຈອຍສະຕິກປົກກະຕີ"
-
-msgid "Normal Tip"
-msgstr "ປາຍປົກກະຕີ"
-
-msgid "Pressed Joystick"
-msgstr "ຈອຍສະຕິກຕອນກົດ"
-
-msgid "Pressed Tip"
-msgstr "ປາຍຕອນກົດ"
-
-msgid "Embedded Border"
-msgstr "ຂອບທີ່ຝັງໄວ້"
-
-msgid "Embedded Unfocused Border"
-msgstr "ຂອບທີ່ຝັງໄວ້ແບບບໍ່ໄດ້ໂຟກັດ"
-
-msgid "Title Font"
-msgstr "ຟອນຫົວຂໍ້"
-
-msgid "Title Font Size"
-msgstr "ຂະໜາດຟອນຫົວຂໍ້"
-
-msgid "Title Outline Modulate"
-msgstr "ປັບສີຂອບຫົວຂໍ້"
-
-msgid "Title Outline Size"
-msgstr "ຂະໜາດຂອບຫົວຂໍ້"
-
-msgid "Title Height"
-msgstr "ຄວາມສູງຫົວຂໍ້"
-
-msgid "Resize Margin"
-msgstr "ຂອບການປັບຂະໜາດ"
-
-msgid "Close"
-msgstr "ປິດ"
-
-msgid "Close Pressed"
-msgstr "ປິດຕອນກົດ"
-
-msgid "Close H Offset"
-msgstr "ໄລຍະຫ່າງແນວນອນຂອງປຸ່ມປິດ"
-
-msgid "Close V Offset"
-msgstr "ໄລຍະຫ່າງແນວຕັ້ງຂອງປຸ່ມປິດ"
-
-msgid "Buttons Separation"
-msgstr "ການແຍກປຸ່ມ"
-
-msgid "Load"
-msgstr "ໂຫຼດ"
-
-msgid "Save"
-msgstr "ບັນທຶກ"
-
-msgid "Parent Folder"
-msgstr "ໂຟນເດີຫຼັກ"
-
-msgid "Back Folder"
-msgstr "ໂຟນເດີກ່ອນໜ້າ"
-
-msgid "Forward Folder"
-msgstr "ໂຟນເດີຖັດໄປ"
-
-msgid "Reload"
-msgstr "ໂຫຼດໃໝ່"
-
-msgid "Favorite"
-msgstr "ທີ່ຊື່ນຊອບ"
-
-msgid "Toggle Hidden"
-msgstr "ສະຫຼັບການສະແດງສິ່ງທີ່ເຊື່ອງໄວ້"
-
-msgid "Toggle Filename Filter"
-msgstr "ສະຫຼັບຕົວຕອງຊື່ໄຟລ໌"
-
-msgid "Folder"
-msgstr "ໂຟນເດີ"
-
-msgid "Thumbnail Mode"
-msgstr "ໂໝດຮູບຕົວຢ່າງ"
-
-msgid "List Mode"
-msgstr "ໂໝດລາຍການ"
-
-msgid "Create Folder"
-msgstr "ສ້າງໂຟນເດີ"
-
-msgid "Sort"
-msgstr "ຈັດລຽງ"
-
-msgid "Favorite Up"
-msgstr "ທີ່ຊື່ນຊອບຂຶ້ນ"
-
-msgid "Favorite Down"
-msgstr "ທີ່ຊື່ນຊອບລົງ"
-
-msgid "File Thumbnail"
-msgstr "ຮູບຕົວຢ່າງໄຟລ໌"
-
-msgid "Folder Thumbnail"
-msgstr "ຮູບຕົວຢ່າງໂຟນເດີ"
-
-msgid "Folder Icon Color"
-msgstr "ສີໄອຄອນໂຟນເດີ"
-
-msgid "File Icon Color"
-msgstr "ສີໄອຄອນໄຟລ໌"
-
-msgid "File Disabled Color"
-msgstr "ສີໄຟລ໌ທີ່ປິດໃຊ້ງານ"
-
-msgid "Separator"
-msgstr "ຕົວແຍກ"
-
-msgid "Labeled Separator Left"
-msgstr "ຕົວແຍກແບບມີປ້າຍຊື່ດ້ານຊ້າຍ"
-
-msgid "Labeled Separator Right"
-msgstr "ຕົວແຍກແບບມີປ້າຍຊື່ດ້ານຂວາ"
-
-msgid "Submenu"
-msgstr "ເມນູຍ່ອຍ"
-
-msgid "Submenu Mirrored"
-msgstr "ເມນູຍ່ອຍແບບສະທ້ອນ"
-
-msgid "Search"
-msgstr "ຄົ້ນຫາ"
-
-msgid "Font Separator"
-msgstr "ຕົວແຍກຟອນ"
-
-msgid "Font Separator Size"
-msgstr "ຂະໜາດຕົວແຍກຟອນ"
-
-msgid "Font Accelerator Color"
-msgstr "ສີຟອນປຸ່ມລັດ"
-
-msgid "Font Separator Color"
-msgstr "ສີຕົວແຍກຟອນ"
-
-msgid "Font Separator Outline Color"
-msgstr "ສີຂອບຕົວແຍກຟອນ"
-
-msgid "V Separation"
-msgstr "ການແຍກຕາມແນວຕັ້ງ"
-
-msgid "Search Bar Separation"
-msgstr "ການແຍກແຖບຄົ້ນຫາ"
-
-msgid "Separator Outline Size"
-msgstr "ຂະໜາດຂອບຕົວແຍກ"
-
-msgid "Item Start Padding"
-msgstr "ໄລຍະຫ່າງເລີ່ມຕົ້ນຂອງລາຍການ"
-
-msgid "Item End Padding"
-msgstr "ໄລຍະຫ່າງສິ້ນສຸດຂອງລາຍການ"
-
-msgid "Gutter Compact"
-msgstr "ຮ່ອງແບບກະທັດຮັດ"
-
-msgid "Panel Selected"
-msgstr "ແຜງທີ່ເລືອກ"
-
-msgid "Panel Focus"
-msgstr "ແຜງທີ່ໂຟກັດ"
-
-msgid "Titlebar"
-msgstr "ແຖບຫົວຂໍ້"
-
-msgid "Titlebar Selected"
-msgstr "ແຖບຫົວຂໍ້ທີ່ເລືອກ"
-
-msgid "Slot"
-msgstr "ຊ່ອງ"
-
-msgid "Slot Selected"
-msgstr "ຊ່ອງທີ່ເລືອກ"
-
-msgid "Resizer"
-msgstr "ຕົວປັບຂະໜາດ"
-
-msgid "Resizer Color"
-msgstr "ສີຕົວປັບຂະໜາດ"
-
-msgid "Port H Offset"
-msgstr "ໄລຍະຫ່າງພອດແນວນອນ"
-
-msgid "Hovered"
-msgstr "ວາງເມົາສ໌ໃສ່"
-
-msgid "Hovered Dimmed"
-msgstr "ວາງເມົາສ໌ໃສ່ແບບມົວ"
-
-msgid "Hovered Selected"
-msgstr "ວາງເມົາສ໌ໃສ່ແລະເລືອກ"
-
-msgid "Hovered Selected Focus"
-msgstr "ວາງເມົາສ໌ໃສ່, ເລືອກ ແລະ ໂຟກັດ"
-
-msgid "Selected Focus"
-msgstr "ເລືອກແລະໂຟກັດ"
-
-msgid "Cursor"
-msgstr "ເຄີເຊີ"
-
-msgid "Cursor Unfocused"
-msgstr "ເຄີເຊີຕອນບໍ່ໄດ້ໂຟກັດ"
-
-msgid "Button Hover"
-msgstr "ປຸ່ມຕອນວາງເມົາສ໌ໃສ່"
-
-msgid "Title Button Normal"
-msgstr "ປຸ່ມຫົວຂໍ້ປົກກະຕີ"
-
-msgid "Title Button Pressed"
-msgstr "ປຸ່ມຫົວຂໍ້ຕອນກົດ"
-
-msgid "Title Button Hover"
-msgstr "ປຸ່ມຫົວຂໍ້ຕອນວາງເມົາສ໌ໃສ່"
-
-msgid "Custom Button"
-msgstr "ປຸ່ມກຳນົດເອງ"
-
-msgid "Custom Button Pressed"
-msgstr "ປຸ່ມກຳນົດເອງຕອນກົດ"
-
-msgid "Custom Button Hover"
-msgstr "ປຸ່ມກຳນົດເອງຕອນວາງເມົາສ໌ໃສ່"
-
-msgid "Indeterminate Disabled"
-msgstr "ບໍ່ກຳນົດແລະປິດໃຊ້ງານ"
-
-msgid "Select Arrow"
-msgstr "ລູກສອນເລືອກ"
-
-msgid "Arrow Collapsed"
-msgstr "ລູກສອນພັບໄວ້"
-
-msgid "Arrow Collapsed Mirrored"
-msgstr "ລູກສອນພັບໄວ້ແບບສະທ້ອນ"
-
-msgid "Title Button Font"
-msgstr "ຟອນປຸ່ມຫົວຂໍ້"
-
-msgid "Title Button Font Size"
-msgstr "ຂະໜາດຟອນປຸ່ມຫົວຂໍ້"
-
-msgid "Title Button Color"
-msgstr "ສີປຸ່ມຫົວຂໍ້"
-
-msgid "Font Hovered Color"
-msgstr "ສີຟອນຕອນວາງເມົາສ໌ໃສ່"
-
-msgid "Font Hovered Dimmed Color"
-msgstr "ສີຟອນຕອນວາງເມົາສ໌ໃສ່ແບບມົວ"
-
-msgid "Font Hovered Selected Color"
-msgstr "ສີຟອນຕອນວາງເມົາສ໌ໃສ່ແລະເລືອກ"
-
-msgid "Guide Color"
-msgstr "ສີເສັ້ນນຳທາງ"
-
-msgid "Drop on Item Color"
-msgstr "ສີຕອນວາງໃສ່ລາຍການ"
-
-msgid "Drop Position Color"
-msgstr "ສີຕຳແໜ່ງທີ່ວາງ"
-
-msgid "Relationship Line Color"
-msgstr "ສີເສັ້ນຄວາມສຳພັນ"
-
-msgid "Parent HL Line Color"
-msgstr "ສີເສັ້ນເນັ້ນຫຼັກ"
-
-msgid "Children HL Line Color"
-msgstr "ສີເສັ້ນເນັ້ນຍ່ອຍ"
-
-msgid "Custom Button Font Highlight"
-msgstr "ເນັ້ນຟອນປຸ່ມກຳນົດເອງ"
-
-msgid "Scroll Hint Color"
-msgstr "ສີຄຳແນະນຳການເລື່ອນ"
-
-msgid "Item Margin"
-msgstr "ຂອບລາຍການ"
-
-msgid "Inner Item Margin Bottom"
-msgstr "ຂອບລຸ່ມລາຍການພາຍໃນ"
-
-msgid "Inner Item Margin Left"
-msgstr "ຂອບຊ້າຍລາຍການພາຍໃນ"
-
-msgid "Inner Item Margin Right"
-msgstr "ຂອບຂວາລາຍການພາຍໃນ"
-
-msgid "Inner Item Margin Top"
-msgstr "ຂອບເທິງລາຍການພາຍໃນ"
-
-msgid "Check H Separation"
-msgstr "ການແຍກເຄື່ອງໝາຍຖືກແນວນອນ"
-
-msgid "Icon H Separation"
-msgstr "ການແຍກໄອຄອນແນວນອນ"
-
-msgid "Button Margin"
-msgstr "ຂອບປຸ່ມ"
-
-msgid "Relationship Line Width"
-msgstr "ຄວາມກວ້າງເສັ້ນຄວາມສຳພັນ"
-
-msgid "Parent HL Line Width"
-msgstr "ຄວາມກວ້າງເສັ້ນເນັ້ນຫຼັກ"
-
-msgid "Children HL Line Width"
-msgstr "ຄວາມກວ້າງເສັ້ນເນັ້ນຍ່ອຍ"
-
-msgid "Parent HL Line Margin"
-msgstr "ຂອບເສັ້ນເນັ້ນຫຼັກ"
-
-msgid "Draw Guides"
-msgstr "ແຕ້ມເສັ້ນນຳທາງ"
-
-msgid "Dragging Unfold Wait Msec"
-msgstr "ເວລາລໍຖ້າການຄີ່ອອກຕອນລາກ (ມິລີວິນາທີ)"
-
-msgid "Scroll Border"
-msgstr "ຂອບການເລື່ອນ"
-
-msgid "Scroll Speed"
-msgstr "ຄວາມໄວການເລື່ອນ"
-
-msgid "Scrollbar Margin Left"
-msgstr "ຂອບຊ້າຍແຖບເລື່ອນ"
-
-msgid "Scrollbar Margin Top"
-msgstr "ຂອບເທິງແຖບເລື່ອນ"
-
-msgid "Scrollbar Margin Right"
-msgstr "ຂອບຂວາແຖບເລື່ອນ"
-
-msgid "Scrollbar Margin Bottom"
-msgstr "ຂອບລຸ່ມແຖບເລື່ອນ"
-
-msgid "Scrollbar H Separation"
-msgstr "ການແຍກແຖບເລື່ອນແນວນອນ"
-
-msgid "Scrollbar V Separation"
-msgstr "ການແຍກແຖບເລື່ອນແນວຕັ້ງ"
-
-msgid "Icon Margin"
-msgstr "ຂອບໄອຄອນ"
-
-msgid "Tab Selected"
-msgstr "ແທັບທີ່ເລືອກ"
-
-msgid "Tab Hovered"
-msgstr "ແທັບຕອນວາງເມົາສ໌ໃສ່"
-
-msgid "Tab Unselected"
-msgstr "ແທັບທີ່ບໍ່ໄດ້ເລືອກ"
-
-msgid "Tab Disabled"
-msgstr "ແທັບທີ່ປິດໃຊ້ງານ"
-
-msgid "Tab Focus"
-msgstr "ແທັບທີ່ໂຟກັດ"
-
-msgid "Tabbar Background"
-msgstr "ພື້ນຫຼັງແຖບແທັບ"
-
-msgid "Drop Mark"
-msgstr "ເຄື່ອງໝາຍການວາງ"
-
-msgid "Menu Highlight"
-msgstr "ການເນັ້ນເມນູ"
-
-msgid "Font Unselected Color"
-msgstr "ສີຟອນທີ່ບໍ່ໄດ້ເລືອກ"
-
-msgid "Drop Mark Color"
-msgstr "ສີເຄື່ອງໝາຍການວາງ"
-
-msgid "Icon Selected Color"
-msgstr "ສີໄອຄອນທີ່ເລືອກ"
-
-msgid "Icon Hovered Color"
-msgstr "ສີໄອຄອນຕອນວາງເມົາສ໌ໃສ່"
-
-msgid "Icon Unselected Color"
-msgstr "ສີໄອຄອນທີ່ບໍ່ໄດ້ເລືອກ"
-
-msgid "Side Margin"
-msgstr "ຂອບດ້ານຂ້າງ"
-
-msgid "Icon Separation"
-msgstr "ການແຍກໄອຄອນ"
-
-msgid "Button Highlight"
-msgstr "ການເນັ້ນປຸ່ມ"
-
-msgid "Hover Switch Wait Msec"
-msgstr "ເວລາລໍຖ້າການສະຫຼັບຕອນວາງເມົາສ໌ໃສ່ (ມິລີວິນາທີ)"
-
-msgid "SV Width"
-msgstr "ຄວາມກວ້າງ SV"
-
-msgid "SV Height"
-msgstr "ຄວາມສູງ SV"
-
-msgid "H Width"
-msgstr "ຄວາມກວ້າງ H"
-
-msgid "Label Width"
-msgstr "ຄວາມກວ້າງປ້າຍຊື່"
-
-msgid "Center Slider Grabbers"
-msgstr "ຈັດຕົວຈັບສະໄລເດີໄວ້ກາງ"
-
-msgid "Sample Focus"
-msgstr "ໂຟກັດຕົວຢ່າງ"
-
-msgid "Picker Focus Rectangle"
-msgstr "ສີ່ຫຼ່ຽມໂຟກັດຕົວເລືອກ"
-
-msgid "Picker Focus Circle"
-msgstr "ວົງມົນໂຟກັດຕົວເລືອກ"
-
-msgid "Focused not Editing Cursor Color"
-msgstr "ສີເຄີເຊີຕອນໂຟກັດແຕ່ບໍ່ໄດ້ແກ້ໄຂ"
-
-msgid "Menu Option"
-msgstr "ຕົວເລືອກເມນູ"
-
-msgid "Folded Arrow"
-msgstr "ລູກສອນພັບ"
-
-msgid "Expanded Arrow"
-msgstr "ລູກສອນຄີ່"
-
-msgid "Screen Picker"
-msgstr "ຕົວເລືອກຈາກໜ້າຈໍ"
-
-msgid "Shape Circle"
-msgstr "ຮູບຊົງວົງມົນ"
-
-msgid "Shape Rect"
-msgstr "ຮູບຊົງສີ່ຫຼ່ຽມ"
-
-msgid "Shape Rect Wheel"
-msgstr "ຮູບຊົງສີ່ຫຼ່ຽມແບບວົງລໍ້"
-
-msgid "Add Preset"
-msgstr "ເພີ່ມຄ່າທີ່ຕັ້ງໄວ້ລ່ວງໜ້າ"
-
-msgid "Sample BG"
-msgstr "ພື້ນຫຼັງຕົວຢ່າງ"
-
-msgid "Sample Revert"
-msgstr "ຄືນຄ່າຕົວຢ່າງ"
-
-msgid "Overbright Indicator"
-msgstr "ຕົວບົ່ງຊີ້ຄວາມສະຫວ່າງເກີນ"
-
-msgid "Bar Arrow"
-msgstr "ລູກສອນແຖບ"
-
-msgid "Picker Cursor"
-msgstr "ເຄີເຊີຕົວເລືອກ"
-
-msgid "Picker Cursor BG"
-msgstr "ພື້ນຫຼັງເຄີເຊີຕົວເລືອກ"
-
-msgid "Color Script"
-msgstr "ສະຄຣິບສີ"
-
-msgid "Color Copy"
-msgstr "ກັອບປີ້ສີ"
-
-msgid "Color Hue"
-msgstr "ເນື້ອສີ"
-
-msgid "BG"
-msgstr "ພື້ນຫຼັງ"
-
-msgid "Preset FG"
-msgstr "ສີພື້ນໜ້າທີ່ຕັ້ງໄວ້"
-
-msgid "Preset Focus"
-msgstr "ໂຟກັດທີ່ຕັ້ງໄວ້"
-
-msgid "Preset BG"
-msgstr "ພື້ນຫຼັງທີ່ຕັ້ງໄວ້"
-
-msgid "Horizontal Rule"
-msgstr "ເສັ້ນແບ່ງແນວນອນ"
-
-msgid "Normal Font"
-msgstr "ຟອນປົກກະຕີ"
-
-msgid "Bold Font"
-msgstr "ຟອນໂຕເຂັ້ມ"
-
-msgid "Italics Font"
-msgstr "ຟອນໂຕອຽງ"
-
-msgid "Bold Italics Font"
-msgstr "ຟອນໂຕເຂັ້ມອຽງ"
-
-msgid "Mono Font"
-msgstr "ຟອນຄວາມກວ້າງຄົງທີ່"
-
-msgid "Normal Font Size"
-msgstr "ຂະໜາດຟອນປົກກະຕີ"
-
-msgid "Bold Font Size"
-msgstr "ຂະໜາດຟອນໂຕເຂັ້ມ"
-
-msgid "Italics Font Size"
-msgstr "ຂະໜາດຟອນໂຕອຽງ"
-
-msgid "Bold Italics Font Size"
-msgstr "ຂະໜາດຟອນໂຕເຂັ້ມອຽງ"
-
-msgid "Mono Font Size"
-msgstr "ຂະໜາດຟອນຄວາມກວ້າງຄົງທີ່"
-
-msgid "Table H Separation"
-msgstr "ການແຍກຕາຕະລາງແນວນອນ"
-
-msgid "Table V Separation"
-msgstr "ການແຍກຕາຕະລາງແນວຕັ້ງ"
-
-msgid "Table Odd Row BG"
-msgstr "ພື້ນຫຼັງແຖບຄີກຂອງຕາຕະລາງ"
-
-msgid "Table Even Row BG"
-msgstr "ພື້ນຫຼັງແຖບຄູ່ຂອງຕາຕະລາງ"
-
-msgid "Table Border"
-msgstr "ຂອບຕາຕະລາງ"
-
-msgid "Text Highlight H Padding"
-msgstr "ໄລຍະຫ່າງແນວນອນການເນັ້ນຂໍ້ຄວາມ"
-
-msgid "Text Highlight V Padding"
-msgstr "ໄລຍະຫ່າງແນວຕັ້ງການເນັ້ນຂໍ້ຄວາມ"
-
-msgid "Underline Alpha"
-msgstr "ຄ່າຄວາມໂປ່ງໃສຂອງເສັ້ນຂີດກ້ອງ"
-
-msgid "Strikethrough Alpha"
-msgstr "ຄ່າຄວາມໂປ່ງໃສຂອງເສັ້ນຂີດຂ້າ"
-
-msgid "Touch Dragger Color"
-msgstr "ສີຕົວລາກສຳຜັດ"
-
-msgid "Touch Dragger Pressed Color"
-msgstr "ສີຕົວລາກສຳຜັດຕອນກົດ"
-
-msgid "Touch Dragger Hover Color"
-msgstr "ສີຕົວລາກສຳຜັດຕອນວາງເມົາສ໌ໃສ່"
-
-msgid "H Touch Dragger"
-msgstr "ຕົວລາກສຳຜັດແນວນອນ"
-
-msgid "V Touch Dragger"
-msgstr "ຕົວລາກສຳຜັດແນວຕັ້ງ"
-
-msgid "Touch Dragger"
-msgstr "ຕົວລາກສຳຜັດ"
-
-msgid "H Grabber"
-msgstr "ຕົວຈັບແນວນອນ"
-
-msgid "V Grabber"
-msgstr "ຕົວຈັບແນວຕັ້ງ"
-
-msgid "Margin Left"
-msgstr "ຂອບຊ້າຍ"
-
-msgid "Margin Top"
-msgstr "ຂອບເທິງ"
-
-msgid "Margin Right"
-msgstr "ຂອບຂວາ"
-
-msgid "Margin Bottom"
-msgstr "ຂອບລຸ່ມ"
-
-msgid "Minimum Grab Thickness"
-msgstr "ຄວາມໜາຂອງການຈັບຕໍ່າສຸດ"
-
-msgid "Autohide"
-msgstr "ເຊື່ອງອັດຕະໂນມັດ"
-
-msgid "Split Bar Background"
-msgstr "ພື້ນຫຼັງແຖບແຍກ"
-
-msgid "Zoom Out"
-msgstr "ຊູມອອກ"
-
-msgid "Zoom In"
-msgstr "ຊູມເຂົ້າ"
-
-msgid "Zoom Reset"
-msgstr "ຣີເຊັດການຊູມ"
-
-msgid "Grid Toggle"
-msgstr "ສະຫຼັບຕາຕະລາງ"
-
-msgid "Minimap Toggle"
-msgstr "ສະຫຼັບແຜນທີ່ຍ່ອຍ"
-
-msgid "Snapping Toggle"
-msgstr "ສະຫຼັບການດູດຕິດ"
-
-msgid "Menu Panel"
-msgstr "ແຜງເມນູ"
-
-msgid "Grid Minor"
-msgstr "ເສັ້ນຕາຕະລາງຍ່ອຍ"
-
-msgid "Grid Major"
-msgstr "ເສັ້ນຕາຕະລາງຫຼັກ"
-
-msgid "Selection Fill"
-msgstr "ການເຕີມສີການເລືອກ"
-
-msgid "Selection Stroke"
-msgstr "ເສັ້ນຂອບການເລືອກ"
-
-msgid "Activity"
-msgstr "ກິດຈະກຳ"
-
-msgid "Connection Hover Tint Color"
-msgstr "ສີຍ້ອມການເຊື່ອມຕໍ່ຕອນວາງເມົາສ໌ໃສ່"
-
-msgid "Connection Hover Thickness"
-msgstr "ຄວາມໜາການເຊື່ອມຕໍ່ຕອນວາງເມົາສ໌ໃສ່"
-
-msgid "Connection Valid Target Tint Color"
-msgstr "ສີຍ້ອມເປົ້າໝາຍການເຊື່ອມຕໍ່ທີ່ໃຊ້ໄດ້"
-
-msgid "Connection Rim Color"
-msgstr "ສີຂອບການເຊື່ອມຕໍ່"
-
-msgid "Title Panel"
-msgstr "ແຜງຫົວຂໍ້"
-
-msgid "Title Hover Panel"
-msgstr "ແຜງຫົວຂໍ້ຕອນວາງເມົາສ໌ໃສ່"
-
-msgid "Title Collapsed Panel"
-msgstr "ແຜງຫົວຂໍ້ຕອນພັບ"
-
-msgid "Title Collapsed Hover Panel"
-msgstr "ແຜງຫົວຂໍ້ຕອນພັບແລະວາງເມົາສ໌ໃສ່"
-
-msgid "Hover Font Color"
-msgstr "ສີຟອນຕອນວາງເມົາສ໌ໃສ່"
-
-msgid "Collapsed Font Color"
-msgstr "ສີຟອນຕອນພັບ"
-
-msgid "Expanded Arrow Mirrored"
-msgstr "ລູກສອນຄີ່ແບບສະທ້ອນ"
-
-msgid "Folded Arrow Mirrored"
-msgstr "ລູກສອນພັບແບບສະທ້ອນ"
-
-msgid "Port Hotzone Inner Extent"
-msgstr "ຂອບເຂດພາຍໃນຂອງ Hotzone ພອດ"
-
-msgid "Port Hotzone Outer Extent"
-msgstr "ຂອບເຂດພາຍນອກຂອງ Hotzone ພອດ"
-
 msgid "Default Theme Scale"
 msgstr "ມາດຕາສ່ວນຮູບແບບເລີ່ມຕົ້ນ"
 
@@ -11997,7 +12007,7 @@ msgid "Fallback values"
 msgstr "ຄ່າສຳຮອງ"
 
 msgid "Stylebox"
-msgstr "Stylebox"
+msgstr "ກ່ອງຮູບແບບ"
 
 msgid "Enable Input"
 msgstr "ເປີດໃຊ້ງານອິນພຸດ"
@@ -12022,21 +12032,6 @@ msgstr "ອຸປະກອນອິນພຸດ"
 
 msgid "Playback Speed Scale"
 msgstr "ມາດຕາສ່ວນຄວາມໄວການຫຼິ້ນ"
-
-msgid "Playback Mode"
-msgstr "ໂໝດການຫຼິ້ນ"
-
-msgid "Random Pitch Semitones"
-msgstr "ສຸ່ມລະດັບສຽງ (Semitones)"
-
-msgid "Random Volume Offset dB"
-msgstr "ສຸ່ມລະດັບຄວາມແຮງສຽງ (dB)"
-
-msgid "Streams"
-msgstr "ສະຕຣີມ"
-
-msgid "Buffer Length"
-msgstr "ຄວາມຍາວບັບເຟີ"
 
 msgid "Voice Count"
 msgstr "ຈຳນວນສຽງ"
@@ -12146,9 +12141,6 @@ msgstr "ເວລາການແຍກ (ms)"
 msgid "Surround"
 msgstr "ສຽງອ້ອມທິດທາງ"
 
-msgid "Mix Rate Mode"
-msgstr "ໂໝດອັດຕາການປະສົມສຽງ"
-
 msgid "Feed"
 msgstr "ຟີດ"
 
@@ -12201,7 +12193,7 @@ msgid "Path Types"
 msgstr "ປະເພດເສັ້ນທາງ"
 
 msgid "Path Rids"
-msgstr "RID ຂອງເສັ້ນທາງ"
+msgstr "ໄອດີເສັ້ນທາງ"
 
 msgid "Path Owner IDs"
 msgstr "ID ເຈົ້າຂອງເສັ້ນທາງ"
@@ -12329,30 +12321,6 @@ msgstr "ແຮງໂນ້ມຖ່ວງທັງໝົດ"
 msgid "Center of Mass Local"
 msgstr "ຈຸດສູນກາງມວນສານທ້ອງຖິ່ນ"
 
-msgid "Collide with Bodies"
-msgstr "ຕຳກັບວັດຖຸ"
-
-msgid "Collide with Areas"
-msgstr "ຕຳກັບພື້ນທີ່"
-
-msgid "Canvas Instance ID"
-msgstr "ID ອິນສະແຕນຂອງແຄນວາສ"
-
-msgid "Shape RID"
-msgstr "RID ຂອງຮູບຊົງ"
-
-msgid "Collide Separation Ray"
-msgstr "ລັງສີແຍກການຕຳ"
-
-msgid "Exclude Bodies"
-msgstr "ຍົກເວັ້ນວັດຖຸ"
-
-msgid "Exclude Objects"
-msgstr "ຍົກເວັ້ນອັອບເຈັກ"
-
-msgid "Recovery as Collision"
-msgstr "ການກູ້ຄືນເປັນການຕຳ"
-
 msgid "Default Gravity"
 msgstr "ແຮງໂນ້ມຖ່ວງມາດຕະຖານ"
 
@@ -12395,14 +12363,38 @@ msgstr "ຄ່າຄວາມລຳອຽງຂໍ້ຈຳກັດມາດຕ
 msgid "Physics Engine"
 msgstr "ເຄື່ອງຈັກຟີຊິກ"
 
+msgid "Max Collisions"
+msgstr "ການຕຳສູງສຸດ"
+
+msgid "Canvas Instance ID"
+msgstr "ID ອິນສະແຕນຂອງແຄນວາສ"
+
+msgid "Collide with Bodies"
+msgstr "ຕຳກັບວັດຖຸ"
+
+msgid "Collide with Areas"
+msgstr "ຕຳກັບພື້ນທີ່"
+
+msgid "Shape RID"
+msgstr "RID ຂອງຮູບຊົງ"
+
+msgid "Collide Separation Ray"
+msgstr "ລັງສີແຍກການຕຳ"
+
+msgid "Exclude Bodies"
+msgstr "ຍົກເວັ້ນວັດຖຸ"
+
+msgid "Exclude Objects"
+msgstr "ຍົກເວັ້ນອັອບເຈັກ"
+
+msgid "Recovery as Collision"
+msgstr "ການກູ້ຄືນເປັນການຕຳ"
+
 msgid "Inverse Inertia Tensor"
 msgstr "ເທນເຊີຄວາມເສື່ອຍປີ້ນ"
 
 msgid "Principal Inertia Axes"
 msgstr "ແກນຄວາມເສື່ອຍຫຼັກ"
-
-msgid "Max Collisions"
-msgstr "ການຕຳສູງສຸດ"
 
 msgid "Debug Redraw Time"
 msgstr "ເວລາໃນການແຕ້ມຄືນເພື່ອດີບັກ"
@@ -12675,7 +12667,7 @@ msgid "Texel Size"
 msgstr "ຂະໜາດເທັກເຊວ"
 
 msgid "Lightmap GI"
-msgstr "Lightmap GI"
+msgstr "GI ຜັງແສງ"
 
 msgid "Use Bicubic Filter"
 msgstr "ໃຊ້ຕົວຕອງແບບໄບຄິວບິກ"
@@ -12864,7 +12856,7 @@ msgid "Default Font Subpixel Positioning"
 msgstr "ການກຳນົດຕຳແໜ່ງຊັບພິກເຊວຟອນມາດຕະຖານ"
 
 msgid "Default Font Multichannel Signed Distance Field"
-msgstr "MSDF ຟອນມາດຕະຖານ"
+msgstr "ຟອນມາດຕະຖານ MSDF"
 
 msgid "Default Font Generate Mipmaps"
 msgstr "ການສ້າງມິບແມັບຟອນມາດຕະຖານ"
