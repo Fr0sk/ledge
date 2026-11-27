@@ -39,6 +39,7 @@
 #include "servers/rendering/renderer_rd/storage_rd/material_storage.h"
 #include "servers/rendering/renderer_rd/storage_rd/mesh_storage.h"
 #include "servers/rendering/renderer_rd/storage_rd/texture_storage.h"
+#include "servers/rendering/rendering_server.h"
 #include "servers/rendering/rendering_server_globals.h"
 #include "servers/rendering/storage/environment_storage.h"
 
@@ -77,7 +78,7 @@ RenderRaytracing::~RenderRaytracing() {
 		mat_ubo_pool_buffer = RID();
 	}
 
-	for (RID *r : { &defaults.ddgi_uniform_buffer, &defaults.image_rgba16f, &defaults.image_r32f, &defaults.image_rg16f }) {
+	for (RID *r : { &defaults.ddgi_uniform_buffer, &defaults.image_rgba16f, &defaults.image_rgba32f, &defaults.image_r32f, &defaults.image_rg16f }) {
 		if (r->is_valid()) {
 			RD::get_singleton()->free_rid(*r);
 			*r = RID();
@@ -551,6 +552,8 @@ void RenderRaytracing::prepare_frame() {
 	motion_indices.clear();
 	motion_transforms.clear();
 	emissive_meshes.clear();
+	ddgi_emitters.clear();
+	ddgi_moving.clear();
 	deformed_active_this_frame.clear();
 	merged_mm_active_this_frame.clear();
 
@@ -694,7 +697,9 @@ RTSurfaceData *RenderRaytracing::process_surface(
 	} else if (entry->ptr->blas.is_valid()) {
 		if (entry->cached_rid_version == mesh_version) {
 			// Same mesh, surface data changed: BLAS is still live, free explicitly.
-			RD::get_singleton()->free_rid(entry->ptr->blas);
+			if (RD::get_singleton()->acceleration_structure_is_valid(entry->ptr->blas)) {
+				RD::get_singleton()->free_rid(entry->ptr->blas);
+			}
 		}
 		// Version mismatch: old mesh was deleted, BLAS already cascade-freed by RD.
 		entry->ptr->blas = RID();
@@ -776,7 +781,9 @@ RTSurfaceData *RenderRaytracing::process_deformed_surface(
 	// Reallocate owned storage if the surface grew.
 	if (entry.owned_vb_full_capacity < full_size) {
 		if (entry.ptr && entry.ptr->blas.is_valid()) {
-			rd->free_rid(entry.ptr->blas);
+			if (rd->acceleration_structure_is_valid(entry.ptr->blas)) {
+				rd->free_rid(entry.ptr->blas);
+			}
 			entry.ptr->blas = RID();
 			entry.blas_built_once = false;
 		}
@@ -823,7 +830,9 @@ RTSurfaceData *RenderRaytracing::process_deformed_surface(
 			entry.ptr = memnew(RTSurfaceData);
 		}
 		if (entry.ptr->blas.is_valid()) {
-			rd->free_rid(entry.ptr->blas);
+			if (rd->acceleration_structure_is_valid(entry.ptr->blas)) {
+				rd->free_rid(entry.ptr->blas);
+			}
 			entry.ptr->blas = RID();
 		}
 		_populate_surface_blas(p_mesh_surface, entry.owned_vb_full, true, true, true,
@@ -1376,7 +1385,9 @@ void RenderRaytracing::update_procedural_blas(RTProceduralState *p_state, LocalV
 	// Grow-only: only recreate the buffer when capacity is exceeded or count changed.
 	if (required_bytes > p_state->gpu_buffer_capacity || aabb_count != p_state->aabb_count) {
 		if (p_state->blas.is_valid()) {
-			RD::get_singleton()->free_rid(p_state->blas);
+			if (RD::get_singleton()->acceleration_structure_is_valid(p_state->blas)) {
+				RD::get_singleton()->free_rid(p_state->blas);
+			}
 			p_state->blas = RID();
 		}
 		if (p_state->gpu_buffer.is_valid()) {
@@ -1419,6 +1430,27 @@ void RenderRaytracing::update_procedural_blas(RTProceduralState *p_state, LocalV
 // ---------------------------------------------------------------------------
 // Material processing
 // ---------------------------------------------------------------------------
+
+// A custom shader's hit group compiles asynchronously, which takes seconds
+// for a large shader. Until it is in the pipeline, its surfaces are traced
+// with the default hit group and a plain grey material instead of being left
+// out of the TLAS: the geometry has to be there for shadows, occlusion and
+// DDGI probe classification (probes classified against a scene without the
+// terrain kept wrong states long after it appeared, and lit it black).
+static inline bool _rt_hit_group_pending(const RTMaterialData *p_mat_data, const SceneShaderRaytracing *p_rt_shader, uint32_t p_rt_flags) {
+	return p_mat_data->rt_sbt_offset > 0 && !p_rt_shader->is_hg_ready_in_bundle(p_mat_data->rt_sbt_offset, p_rt_flags);
+}
+
+static inline RT_MaterialData _rt_pending_material(const RT_MaterialData &p_data) {
+	RT_MaterialData data = p_data;
+	data.albedo_color[0] = 0.5f;
+	data.albedo_color[1] = 0.5f;
+	data.albedo_color[2] = 0.5f;
+	data.albedo_color[3] = 1.0f;
+	data.albedo_texture_idx = 0;
+	data.flags = 0;
+	return data;
+}
 
 RTMaterialData *RenderRaytracing::process_material(RID p_material_rid, uint16_t p_material_invalidation_counter) {
 	// Static default material for invalid/null materials
@@ -2132,7 +2164,7 @@ bool RenderRaytracing::_build_merged_mm_blas(
 				h = RID();
 				continue;
 			}
-			if (old->blas.is_valid()) {
+			if (old->blas.is_valid() && rd_local->acceleration_structure_is_valid(old->blas)) {
 				rd_local->free_rid(old->blas);
 			}
 			if (old->merged_vtx_buffer.is_valid()) {
@@ -2179,7 +2211,9 @@ bool RenderRaytracing::_build_merged_mm_blas(
 	if (structure_changed) {
 		RD *rd = RD::get_singleton();
 		if (entry.blas.is_valid()) {
-			rd->free_rid(entry.blas);
+			if (rd->acceleration_structure_is_valid(entry.blas)) {
+				rd->free_rid(entry.blas);
+			}
 			entry.blas = RID();
 		}
 		entry.blas_built_once = false;
@@ -2613,7 +2647,7 @@ RTViewportState *RenderRaytracing::build_tlas(const RenderDataRD *p_render_data,
 				uint32_t inst_flags = RD::ACCELERATION_STRUCTURE_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT |
 						RD::ACCELERATION_STRUCTURE_INSTANCE_FORCE_OPAQUE_BIT;
 				instance_flags.push_back(inst_flags);
-				instance_masks.push_back(0xFF);
+				instance_masks.push_back(_instance_mask(inst, inst->transform_status == RenderForwardClustered::GeometryInstanceForwardClustered::TransformStatus::MOVED, false));
 			}
 			continue;
 		}
@@ -2664,12 +2698,7 @@ RTViewportState *RenderRaytracing::build_tlas(const RenderDataRD *p_render_data,
 
 				uint16_t material_counter = material_storage->material_get_rt_invalidation_counter(material_rid);
 				RTMaterialData *mat_data = process_material(material_rid, material_counter);
-
-				if (mat_data->rt_sbt_offset > 0 &&
-						!rt_shader_singleton->is_hg_ready_in_bundle(mat_data->rt_sbt_offset, p_rt_flags)) {
-					mm_surf = mm_surf->next;
-					continue;
-				}
+				// A custom hit group still compiling is traced with the default one (see _rt_hit_group_pending()).
 
 				uint32_t inst_flags = 0;
 				if (mm_surf->shader) {
@@ -2802,12 +2831,7 @@ RTViewportState *RenderRaytracing::build_tlas(const RenderDataRD *p_render_data,
 
 			uint16_t material_counter = material_storage->material_get_rt_invalidation_counter(material_rid);
 			RTMaterialData *mat_data = process_material(material_rid, material_counter);
-
-			if (mat_data->rt_sbt_offset > 0 &&
-					!rt_shader_singleton->is_hg_ready_in_bundle(mat_data->rt_sbt_offset, p_rt_flags)) {
-				surf = surf->next;
-				continue;
-			}
+			// A custom hit group still compiling is traced with the default one (see _rt_hit_group_pending()).
 
 			// Compute or reuse cached final transform (instance * aabb_transform for compressed meshes).
 			Transform3D final_transform;
@@ -2854,8 +2878,49 @@ RTViewportState *RenderRaytracing::build_tlas(const RenderDataRD *p_render_data,
 			}
 #endif
 
-			sbt_offsets.push_back(mat_data->rt_sbt_offset);
-			material_data.push_back(mat_data->data);
+			const bool hg_pending = _rt_hit_group_pending(mat_data, rt_shader_singleton, p_rt_flags);
+			sbt_offsets.push_back(hg_pending ? 0u : mat_data->rt_sbt_offset);
+			material_data.push_back(hg_pending ? _rt_pending_material(mat_data->data) : mat_data->data);
+
+			// Emissive StandardMaterial3D surfaces become mesh lights, so direct-light
+			// sampling can aim at them instead of waiting for a bounce to hit them.
+			// Custom shaders compute emission in the shader, so the host can't see it.
+			if (!mat_data->is_custom_shader && emissive_meshes.size() < RT_EMISSIVE_MESHES_MAX) {
+				const RT_MaterialData &md = mat_data->data;
+				const float emission_luminance = (md.emission_color[0] * 0.2126f + md.emission_color[1] * 0.7152f + md.emission_color[2] * 0.0722f) * md.emission_strength;
+				const uint32_t triangle_count = surf_data->geometry.primitive_count;
+				if (emission_luminance > 0.0f && triangle_count > 0 && surf_data->geometry.index_format != RT_INDEX_FORMAT_NONE) {
+					const AABB &bounds = inst->transformed_aabb;
+					const Vector3 size = bounds.size;
+					const float area_estimate = MAX(2.0f * (size.x * size.y + size.y * size.z + size.z * size.x), 1e-4f);
+					RT_EmissiveMeshData em = {};
+					RendererRD::MaterialStorage::store_transform_transposed_3x4(final_transform, em.object_to_world);
+					const Vector3 center = bounds.get_center();
+					em.center[0] = center.x;
+					em.center[1] = center.y;
+					em.center[2] = center.z;
+					em.radius = size.length() * 0.5f;
+					em.half_extents[0] = size.x * 0.5f;
+					em.half_extents[1] = size.y * 0.5f;
+					em.half_extents[2] = size.z * 0.5f;
+					em.geometry_idx = geometry_data.size() - 1;
+					em.primitive_count = triangle_count;
+					em.power = emission_luminance * area_estimate;
+					emissive_meshes.push_back(em);
+					// As a sphere for DDGI: the radius of a sphere with the
+					// surface's area (the box area estimate times pi / 6, exact
+					// for a sphere in its bounding box).
+					ddgi_emitters.push_back(center.x);
+					ddgi_emitters.push_back(center.y);
+					ddgi_emitters.push_back(center.z);
+					ddgi_emitters.push_back(Math::sqrt(area_estimate * float(Math::PI / 6.0) / float(4.0 * Math::PI)));
+					ddgi_emitters.push_back(md.emission_color[0] * md.emission_strength);
+					ddgi_emitters.push_back(md.emission_color[1] * md.emission_strength);
+					ddgi_emitters.push_back(md.emission_color[2] * md.emission_strength);
+					ddgi_emitters.push_back(em.radius);
+					geometry_data[geometry_data.size() - 1].flags |= RT_GEOM_FLAG_EMISSIVE_LIGHT;
+				}
+			}
 
 			// Emissive StandardMaterial3D surfaces become mesh lights, so direct-light
 			// sampling can aim at them instead of waiting for a bounce to hit them.
@@ -2924,7 +2989,11 @@ RTViewportState *RenderRaytracing::build_tlas(const RenderDataRD *p_render_data,
 				}
 			}
 			instance_flags.push_back(inst_flags);
-			instance_masks.push_back(0xFF);
+			instance_masks.push_back(_instance_mask(inst, inst->transform_status == RenderForwardClustered::GeometryInstanceForwardClustered::TransformStatus::MOVED, (geometry_data[geometry_data.size() - 1].flags & RT_GEOM_FLAG_EMISSIVE_LIGHT) != 0));
+			if (instance_masks[instance_masks.size() - 1] == RT_INSTANCE_MASK_MOVING) {
+				geometry_data[geometry_data.size() - 1].flags |= RT_GEOM_FLAG_MOVING;
+				_ddgi_add_moving(surf->owner->data->base, surf->surface_index, instance_transform, inst->transformed_aabb);
+			}
 
 			surf = surf->next;
 		}
@@ -2950,8 +3019,9 @@ RTViewportState *RenderRaytracing::build_tlas(const RenderDataRD *p_render_data,
 			blass.push_back(merged_sd.blas);
 			blas_transforms.push_back(pending.instance_transform);
 			geometry_data.push_back(merged_sd.geometry);
-			sbt_offsets.push_back(pending.mat_data->rt_sbt_offset);
-			material_data.push_back(pending.mat_data->data);
+			const bool hg_pending = _rt_hit_group_pending(pending.mat_data, rt_shader_singleton, p_rt_flags);
+			sbt_offsets.push_back(hg_pending ? 0u : pending.mat_data->rt_sbt_offset);
+			material_data.push_back(hg_pending ? _rt_pending_material(pending.mat_data->data) : pending.mat_data->data);
 			motion_indices.push_back(-1);
 			instance_flags.push_back(pending.inst_flags);
 			instance_masks.push_back(0xFF);
@@ -3008,8 +3078,9 @@ RTViewportState *RenderRaytracing::build_tlas(const RenderDataRD *p_render_data,
 				blass.push_back(surf_data->blas);
 				blas_transforms.push_back(final_transform);
 				geometry_data.push_back(surf_data->geometry);
-				sbt_offsets.push_back(pending.mat_data->rt_sbt_offset);
-				material_data.push_back(pending.mat_data->data);
+				const bool hg_pending = _rt_hit_group_pending(pending.mat_data, rt_shader_singleton, p_rt_flags);
+				sbt_offsets.push_back(hg_pending ? 0u : pending.mat_data->rt_sbt_offset);
+				material_data.push_back(hg_pending ? _rt_pending_material(pending.mat_data->data) : pending.mat_data->data);
 
 				if (pending.transform_moved) {
 					Transform3D prev_final = pending.prev_instance_transform * mm_xform;
@@ -3278,10 +3349,162 @@ void RenderRaytracing::_ensure_default_resources() {
 	tf.usage_bits = RD::TEXTURE_USAGE_STORAGE_BIT;
 	tf.format = RD::DATA_FORMAT_R16G16B16A16_SFLOAT;
 	defaults.image_rgba16f = rd->texture_create(tf, RD::TextureView());
+	tf.format = RD::DATA_FORMAT_R32G32B32A32_SFLOAT;
+	defaults.image_rgba32f = rd->texture_create(tf, RD::TextureView());
 	tf.format = RD::DATA_FORMAT_R32_SFLOAT;
 	defaults.image_r32f = rd->texture_create(tf, RD::TextureView());
 	tf.format = RD::DATA_FORMAT_R16G16_SFLOAT;
 	defaults.image_rg16f = rd->texture_create(tf, RD::TextureView());
+}
+
+RenderRaytracing::MeshShape RenderRaytracing::_ddgi_mesh_shape(RID p_mesh, uint32_t p_surface) {
+	const uint64_t key = (p_mesh.get_id() << 8) | (p_surface & 0xFF);
+	if (const MeshShape *cached = ddgi_mesh_shapes.getptr(key)) {
+		return *cached;
+	}
+	MeshShape shape;
+	RendererRD::MeshStorage *mesh_storage = RendererRD::MeshStorage::get_singleton();
+	if (p_mesh.is_valid() && mesh_storage->owns_mesh(p_mesh) && int(p_surface) < mesh_storage->mesh_get_surface_count(p_mesh)) {
+		// Read back once per mesh surface: only for objects that keep moving.
+		RenderingServerTypes::SurfaceData data = static_cast<const RendererMeshStorage *>(mesh_storage)->mesh_get_surface(p_mesh, int(p_surface));
+		shape.aabb = data.aabb;
+		if (data.primitive == RSE::PRIMITIVE_TRIANGLES) {
+			Array arrays = RenderingServer::get_singleton()->mesh_create_arrays_from_surface_data(data);
+			if (arrays.size() == RSE::ARRAY_MAX && arrays[RSE::ARRAY_VERTEX].get_type() == Variant::PACKED_VECTOR3_ARRAY) {
+				const PackedVector3Array vertices = arrays[RSE::ARRAY_VERTEX];
+				const PackedInt32Array indices = arrays[RSE::ARRAY_INDEX];
+				const int count = indices.is_empty() ? vertices.size() : indices.size();
+				double area = 0.0;
+				for (int i = 0; i + 2 < count; i += 3) {
+					const int a = indices.is_empty() ? i : indices[i];
+					const int b = indices.is_empty() ? i + 1 : indices[i + 1];
+					const int c = indices.is_empty() ? i + 2 : indices[i + 2];
+					if (a < vertices.size() && b < vertices.size() && c < vertices.size()) {
+						area += 0.5 * (vertices[b] - vertices[a]).cross(vertices[c] - vertices[a]).length();
+					}
+				}
+				shape.area = float(area);
+				shape.valid = area > 0.0;
+			}
+		}
+	}
+	ddgi_mesh_shapes.insert(key, shape);
+	return shape;
+}
+
+// One moving surface for the DDGI near-field object rays (see ddgi_moving):
+// its oriented bounding box, and what kind of shape fills it. A sphere-like
+// mesh is lit as a sphere (exact); anything else as its box, scaled by how
+// much of the box the mesh covers on average: for convex shapes the mean
+// projected area is a quarter of the surface area (Cauchy), so mesh area /
+// box area is the mean coverage. Flat meshes (planes) count one side.
+void RenderRaytracing::_ddgi_add_moving(RID p_mesh, uint32_t p_surface, const Transform3D &p_transform, const AABB &p_world_bounds) {
+	if (ddgi_moving.size() >= 64 * 16) {
+		return;
+	}
+	const MeshShape shape = _ddgi_mesh_shape(p_mesh, p_surface);
+	Vector3 center;
+	Vector3 axes[3];
+	float area = 0.0f;
+	if (shape.valid) {
+		center = p_transform.xform(shape.aabb.get_center());
+		const Vector3 half = shape.aabb.size * 0.5f;
+		for (int i = 0; i < 3; i++) {
+			axes[i] = p_transform.basis.get_column(i) * half[i];
+		}
+		// Surface area scales with the square of the (mean) scale.
+		const float scale2 = Math::pow(Math::abs(p_transform.basis.determinant()), 2.0f / 3.0f);
+		area = shape.area * scale2;
+	} else {
+		center = p_world_bounds.get_center();
+		const Vector3 half = p_world_bounds.size * 0.5f;
+		axes[0] = Vector3(half.x, 0, 0);
+		axes[1] = Vector3(0, half.y, 0);
+		axes[2] = Vector3(0, 0, half.z);
+	}
+	float h[3] = { axes[0].length(), axes[1].length(), axes[2].length() };
+	const float h_min = MIN(h[0], MIN(h[1], h[2]));
+	const float h_max = MAX(h[0], MAX(h[1], h[2]));
+	if (h_max <= 0.0f) {
+		return;
+	}
+	const float box_area = 8.0f * (h[0] * h[1] + h[1] * h[2] + h[2] * h[0]);
+	float fill = 1.0f;
+	float sphere = 0.0f;
+	if (area > 0.0f) {
+		if (h_min < 0.02f * h_max) {
+			// Flat: one side of the mesh against one side of the box.
+			fill = area / MAX(box_area * 0.5f, 1e-6f);
+		} else {
+			fill = area / box_area;
+			// A sphere covers pi / 6 of its box's area (0.52).
+			if (h_min > 0.85f * h_max && fill > 0.45f && fill < 0.6f) {
+				sphere = 1.0f;
+			}
+		}
+		fill = CLAMP(fill, 0.05f, 1.0f);
+	} else {
+		fill = 0.7f; // Unknown mesh: between a sphere and a box.
+	}
+	const float data[16] = {
+		center.x, center.y, center.z, fill,
+		axes[0].x, axes[0].y, axes[0].z, sphere,
+		axes[1].x, axes[1].y, axes[1].z, 0.0f,
+		axes[2].x, axes[2].y, axes[2].z, 0.0f
+	};
+	for (float f : data) {
+		ddgi_moving.push_back(f);
+	}
+}
+
+// DDGI probes skip objects that keep moving (a character, a rolling ball):
+// probes blend their light over many frames, so a moving object's shadow and
+// bounce light would trail behind it as a dark or colored blob. The DDGI
+// near-field rays and the path tracer still see them. An object counts as
+// moving after moving on 3 frames, until it has stood still for a second
+// (60 frames). Emissive objects stay in the probes, or their light would be
+// lost when emissive lights are off.
+// Disabled with the near-field rays (render_ddgi.cpp): nothing else lights
+// moving objects for DDGI, so the probes keep seeing them (a trailing
+// shadow beats none).
+static constexpr bool DDGI_SKIP_MOVING_OBJECTS = false;
+uint8_t RenderRaytracing::_instance_mask(const void *p_instance, bool p_moved, bool p_emissive) {
+	if (!DDGI_SKIP_MOVING_OBJECTS) {
+		return 0xFF;
+	}
+	const uint64_t frame = RSG::rasterizer->get_frame_number();
+	MovingInstance *moving = moving_instances.getptr(p_instance);
+	if (p_moved) {
+		if (!moving) {
+			moving = &moving_instances.insert(p_instance, MovingInstance())->value;
+		}
+		if (moving->last_moved != frame) {
+			moving->moves = MIN(moving->moves + 1, 1000u);
+			moving->last_moved = frame;
+		}
+	}
+	// Forget instances that stood still for a while (or were freed).
+	if (frame > moving_instances_pruned + 600) {
+		moving_instances_pruned = frame;
+		LocalVector<const void *> stale;
+		for (const KeyValue<const void *, MovingInstance> &E : moving_instances) {
+			if (frame > E.value.last_moved + 600) {
+				stale.push_back(E.key);
+			}
+		}
+		for (const void *key : stale) {
+			moving_instances.erase(key);
+		}
+		moving = moving_instances.getptr(p_instance);
+	}
+	if (!moving) {
+		return 0xFF;
+	}
+	if (frame > moving->last_moved + 60) {
+		moving->moves = 0;
+		return 0xFF;
+	}
+	return (moving->moves >= 3 && !p_emissive) ? RT_INSTANCE_MASK_MOVING : 0xFF;
 }
 
 RID RenderRaytracing::update_uniform_set(RTViewportState *p_state, const RenderDataRD *p_render_data, uint32_t p_rt_flags, const RTDDGIBindings *p_ddgi) {
@@ -3312,7 +3535,7 @@ RID RenderRaytracing::update_uniform_set(RTViewportState *p_state, const RenderD
 		u.binding = 0;
 		u.uniform_type = RD::UNIFORM_TYPE_IMAGE;
 		if (ddgi_trace) {
-			u.append_id(defaults.image_rgba16f);
+			u.append_id(defaults.image_rgba32f);
 		} else {
 			rt_ensure_textures(rb);
 			u.append_id(rt_get_texture(rb));
@@ -3434,7 +3657,9 @@ RID RenderRaytracing::update_uniform_set(RTViewportState *p_state, const RenderD
 			}
 		}
 		rt_ubo.params[SceneShaderRaytracing::RT_PARAM_FOG_USE_LEGACY_BLENDING] = owner->fog_use_legacy_blending_get() ? 1.0f : 0.0f;
-		rt_ubo.params[SceneShaderRaytracing::RT_PARAM_DDGI_TRACE] = ddgi_trace ? 1.0f : 0.0f;
+		// 2: probe rays with emissive surfaces as lights (RTDDGIBindings::emitters_as_lights).
+		// 3, 4: the same for near-field rays (RTDDGIBindings::near_field).
+		rt_ubo.params[SceneShaderRaytracing::RT_PARAM_DDGI_TRACE] = ddgi_trace ? (p_ddgi->emitters_as_lights ? 2.0f : 1.0f) + (p_ddgi->near_field ? 2.0f : 0.0f) : 0.0f;
 
 		// rt_params layout (see RaytracingParamIndex enum):
 		// [0] = VIS_MODE, [1] = SAMPLE_COUNT, [2] = MAX_BOUNCES,
@@ -3637,7 +3862,7 @@ RID RenderRaytracing::update_uniform_set(RTViewportState *p_state, const RenderD
 		uniforms.push_back(u);
 	}
 
-	// Bindings 34-39: DDGI (raytracing_ddgi_inc.glsl).
+	// Bindings 34-40: DDGI (raytracing_ddgi_inc.glsl).
 	{
 		RendererRD::TextureStorage *texture_storage = RendererRD::TextureStorage::get_singleton();
 		RID default_ssbo = RendererRD::MeshStorage::get_singleton()->get_default_rd_storage_buffer();
@@ -3650,6 +3875,7 @@ RID RenderRaytracing::update_uniform_set(RTViewportState *p_state, const RenderD
 		uniforms.push_back(RD::Uniform(RD::UNIFORM_TYPE_STORAGE_BUFFER, 37, has_ddgi ? p_ddgi->probe_buffer : default_ssbo));
 		uniforms.push_back(RD::Uniform(RD::UNIFORM_TYPE_IMAGE, 38, has_ddgi ? p_ddgi->ray_data : defaults.image_rgba16f));
 		uniforms.push_back(RD::Uniform(RD::UNIFORM_TYPE_STORAGE_BUFFER, 39, has_ddgi ? p_ddgi->update_list : default_ssbo));
+		uniforms.push_back(RD::Uniform(RD::UNIFORM_TYPE_STORAGE_BUFFER, 40, has_ddgi && p_ddgi->ray_bounce.is_valid() ? p_ddgi->ray_bounce : default_ssbo));
 	}
 
 	RID shader_rd = shader ? shader->get_pipeline_shader_rd(p_rt_flags) : RID();

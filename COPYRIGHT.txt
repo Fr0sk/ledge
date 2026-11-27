@@ -274,6 +274,11 @@ Comment: etcpak
 Copyright: 2013-2026, Bartosz Taudul
 License: BSD-3-clause
 
+Files: thirdparty/fonts/AtkinsonHyperlegibleNext*.woff2
+Comment: Atkinson Hyperlegible Next font
+Copyright: 2020-2024, The Atkinson Hyperlegible Next Project Authors
+License: OFL-1.1
+
 Files: thirdparty/fonts/DroidSans*.woff2
 Comment: DroidSans font
 Copyright: 2008, The Android Open Source Project
@@ -678,12 +683,22 @@ Comment: Wslay
 Copyright: 2011, 2012, 2015, Tatsuhiro Tsujikawa
 License: Expat
 
+Files: thirdparty/wyhash/*
+Comment: wyhash
+Copyright: Wang Yi and contributors
+License: Unlicense
+
 Files: thirdparty/xatlas/*
 Comment: xatlas
 Copyright: 2018-2020, Jonathan Young
  2013, Thekla, Inc
  2006, NVIDIA Corporation, Ignacio Castano
 License: Expat
+
+Files: thirdparty/xxhash/*
+Comment: xxHash
+Copyright: 2012-2021, Yann Collet
+License: BSD-2-clause
 
 Files: thirdparty/zlib/*
 Comment: zlib

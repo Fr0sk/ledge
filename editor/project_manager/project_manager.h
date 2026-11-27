@@ -183,6 +183,13 @@ class ProjectManager : public Control {
 	ConfirmationDialog *multi_open_ask = nullptr;
 	ConfirmationDialog *multi_run_ask = nullptr;
 	ConfirmationDialog *open_recovery_mode_ask = nullptr;
+	// This build changes Godot's renderer: the first time it opens a project, it warns that the project can break.
+	ConfirmationDialog *fork_warning_ask = nullptr;
+	static bool _fork_warning_seen(const String &p_path);
+	static void _fork_warning_mark(const String &p_path);
+	void _fork_warning_mark_selected();
+	void _fork_warning_ask_show(const String &p_name, const String &p_path);
+	void _fork_warning_confirmed();
 
 	ProjectDialog *project_dialog = nullptr;
 

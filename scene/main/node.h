@@ -176,8 +176,26 @@ public:
 private:
 	struct GroupData {
 		bool persistent = false;
+		uint32_t position = 0; // Index in group->nodes when last known (SceneTreeGroup).
 		SceneTreeGroup *group = nullptr;
 	};
+
+	// A node is in few groups: a vector in insertion order (the order
+	// get_groups() returns) searched by StringName pointer needs one
+	// allocation, a HashMap three (docs/implementation/scene-runtime-roadmap.md, M5).
+	struct GroupEntry {
+		StringName name;
+		GroupData data;
+	};
+
+	_FORCE_INLINE_ uint32_t _find_group(const StringName &p_name) const {
+		for (uint32_t i = 0; i < data.grouped.size(); i++) {
+			if (data.grouped[i].name == p_name) {
+				return i;
+			}
+		}
+		return UINT32_MAX;
+	}
 
 	struct ComparatorByIndex {
 		bool operator()(const Node *p_left, const Node *p_right) const {
@@ -209,6 +227,10 @@ private:
 		Node *owner = nullptr;
 		HashMap<StringName, Node *> children;
 		mutable bool children_cache_dirty = false;
+		// Removed children leave null holes in children_cache (counters and the
+		// other children's indices unchanged) until the next reader compacts it.
+		// (Next to the bool: in its padding, the node does not grow.)
+		mutable uint32_t children_cache_first_hole = UINT32_MAX;
 		mutable LocalVector<Node *> children_cache;
 		HashMap<StringName, Node *> owned_unique_nodes;
 		bool unique_name_in_owner = false;
@@ -228,7 +250,7 @@ private:
 
 		mutable RID accessibility_element;
 
-		HashMap<StringName, GroupData> grouped;
+		LocalVector<GroupEntry> grouped;
 		List<Node *>::Element *OW = nullptr; // Owned element.
 		List<Node *> owned;
 
@@ -348,12 +370,13 @@ private:
 	void _clean_up_owner();
 
 	_FORCE_INLINE_ void _update_children_cache() const {
-		if (unlikely(data.children_cache_dirty)) {
+		if (unlikely(data.children_cache_dirty || data.children_cache_first_hole != UINT32_MAX)) {
 			_update_children_cache_impl();
 		}
 	}
 
 	void _update_children_cache_impl() const;
+	void _compact_children_cache() const;
 
 	// Process group management
 	void _add_process_group();

@@ -38,6 +38,7 @@
 #include "core/templates/self_list.h"
 #include "scene/main/scene_tree_fti.h"
 
+#include <atomic>
 #include <cstdlib>
 
 class ArrayMesh;
@@ -85,8 +86,19 @@ public:
 };
 
 struct SceneTreeGroup {
+	// Removed members leave null holes, which _update_group_order() drops
+	// (keeping the order) before anything reads the nodes. Each member's
+	// Node::GroupData::position is its index here when the member was added
+	// or the positions were last rewritten; sorting and compacting can move
+	// members (rewriting every position would cost a lookup per member), so a
+	// removal checks the slot and searches when it does not hold the member.
+	// After STALE_REMOVALS_BEFORE_REWRITE searches, all positions are rewritten.
+	static constexpr uint32_t STALE_REMOVALS_BEFORE_REWRITE = 128;
 	Vector<Node *> nodes;
 	bool changed = false;
+	uint32_t holes = 0;
+	uint32_t stale_removals = 0;
+	StringName name;
 };
 
 class SceneTree : public MainLoop {
@@ -200,6 +212,8 @@ private:
 	void _flush_ugc();
 
 	_FORCE_INLINE_ void _update_group_order(SceneTreeGroup &g);
+	void _compact_group(SceneTreeGroup &g);
+	void _update_group_positions(SceneTreeGroup &g);
 
 	TypedArray<Node> _get_nodes_in_group(const StringName &p_group);
 
@@ -259,6 +273,18 @@ private:
 	friend class Viewport;
 
 	SelfList<Node>::List xform_change_list;
+	// Bumped when nodes leave xform_change_list notified (a flush,
+	// Node3D::force_update_transform()) and when a dirty Node3D starts to want
+	// transform notifications, so that Node3D transform propagation knows which
+	// subtrees it walked since (Node3D::_propagate_transform_changed()).
+	// Relaxed atomics: nodes in thread groups bump it too.
+	std::atomic<uint32_t> xform_change_epoch = 1;
+	std::atomic<bool> xform_change_epoch_wrapped = false; // After 2^32 bumps: no early-out.
+	void _xform_change_epoch_bump() {
+		if (xform_change_epoch.fetch_add(1, std::memory_order_relaxed) == UINT32_MAX) {
+			xform_change_epoch_wrapped.store(true, std::memory_order_relaxed);
+		}
+	}
 
 #ifdef DEBUG_ENABLED // No live editor in release build.
 	friend class LiveEditor;

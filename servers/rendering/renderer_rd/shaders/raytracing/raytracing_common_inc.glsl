@@ -48,6 +48,15 @@ float get_rt_param(uint idx) {
 	return rt_params[idx >> 2u][idx & 3u];
 }
 
+/// Ray mask for the rays of this dispatch. DDGI rays (probe rays and the
+/// near-field cosine rays, and their shadow rays) skip objects that keep
+/// moving (instance mask 0x80, RenderRaytracing::_instance_mask()), so their
+/// light can be averaged over many frames without trailing them; the
+/// near-field object rays handle moving objects. The path tracer sees all.
+uint rt_cull_mask() {
+	return get_rt_param(RT_PARAM_DDGI_TRACE) > 0.5 ? 0x7Fu : 0xFFu;
+}
+
 /// Project a world-space point to UV through an unjittered VP.
 vec2 project_uv(vec3 world_pos, mat4 vp) {
 	vec4 clip = vp * vec4(world_pos, 1.0);

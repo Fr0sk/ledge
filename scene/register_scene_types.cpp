@@ -142,9 +142,12 @@
 #include "scene/resources/immediate_mesh.h"
 #include "scene/resources/label_settings.h"
 #include "scene/resources/material.h"
+#include "scene/resources/mesh_cluster_data.h"
 #include "scene/resources/mesh_data_tool.h"
 #include "scene/resources/mesh_texture.h"
 #include "scene/resources/multimesh.h"
+#include "scene/resources/voxel_field_data.h"
+#include "scene/resources/voxel_proxy_builder.h"
 #if !defined(NAVIGATION_2D_DISABLED) || !defined(NAVIGATION_3D_DISABLED)
 #include "scene/resources/navigation_mesh.h"
 #endif // !defined(NAVIGATION_2D_DISABLED) || !defined(NAVIGATION_3D_DISABLED)
@@ -243,11 +246,13 @@
 #include "scene/3d/copy_transform_modifier_3d.h"
 #include "scene/3d/cpu_particles_3d.h"
 #include "scene/3d/ddgi_volume.h"
+#include "scene/3d/planar_reflector_3d.h"
 #include "scene/3d/decal.h"
 #include "scene/3d/fabr_ik_3d.h"
 #include "scene/3d/fog_volume.h"
 #include "scene/3d/gpu_particles_3d.h"
 #include "scene/3d/gpu_particles_collision_3d.h"
+#include "scene/3d/grass_field_3d.h"
 #include "scene/3d/ik_modifier_3d.h"
 #include "scene/3d/importer_mesh_instance_3d.h"
 #include "scene/3d/iterate_ik_3d.h"
@@ -282,6 +287,7 @@
 #include "scene/3d/trail_3d.h"
 #include "scene/3d/two_bone_ik_3d.h"
 #include "scene/3d/visible_on_screen_notifier_3d.h"
+#include "scene/3d/voxel_field_3d.h"
 #include "scene/3d/voxel_gi.h"
 #include "scene/3d/world_environment.h"
 #include "scene/animation/root_motion_view.h"
@@ -686,6 +692,8 @@ void register_scene_types() {
 	GDREGISTER_CLASS(ReflectionProbe);
 	GDREGISTER_CLASS(Decal);
 	GDREGISTER_CLASS(DDGIVolume);
+	GDREGISTER_CLASS(PlanarReflector3D);
+	GDREGISTER_CLASS(DDGIProbeData);
 	GDREGISTER_CLASS(VoxelGI);
 	GDREGISTER_CLASS(VoxelGIData);
 	GDREGISTER_CLASS(LightmapGI);
@@ -779,6 +787,10 @@ void register_scene_types() {
 	GDREGISTER_CLASS(ShapeCast3D);
 #endif // PHYSICS_3D_DISABLED
 	GDREGISTER_CLASS(MultiMeshInstance3D);
+	GDREGISTER_INTERNAL_CLASS(GrassField3DGPU);
+	GDREGISTER_CLASS(GrassField3D);
+	GDREGISTER_INTERNAL_CLASS(VoxelField3DGPU);
+	GDREGISTER_CLASS(VoxelField3D);
 
 	GDREGISTER_CLASS(Curve3D);
 	GDREGISTER_CLASS(Path3D);
@@ -914,6 +926,9 @@ void register_scene_types() {
 	GDREGISTER_VIRTUAL_CLASS(Mesh);
 	GDREGISTER_CLASS(MeshConvexDecompositionSettings);
 	GDREGISTER_CLASS(ArrayMesh);
+	GDREGISTER_CLASS(MeshClusterData);
+	GDREGISTER_CLASS(VoxelFieldData);
+	GDREGISTER_CLASS(VoxelProxyBuilder);
 	GDREGISTER_CLASS(PlaceholderMesh);
 	GDREGISTER_CLASS(ImmediateMesh);
 	GDREGISTER_CLASS(MultiMesh);

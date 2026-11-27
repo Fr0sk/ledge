@@ -803,6 +803,9 @@
 		<constant name="DEBUG_DRAW_RECONSTRUCTED_DEPTH" value="33" enum="DebugDraw">
 			Displays the depth buffer reconstructed by NVIDIA DLSS Ray Reconstruction after denoising. Only has an effect when DLSS Ray Reconstruction is active.
 		</constant>
+		<constant name="DEBUG_DRAW_CLUSTER_LOD" value="34" enum="DebugDraw">
+			Gives each cluster group selected by cluster LOD its own color. Geometry drawn without cluster LOD is gray. Only has an effect in Forward+ with [member ProjectSettings.rendering/geometry/cluster_lod/enabled] and meshes that have cluster data.
+		</constant>
 		<constant name="DEFAULT_CANVAS_ITEM_TEXTURE_FILTER_NEAREST" value="0" enum="DefaultCanvasItemTextureFilter">
 			The texture filter reads from the nearest pixel only. This makes the texture look pixelated from up close, and grainy from a distance (due to mipmaps not being sampled).
 		</constant>
@@ -874,7 +877,10 @@
 		<constant name="VRS_XR" value="2" enum="VRSMode">
 			Variable Rate Shading's texture is supplied by the primary [XRInterface].
 		</constant>
-		<constant name="VRS_MAX" value="3" enum="VRSMode">
+		<constant name="VRS_ADAPTIVE" value="3" enum="VRSMode">
+			Content-adaptive Variable Rate Shading. The shading rate is chosen every frame on the GPU from the image of the previous frame: each shading rate tile (usually 8×8 or 16×16 pixels) is shaded at 2×1, 1×2, 2×2 or up to 4×4 pixels per sample where neighboring pixels differ less than [member ProjectSettings.rendering/vrs/adaptive_threshold] allows, such as sky, fog, flat walls and dark areas, and at full rate elsewhere and along edges. This lowers the fragment shading cost of the 3D color passes without a visible change in most scenes. Requires a GPU with attachment VRS; ignored otherwise.
+		</constant>
+		<constant name="VRS_MAX" value="4" enum="VRSMode">
 			Represents the size of the [enum VRSMode] enum.
 		</constant>
 		<constant name="VRS_UPDATE_DISABLED" value="0" enum="VRSUpdateMode">

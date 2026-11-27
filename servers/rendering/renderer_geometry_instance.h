@@ -41,6 +41,15 @@ class RenderGeometryInstance {
 public:
 	virtual ~RenderGeometryInstance() {}
 
+	// GPU path for eligible instances (Forward+, docs/renderer/roadmap.md
+	// Phase 2). The scene cull reports the scenario whose arrays hold the
+	// instance when its camera draws may go to the GPU (0: they may not); the
+	// renderer sets gpu_drawn when its GPU path draws the instance, and camera
+	// culls then list it separately (RendererSceneRender::set_gpu_instance_view).
+	bool gpu_drawn = false;
+	uint32_t gpu_cull_slot = UINT32_MAX; // The renderer's slot for it, listed with it (a bit per slot on the GPU).
+	virtual void set_gpu_scenario(uint64_t p_scenario) {}
+
 	virtual void _mark_dirty() = 0;
 
 	virtual void set_skeleton(RID p_skeleton) = 0;
@@ -57,6 +66,7 @@ public:
 	virtual void set_transparency(float p_transparency) = 0;
 	virtual void set_use_baked_light(bool p_enable) = 0;
 	virtual void set_use_dynamic_gi(bool p_enable) = 0;
+	virtual void set_use_cluster_lod(bool p_enable) = 0;
 	virtual void set_use_lightmap(RID p_lightmap_instance, const Rect2 &p_lightmap_uv_scale, int p_lightmap_slice_index) = 0;
 	virtual void set_lightmap_capture(const Color *p_sh9) = 0;
 	virtual void set_instance_shader_uniforms_offset(int32_t p_offset) = 0;
@@ -127,6 +137,7 @@ public:
 
 		bool use_baked_light = false;
 		bool use_dynamic_gi = false;
+		bool use_cluster_lod = true;
 		bool cast_double_sided_shadows = false;
 		bool dirty_dependencies = false;
 
@@ -149,6 +160,7 @@ public:
 	virtual void set_transparency(float p_transparency) override;
 	virtual void set_use_baked_light(bool p_enable) override;
 	virtual void set_use_dynamic_gi(bool p_enable) override;
+	virtual void set_use_cluster_lod(bool p_enable) override;
 	virtual void set_instance_shader_uniforms_offset(int32_t p_offset) override;
 	virtual void set_cast_double_sided_shadows(bool p_enable) override;
 

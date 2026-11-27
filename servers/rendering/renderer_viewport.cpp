@@ -146,7 +146,17 @@ void RendererViewport::_configure_3d_render_buffers(Viewport *p_viewport) {
 			const float EPSILON = 0.0001;
 			float scaling_3d_scale = p_viewport->scaling_3d_scale;
 			RSE::ViewportScaling3DMode scaling_3d_mode = p_viewport->scaling_3d_mode;
-			bool upscaler_available = p_viewport->fsr_enabled || p_viewport->dlss_enabled;
+			// DLSS counts as available only when Streamline loaded and supports DLSS on
+			// this GPU. Otherwise the camera would be jittered for an upscaler that never
+			// runs, and the raw jittered frames would shake on screen.
+			bool upscaler_available = p_viewport->fsr_enabled;
+			if (scaling_3d_mode == RSE::VIEWPORT_SCALING_3D_MODE_DLSS) {
+#ifdef STREAMLINE_ENABLED
+				upscaler_available = p_viewport->dlss_enabled && StreamlineContext::get().slDLSSSetOptions != nullptr && StreamlineContext::get().streamline_capabilities.dlss_available;
+#else
+				upscaler_available = false;
+#endif
+			}
 			RSE::ViewportScaling3DType scaling_type = RSE::scaling_3d_mode_type(scaling_3d_mode);
 
 			if ((!upscaler_available || (scaling_type == RSE::VIEWPORT_SCALING_3D_TYPE_SPATIAL)) && scaling_3d_scale >= (1.0 - EPSILON) && scaling_3d_scale <= (1.0 + EPSILON)) {
@@ -1636,6 +1646,24 @@ float RendererViewport::viewport_get_measured_render_time_cpu(RID p_viewport) co
 	ERR_FAIL_NULL_V(viewport, 0);
 
 	return double(viewport->time_cpu_end - viewport->time_cpu_begin) / 1000.0;
+}
+
+Dictionary RendererViewport::viewport_get_ddgi_probe_data(RID p_viewport) {
+	Viewport *viewport = viewport_owner.get_or_null(p_viewport);
+	ERR_FAIL_NULL_V(viewport, Dictionary());
+	if (viewport->render_buffers.is_null()) {
+		return Dictionary();
+	}
+	return RSG::scene->ddgi_get_probe_data(viewport->render_buffers);
+}
+
+Dictionary RendererViewport::viewport_get_gpu_geometry_statistics(RID p_viewport) {
+	Viewport *viewport = viewport_owner.get_or_null(p_viewport);
+	ERR_FAIL_NULL_V(viewport, Dictionary());
+	if (viewport->render_buffers.is_null()) {
+		return Dictionary();
+	}
+	return RSG::scene->gpu_geometry_get_statistics(viewport->render_buffers);
 }
 
 float RendererViewport::viewport_get_measured_render_time_gpu(RID p_viewport) const {

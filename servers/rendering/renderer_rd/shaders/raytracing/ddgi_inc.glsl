@@ -15,11 +15,17 @@
 // the functions that read the DDGI resources. Requires oct_inc.glsl.
 
 #define DDGI_MAX_VOLUMES 8
+// Most fixed rays per probe (DDGIDataBlock counts.z); keep in sync with render_ddgi.cpp.
+#define DDGI_MAX_FIXED_RAYS 32
 
 #define DDGI_PROBE_NEW 0u // Never updated: skipped when sampling, updated first.
 #define DDGI_PROBE_ACTIVE 1u
 #define DDGI_PROBE_INACTIVE 2u // No surface nearby: traced with the fixed rays only.
 #define DDGI_PROBE_INSIDE 3u // Inside geometry: never sampled.
+// Brought into the volume by scrolling, not traced yet. Not sampled (it
+// still holds the atlas texels of the probe that scrolled out, from the far
+// side of the grid); the first update replaces them instead of blending.
+#define DDGI_PROBE_SCROLLED 4u
 
 #define DDGI_VOLUME_FLAG_RELOCATION 1
 #define DDGI_VOLUME_FLAG_CLASSIFICATION 2
@@ -42,7 +48,17 @@ struct DDGIProbe {
 	float urgency; // Scheduler credit; the probe is traced when it reaches 1.
 	float variability; // Moving average of the relative change per update.
 	uint last_update_frame;
-	float luminance; // Mean irradiance luminance after the last update.
+	float pending_change; // Signed relative change of the last update above the noise, not applied yet.
+	uint updates; // Updates since the probe was new or scrolled in (at most 255).
+	uint history_rays; // Fixed rays in its DDGIFixedHistory entry (0: none yet).
+	uint pad1;
+	uint pad2;
+	// Guided rays: xyz the mean direction of the light arriving at the probe
+	// (radiance weighted; its length is the mean resultant length, 0 to 1),
+	// w 1 once set. The trace and the blends of a frame use guide; the
+	// irradiance blend writes guide_next and the relocate pass commits it.
+	vec4 guide;
+	vec4 guide_next;
 };
 
 struct DDGIDataBlock {
@@ -54,8 +70,9 @@ struct DDGIDataBlock {
 	uvec4 counts; // x: volume count, y: rays per probe, z: fixed rays per probe, w: update capacity.
 	uvec4 atlas; // x: irradiance texels, y: distance texels, z: probes per atlas row, w: frame.
 	vec4 atlas_inv_size; // xy: irradiance atlas, zw: distance atlas.
-	vec4 schedule; // x: base update rate, y: total probes, z: max radiance per ray, w: unused.
+	vec4 schedule; // x: base update rate, y: total probes, z: max radiance per ray, w: bounce energy.
 	vec4 miss_color; // rgb: radiance of rays that miss when there is no sky, w: 1 = use the sky.
+	vec4 smoothing; // x: share of the gap the display irradiance closes per frame, y: 1 keeps the update budget full (adaptive budget).
 };
 
 vec3 ddgi_xform(vec4 rows[3], vec3 p) {
@@ -64,10 +81,6 @@ vec3 ddgi_xform(vec4 rows[3], vec3 p) {
 
 vec3 ddgi_xform_dir(vec4 rows[3], vec3 d) {
 	return vec3(dot(rows[0].xyz, d), dot(rows[1].xyz, d), dot(rows[2].xyz, d));
-}
-
-ivec3 ddgi_imod(ivec3 a, ivec3 n) {
-	return ((a % n) + n) % n;
 }
 
 // Logical probe coordinates (0..grid-1 from the volume's min corner) to the
@@ -83,7 +96,11 @@ uint ddgi_probe_index(DDGIVolume vol, ivec3 logical) {
 ivec3 ddgi_probe_logical(DDGIVolume vol, uint p_probe) {
 	int rel = int(p_probe) - vol.grid.w;
 	ivec3 s = ivec3(rel % vol.grid.x, (rel / vol.grid.x) % vol.grid.y, rel / (vol.grid.x * vol.grid.y));
-	return ddgi_imod(s - vol.scroll.xyz, vol.grid.xyz);
+	// Both are in 0..grid-1. Not ((a % n) + n) % n: GLSL leaves % undefined for
+	// negative operands, and NVIDIA computes it as unsigned (-15 % 29 = 1, not
+	// 14), which put scrolled probes at another probe's position.
+	ivec3 l = s - vol.scroll.xyz;
+	return l + ivec3(lessThan(l, ivec3(0))) * vol.grid.xyz;
 }
 
 vec3 ddgi_probe_local_position(DDGIVolume vol, ivec3 logical) {

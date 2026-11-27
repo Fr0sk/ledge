@@ -1,0 +1,37 @@
+# Project
+
+* [Forward+ shader variants and pipelines compiled only where used](/project/shader-permutations.md) - feature groups, per-shader skipped variants, pruned transparent precompiles, full-key pipeline maps: variants per material 28 to ~4, cold stall 146 to 95 s, warm 2.4 to 0.65 s, memory 353 to 84 MB
+
+* [Scene runtime optimization](/project/scene-runtime.md) - groups, children cache, transform propagation epoch, group storage, process prefetch: instancing and churn 10-11x faster at 100k nodes, API unchanged
+
+* [Unique array baseline and bulk-copy candidate](/project/unique-array-evaluation.md) - Windows correctness passes; 12-size boundary sweep finds small-copy regressions and blocks performance acceptance
+
+* [Core modernization phase-zero checkpoint](/project/core-modernization-audit.md) - baseline/branch, compatibility gates, benchmark tools, native-map direction and resumable phase plan
+
+* [Packed core containers and compatible hashing](/project/core-template-storage.md) - dropped 2026-11-15: packed storage and robin-hood indices made numeric hash tables slower and bigger; only the String-key byte hash was kept
+* [Core template migration benchmarks](/project/core-template-benchmarks.md) - 24-case controlled A/B: the dropped migration, and the kept String-key byte hash (integer tables unchanged, String hits 0.55-0.62x)
+* [Where engine CPU time goes in core code](/project/core-cpu-profiles.md) - sampling profiles of five workloads: hash lookups 3-16%, scene instancing 21% in RID checks, locks and refcounts plus 14% heap; the callers' patterns cost more than container internals
+
+* [Project overview](/project/overview.md) - what this fork is, its sources, branches and release flow
+* [Modern compact editor theme](/project/modern-compact-editor-theme.md) - neutral charcoal native theme with compact spacing and restrained interaction accents
+* [Native indirect foundation](/project/native-indirect-foundation.md) - existing GPU submission seam, sentinel defect and per-view culling constraints
+* [Forward+ material parameter tables](/project/material-parameter-tables.md) - one storage-buffer slot per material, shared uniform sets; unique_10k 8,776 draws to 11, render CPU 7.5-8.1 to 0.42-0.47 ms
+* [Native GPU geometry statistics](/project/gpu-geometry-statistics.md) - async per-viewport culling/CLOD/HZB counters, only while polled
+* [Native MultiMesh culling](/project/native-multimesh-culling.md) - opt-in GPU frustum tests, stable IDs, viewport-owned commands and fallback
+* [Cluster hierarchy cooker](/project/cluster-hierarchy-cooker.md) - source-index LOD trees, boundary locks, checked resource and complete reference cuts
+* [GPU cluster selection](/project/gpu-cluster-selection.md) - ancestor-veto cuts, projected-error/frustum selection and guarded native commands
+* [Two-pass MultiMesh occlusion](/project/multimesh-two-pass.md) - hidden-last-frame instances left out of the depth pre-pass; exact; street grid 7-12% faster, open valley 1-7% slower
+* [Cluster LOD skips repeat-batched elements](/project/clod-skipped-for-batched-elements.md) - shared meshes with same-shader materials batched since material tables, so no CLOD; fixed (G5): CLOD-eligible surfaces are not batched
+* [CLOD two-pass costs more than it saves](/project/clod-two-pass-zero-draws.md) - one indirect record per group in every pass, mostly empty; two_pass 27-32% slower than off in hzb_bench; fix: indirect count draws
+* [Adaptive variable rate shading](/project/adaptive-vrs.md) - GPU picks each tile's shading rate from the previous frame; main-viewport default; 2-5% on the valley, 3.6x on an expensive-shader floor, ~47 dB PSNR
+* [GPU occlusion for CPU render list meshes](/project/mesh-occlusion.md) - HZB-tested indirect draws for every opaque CPU-list mesh (lightmapped, skinned, fading...); exact images, 20 of 20 hidden meshes skipped
+* [Resident CLOD raster](/project/resident-clod-raster.md) - native storage, viewport commands, original vertex/material pipelines and conventional fallback
+* [Cluster scene import](/project/cluster-scene-import.md) - final-source cook/cache, shared meshes, unsupported fallback and optimized shadows
+* [Current-frame CLOD HZB](/project/current-frame-clod-hzb.md) - farthest-depth reduction, opaque-only rejection and conservative current-frame recovery
+* [Residency cut protocol](/project/residency-cut-protocol.md) - complete coarse fallback, evicted ancestors and GPU request feedback
+* [CLOD pages from disk](/project/clod-disk-paging.md) - checked page file, root-only memory, worker reads and dropped stale reads
+* [GPU voxel levels for the far field](/project/far-field-gpu-voxel-levels.md) - per-brick level selection in compute, indirect MultiMesh discs, exact CPU mirror
+* [Far directional cascades kept between frames](/project/directional-cascade-cache.md) - far cascades every 2nd/4th frame, staggered, reused while the slice fits the cached region; -1.1 to -1.5 ms in the valley
+* [Coarser mesh LODs for shadow casters](/project/shadow-lod-scale.md) - shadow passes use a 4x LOD threshold; -0.4 ms in the valley; grass draw order and frame timestamps tried without effect
+* [World wind and weather core](/project/world-wind.md) - WindServer gusts shared by foliage, cloth and bodies; Weather node, profiles, effects, borrowed scene values; weather sky and drifting clouds; rain, occlusion map, wet surfaces; ground haze and mist motes; lightning; synthesized sound; local wind zones
+* [Built-in level streamer](/project/level-streaming.md) - LevelStreamer3D/LevelStreamCell3D: Inspector cells, export-discovered scenes, threaded load and instantiation, bounded activation, readiness, persistent door state; exported acceptance 6/6 pass, streamed p99 equal to preloaded

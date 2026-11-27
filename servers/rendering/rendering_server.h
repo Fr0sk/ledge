@@ -244,6 +244,7 @@ public:
 	virtual String mesh_get_path(RID p_mesh) const = 0;
 
 	virtual void mesh_set_shadow_mesh(RID p_mesh, RID p_shadow_mesh) = 0;
+	virtual void mesh_set_cluster_data(RID p_mesh, const Array &p_data) = 0;
 
 	virtual void mesh_surface_remove(RID p_mesh, int p_surface) = 0;
 	virtual void mesh_clear(RID p_mesh) = 0;
@@ -297,6 +298,7 @@ public:
 	virtual void multimesh_instances_reset_physics_interpolation(RID p_multimesh) = 0;
 
 	virtual void multimesh_set_visible_instances(RID p_multimesh, int p_visible) = 0;
+	virtual void multimesh_set_distance_thinning(RID p_multimesh, float p_begin, float p_end) = 0;
 	virtual int multimesh_get_visible_instances(RID p_multimesh) const = 0;
 
 	/* SKELETON API */
@@ -533,6 +535,19 @@ public:
 	virtual RID occluder_create() = 0;
 	virtual void occluder_set_mesh(RID p_occluder, const PackedVector3Array &p_vertices, const PackedInt32Array &p_indices) = 0;
 
+	/* PLANAR REFLECTION API */
+
+	virtual RID planar_reflection_create() = 0;
+	virtual void planar_reflection_set_scenario(RID p_planar_reflection, RID p_scenario) = 0;
+	virtual void planar_reflection_set_transform(RID p_planar_reflection, const Transform3D &p_transform) = 0;
+	virtual void planar_reflection_set_size(RID p_planar_reflection, const Vector2 &p_size) = 0;
+	virtual void planar_reflection_set_layer_mask(RID p_planar_reflection, uint32_t p_layers) = 0;
+	virtual void planar_reflection_set_visible(RID p_planar_reflection, bool p_visible) = 0;
+	virtual void planar_reflection_set_intensity(RID p_planar_reflection, float p_intensity) = 0;
+	virtual void planar_reflection_set_thickness(RID p_planar_reflection, float p_thickness) = 0;
+	virtual void planar_reflection_set_normal_distortion(RID p_planar_reflection, float p_distortion) = 0;
+	virtual void planar_reflection_set_roughness_cutoff(RID p_planar_reflection, float p_roughness) = 0;
+
 	/* CAMERA API */
 
 	virtual RID camera_create() = 0;
@@ -629,6 +644,8 @@ public:
 	virtual void viewport_set_measure_render_time(RID p_viewport, bool p_enable) = 0;
 	virtual double viewport_get_measured_render_time_cpu(RID p_viewport) const = 0;
 	virtual double viewport_get_measured_render_time_gpu(RID p_viewport) const = 0;
+	virtual Dictionary viewport_get_ddgi_probe_data(RID p_viewport) = 0;
+	virtual Dictionary viewport_get_gpu_geometry_statistics(RID p_viewport) = 0;
 
 	virtual RID viewport_find_from_screen_attachment(DisplayServerEnums::WindowID p_id = DisplayServerEnums::MAIN_WINDOW_ID) const = 0;
 
@@ -705,6 +722,9 @@ public:
 	virtual void environment_set_pathtracing(RID p_env, bool p_enable, int p_debug_mode, int p_samples_per_pixel, int p_max_bounces, RSE::PathtracingDenoiser p_denoiser) = 0;
 	virtual void environment_set_ddgi(RID p_env, bool p_enable, int p_cascades, float p_probe_spacing, const Vector3i &p_probe_grid, float p_energy, float p_normal_bias, float p_view_bias, float p_hysteresis, bool p_probe_relocation, bool p_probe_classification, bool p_follow_camera, int p_debug_mode) = 0;
 	virtual void environment_set_ddgi_volume(RID p_env, bool p_node_volume, const Vector3 &p_center, const Vector3 &p_size) = 0;
+	virtual void environment_set_ddgi_bounce_energy(RID p_env, float p_energy) = 0;
+	virtual void environment_set_ddgi_realtime_updates(RID p_env, bool p_enable) = 0;
+	virtual void environment_set_ddgi_baked_data(RID p_env, int p_mode, const Dictionary &p_data) = 0;
 
 	virtual void environment_set_fog(RID p_env, bool p_enable, const Color &p_light_color, float p_light_energy, float p_sun_scatter, float p_density, float p_height, float p_height_density, float p_aerial_perspective, float p_sky_affect, RSE::EnvironmentFogMode p_mode = RSE::EnvironmentFogMode::ENV_FOG_MODE_EXPONENTIAL) = 0;
 	virtual void environment_set_fog_depth(RID p_env, float p_curve, float p_begin, float p_end) = 0;
@@ -740,6 +760,8 @@ public:
 	virtual void scenario_set_fallback_environment(RID p_scenario, RID p_environment) = 0;
 	virtual void scenario_set_camera_attributes(RID p_scenario, RID p_camera_attributes) = 0;
 	virtual void scenario_set_compositor(RID p_scenario, RID p_compositor) = 0;
+	// Size of the scenario's reflection probe atlas (not bound; DDGIVolume sets it).
+	virtual void scenario_set_reflection_atlas_size(RID p_scenario, int p_reflection_size, int p_reflection_count) = 0;
 
 	/* INSTANCING API */
 

@@ -91,6 +91,9 @@ private:
 		bool dirty;
 		bool initialize_needed;
 		bool embedded;
+		uint64_t requested_variants = 0; // Variants (below 64) handed out by version_get_shader(), for the statistics.
+		uint64_t skipped_variants = 0; // See version_set_skipped_variants().
+		uint64_t skipped_variants_built = 0; // Skipped variants compiled on demand since the last (re)initialization.
 	};
 
 	struct CompileData {
@@ -100,6 +103,11 @@ private:
 
 	// Vector will have the size of SHADER_STAGE_MAX and unused stages will have empty strings.
 	void _compile_variant(uint32_t p_variant, CompileData p_data);
+	void _compile_variant_now(uint32_t p_variant, CompileData p_data);
+	void _compile_skipped_variant(Version *p_version, uint32_t p_variant);
+	_FORCE_INLINE_ static bool _is_variant_skipped(const Version *p_version, uint32_t p_variant) {
+		return p_variant < 64 && (p_version->skipped_variants & (uint64_t(1) << p_variant));
+	}
 
 	void _initialize_version(Version *p_version);
 	void _clear_version(Version *p_version);
@@ -155,6 +163,23 @@ private:
 	static bool shader_cache_save_compressed_zstd;
 	static bool shader_cache_save_debug;
 	bool shader_cache_user_dir_valid = false;
+
+	// Compilation statistics per shader name, summed over all threads.
+	struct Stats {
+		uint32_t variants_compiled = 0;
+		uint32_t variants_from_cache = 0;
+		uint64_t spirv_usec = 0; // GLSL to SPIR-V.
+		uint64_t binary_usec = 0; // SPIR-V to the driver's shader container (DXIL on D3D12).
+		uint64_t create_usec = 0; // Driver shader objects from the container, compiled or cached.
+		uint64_t wait_usec = 0; // Time a caller blocked until a group was ready.
+		uint64_t cache_bytes_written = 0;
+		LocalVector<uint32_t> compiled_per_variant; // Versions that built each variant, compiled or from the cache.
+		LocalVector<uint32_t> requested_per_variant; // Versions that handed out each variant.
+	};
+	static inline Mutex stats_mutex;
+	static inline HashMap<String, Stats> stats;
+	void _add_stats(const Stats &p_stats);
+	void _count_variant(uint32_t p_variant, bool p_requested);
 	bool shader_cache_res_dir_valid = false;
 
 	enum StageType {
@@ -228,10 +253,25 @@ public:
 			return RID();
 		}
 
+		if (unlikely(_is_variant_skipped(version, p_variant) && !(version->skipped_variants_built & (uint64_t(1) << p_variant)) && group_enabled[group])) {
+			_compile_skipped_variant(version, p_variant);
+		}
+
+		if (p_variant < 64 && !(version->requested_variants & (uint64_t(1) << p_variant))) {
+			version->requested_variants |= uint64_t(1) << p_variant;
+			_count_variant(p_variant, true);
+		}
+
 		return version->variants[p_variant];
 	}
 
 	bool version_is_valid(RID p_version);
+
+	// Variants (below 64) this version is not expected to use. Its groups compile,
+	// cache and load without them; version_get_shader() compiles one on demand
+	// (on the calling thread, not cached) if it is requested anyway. Set it before
+	// version_set_code(); it is part of the cache file name.
+	void version_set_skipped_variants(RID p_version, uint64_t p_variants);
 
 	bool version_free(RID p_version);
 
@@ -262,6 +302,9 @@ public:
 	static void set_shader_cache_save_compressed(bool p_enable);
 	static void set_shader_cache_save_compressed_zstd(bool p_enable);
 	static void set_shader_cache_save_debug(bool p_enable);
+
+	// Prints the compilation statistics (with --verbose), heaviest shaders first.
+	static void print_stats();
 
 	static Vector<RD::ShaderStageSPIRVData> compile_stages(const Vector<String> &p_stage_sources, const Vector<uint64_t> &p_dynamic_buffers);
 	static PackedByteArray save_shader_cache_bytes(const LocalVector<int> &p_variants, const Vector<Vector<uint8_t>> &p_variant_data);

@@ -44,6 +44,8 @@
 #include "servers/xr/xr_interface.h"
 #endif
 
+#include <cmath>
+
 //#define DEBUG_CULL_TIME
 #ifdef DEBUG_CULL_TIME
 #include "core/os/os.h"
@@ -203,6 +205,98 @@ void RendererSceneCull::occluder_initialize(RID p_rid) {
 
 void RendererSceneCull::occluder_set_mesh(RID p_occluder, const PackedVector3Array &p_vertices, const PackedInt32Array &p_indices) {
 	RendererSceneOcclusionCull::get_singleton()->occluder_set_mesh(p_occluder, p_vertices, p_indices);
+}
+
+/* PLANAR REFLECTION API */
+
+RID RendererSceneCull::planar_reflection_allocate() {
+	return planar_reflection_owner.allocate_rid();
+}
+
+void RendererSceneCull::planar_reflection_initialize(RID p_planar_reflection) {
+	planar_reflection_owner.initialize_rid(p_planar_reflection);
+	PlanarReflection *pr = planar_reflection_owner.get_or_null(p_planar_reflection);
+	pr->self = p_planar_reflection;
+}
+
+void RendererSceneCull::_planar_reflection_update_scenario(PlanarReflection *p_planar_reflection) {
+	Scenario *scenario = scenario_owner.get_or_null(p_planar_reflection->scenario);
+	if (scenario) {
+		scenario->planar_reflections_dirty = true;
+	}
+}
+
+void RendererSceneCull::planar_reflection_set_scenario(RID p_planar_reflection, RID p_scenario) {
+	PlanarReflection *pr = planar_reflection_owner.get_or_null(p_planar_reflection);
+	ERR_FAIL_NULL(pr);
+	Scenario *old_scenario = scenario_owner.get_or_null(pr->scenario);
+	if (old_scenario) {
+		old_scenario->planar_reflections.erase(p_planar_reflection);
+		old_scenario->planar_reflections_dirty = true;
+	}
+	pr->scenario = RID();
+	Scenario *scenario = scenario_owner.get_or_null(p_scenario);
+	if (scenario) {
+		pr->scenario = p_scenario;
+		scenario->planar_reflections.insert(p_planar_reflection);
+		scenario->planar_reflections_dirty = true;
+	}
+}
+
+void RendererSceneCull::planar_reflection_set_transform(RID p_planar_reflection, const Transform3D &p_transform) {
+	PlanarReflection *pr = planar_reflection_owner.get_or_null(p_planar_reflection);
+	ERR_FAIL_NULL(pr);
+	pr->data.transform = p_transform;
+	_planar_reflection_update_scenario(pr);
+}
+
+void RendererSceneCull::planar_reflection_set_size(RID p_planar_reflection, const Vector2 &p_size) {
+	PlanarReflection *pr = planar_reflection_owner.get_or_null(p_planar_reflection);
+	ERR_FAIL_NULL(pr);
+	pr->data.size = p_size.maxf(0.0);
+	_planar_reflection_update_scenario(pr);
+}
+
+void RendererSceneCull::planar_reflection_set_layer_mask(RID p_planar_reflection, uint32_t p_layers) {
+	PlanarReflection *pr = planar_reflection_owner.get_or_null(p_planar_reflection);
+	ERR_FAIL_NULL(pr);
+	pr->data.layers = p_layers;
+	_planar_reflection_update_scenario(pr);
+}
+
+void RendererSceneCull::planar_reflection_set_visible(RID p_planar_reflection, bool p_visible) {
+	PlanarReflection *pr = planar_reflection_owner.get_or_null(p_planar_reflection);
+	ERR_FAIL_NULL(pr);
+	pr->visible = p_visible;
+	_planar_reflection_update_scenario(pr);
+}
+
+void RendererSceneCull::planar_reflection_set_intensity(RID p_planar_reflection, float p_intensity) {
+	PlanarReflection *pr = planar_reflection_owner.get_or_null(p_planar_reflection);
+	ERR_FAIL_NULL(pr);
+	pr->data.intensity = CLAMP(p_intensity, 0.0f, 1.0f);
+	_planar_reflection_update_scenario(pr);
+}
+
+void RendererSceneCull::planar_reflection_set_thickness(RID p_planar_reflection, float p_thickness) {
+	PlanarReflection *pr = planar_reflection_owner.get_or_null(p_planar_reflection);
+	ERR_FAIL_NULL(pr);
+	pr->data.thickness = MAX(p_thickness, 0.0f);
+	_planar_reflection_update_scenario(pr);
+}
+
+void RendererSceneCull::planar_reflection_set_normal_distortion(RID p_planar_reflection, float p_distortion) {
+	PlanarReflection *pr = planar_reflection_owner.get_or_null(p_planar_reflection);
+	ERR_FAIL_NULL(pr);
+	pr->data.normal_distortion = p_distortion;
+	_planar_reflection_update_scenario(pr);
+}
+
+void RendererSceneCull::planar_reflection_set_roughness_cutoff(RID p_planar_reflection, float p_roughness) {
+	PlanarReflection *pr = planar_reflection_owner.get_or_null(p_planar_reflection);
+	ERR_FAIL_NULL(pr);
+	pr->data.roughness_cutoff = CLAMP(p_roughness, 0.0f, 1.0f);
+	_planar_reflection_update_scenario(pr);
 }
 
 /* SCENARIO API */
@@ -673,6 +767,9 @@ void RendererSceneCull::instance_set_base(RID p_instance, RID p_base) {
 				if (reflection_probe->update_list.in_list()) {
 					reflection_probe_render_list.remove(&reflection_probe->update_list);
 				}
+				if (reflection_probe_capturing == reflection_probe) {
+					reflection_probe_capturing = nullptr;
+				}
 			} break;
 			case RSE::INSTANCE_DECAL: {
 				InstanceDecalData *decal = static_cast<InstanceDecalData *>(instance->base_data);
@@ -770,6 +867,7 @@ void RendererSceneCull::instance_set_base(RID p_instance, RID p_base) {
 				geom->geometry_instance->set_transparency(instance->transparency);
 				geom->geometry_instance->set_use_baked_light(instance->baked_light);
 				geom->geometry_instance->set_use_dynamic_gi(instance->dynamic_gi);
+				geom->geometry_instance->set_use_cluster_lod(instance->use_cluster_lod);
 				geom->geometry_instance->set_use_lightmap(RID(), instance->lightmap_uv_scale, instance->lightmap_slice_index);
 				geom->geometry_instance->set_instance_shader_uniforms_offset(instance->instance_uniforms.location());
 				geom->geometry_instance->set_cast_double_sided_shadows(instance->cast_shadows == RSE::SHADOW_CASTING_SETTING_DOUBLE_SIDED);
@@ -1035,7 +1133,9 @@ void RendererSceneCull::instance_set_transform(RID p_instance, const Transform3D
 
 #endif
 	instance->transform = p_transform;
-	_instance_queue_update(instance, true);
+	// The local AABB does not depend on the transform: no AABB update (a mesh
+	// storage lookup per moved instance).
+	_instance_queue_update(instance, false);
 }
 
 void RendererSceneCull::instance_attach_object_instance_id(RID p_instance, ObjectID p_id) {
@@ -1223,6 +1323,7 @@ void RendererSceneCull::instance_set_ignore_culling(RID p_instance, bool p_enabl
 			idata.flags &= ~InstanceData::FLAG_IGNORE_ALL_CULLING;
 		}
 	}
+	_update_instance_gpu_scenario(instance);
 }
 
 Vector<ObjectID> RendererSceneCull::instances_cull_aabb(const AABB &p_aabb, RID p_scenario) const {
@@ -1369,6 +1470,15 @@ void RendererSceneCull::instance_geometry_set_flag(RID p_instance, RSE::Instance
 				}
 			}
 		} break;
+		case RSE::INSTANCE_FLAG_USE_CLUSTER_LOD: {
+			instance->use_cluster_lod = p_enabled;
+
+			if ((1 << instance->base_type) & RSE::INSTANCE_GEOMETRY_MASK && instance->base_data) {
+				InstanceGeometryData *geom = static_cast<InstanceGeometryData *>(instance->base_data);
+				ERR_FAIL_NULL(geom->geometry_instance);
+				geom->geometry_instance->set_use_cluster_lod(p_enabled);
+			}
+		} break;
 		default: {
 		}
 	}
@@ -1395,6 +1505,7 @@ void RendererSceneCull::instance_geometry_set_cast_shadows_setting(RID p_instanc
 			idata.flags &= ~InstanceData::FLAG_CAST_SHADOWS_ONLY;
 		}
 	}
+	_update_instance_gpu_scenario(instance);
 
 	if ((1 << instance->base_type) & RSE::INSTANCE_GEOMETRY_MASK && instance->base_data) {
 		InstanceGeometryData *geom = static_cast<InstanceGeometryData *>(instance->base_data);
@@ -1574,6 +1685,24 @@ void RendererSceneCull::_update_instance_visibility_dependencies(Instance *p_ins
 			}
 		}
 	}
+	_update_instance_gpu_scenario(p_instance);
+}
+
+void RendererSceneCull::_update_instance_gpu_scenario(Instance *p_instance) const {
+	// Camera views may leave a mesh instance to the renderer's GPU path only
+	// when nothing but the frustum and layer tests decides whether it shows:
+	// no visibility range or parent, not shadows-only, not exempt from culling.
+	if (p_instance->base_type != RSE::INSTANCE_MESH || !p_instance->base_data) {
+		return;
+	}
+	InstanceGeometryData *geom = static_cast<InstanceGeometryData *>(p_instance->base_data);
+	if (!geom->geometry_instance) {
+		return;
+	}
+	const bool has_visibility_range = p_instance->visibility_range_begin > 0.0 || p_instance->visibility_range_end > 0.0;
+	const bool eligible = p_instance->scenario && p_instance->array_index != -1 && !has_visibility_range && !p_instance->visibility_parent &&
+			p_instance->cast_shadows != RSE::SHADOW_CASTING_SETTING_SHADOWS_ONLY && !p_instance->ignore_all_culling;
+	geom->geometry_instance->set_gpu_scenario(eligible ? p_instance->scenario->self.get_id() : 0);
 }
 
 void RendererSceneCull::instance_geometry_set_lightmap(RID p_instance, RID p_lightmap, const Rect2 &p_lightmap_uv_scale, int p_slice_index) {
@@ -1809,7 +1938,11 @@ void RendererSceneCull::_update_instance(Instance *p_instance) const {
 
 		if (motion_longest_axis < longest_axis * 2) {
 			//moved but not a lot, use motion aabb quantizing
-			float quantize_size = Math::pow(2.0, Math::ceil(Math::log(motion_longest_axis) / Math::log(2.0))) * 0.5; //one fifth
+			// 2^ceil(log2(motion)) / 2, from the exponent instead of two logs and a pow
+			// (motion > 0 here: it is at least the longest axis, and less than twice it).
+			int exponent;
+			const float mantissa = std::frexp(motion_longest_axis, &exponent);
+			const float quantize_size = std::ldexp(1.0f, mantissa == 0.5f ? exponent - 2 : exponent - 1);
 			bvh_aabb.quantize(quantize_size);
 		}
 	}
@@ -2016,6 +2149,7 @@ void RendererSceneCull::_unpair_instance(Instance *p_instance) {
 
 	//uninitialize
 	p_instance->array_index = -1;
+	_update_instance_gpu_scenario(p_instance);
 	if ((1 << p_instance->base_type) & RSE::INSTANCE_GEOMETRY_MASK) {
 		// Clear these now because the InstanceData containing the dirty flags is gone
 		InstanceGeometryData *geom = static_cast<InstanceGeometryData *>(p_instance->base_data);
@@ -2200,7 +2334,7 @@ void RendererSceneCull::_update_instance_lightmap_captures(Instance *p_instance)
 	geom->geometry_instance->set_lightmap_capture(p_instance->lightmap_sh.ptr());
 }
 
-void RendererSceneCull::_light_instance_setup_directional_shadow(int p_shadow_index, Instance *p_instance, const Transform3D p_cam_transform, const Projection &p_cam_projection, bool p_cam_orthogonal, bool p_cam_vaspect) {
+void RendererSceneCull::_light_instance_setup_directional_shadow(int p_shadow_index, Instance *p_instance, const Transform3D p_cam_transform, const Projection &p_cam_projection, bool p_cam_orthogonal, bool p_cam_vaspect, uint32_t p_visible_layers) {
 	// For later tight culling, the light culler needs to know the details of the directional light.
 	light_culler->prepare_directional_light_begin(p_instance, p_shadow_index);
 
@@ -2252,8 +2386,43 @@ void RendererSceneCull::_light_instance_setup_directional_shadow(int p_shadow_in
 	cull.shadows[p_shadow_index].light_instance = light->instance;
 	cull.shadows[p_shadow_index].caster_mask = RSG::light_storage->light_get_shadow_caster_mask(p_instance->base);
 
+	// Far cascade cache: the far cascades are rendered every few frames,
+	// staggered, with a margin around the camera's slice. In between, a
+	// cascade keeps its map and parameters while the current slice still fits
+	// inside the region the last render covered (from any viewport: the map
+	// only depends on that region). A light, atlas or layer change starts over.
+	const uint64_t cache_generation = scene_render->directional_shadow_cache_generation();
+	const int update_interval = GLOBAL_GET_CACHED(int, "rendering/lights_and_shadows/directional_shadow/far_cascade_update_interval");
+	int cascade_intervals[RendererSceneRender::MAX_DIRECTIONAL_LIGHT_CASCADES] = { 1, 1, 1, 1 };
+	if (cache_generation != 0 && update_interval > 1) {
+		if (splits == 4) {
+			cascade_intervals[2] = MAX(1, update_interval / 2);
+			cascade_intervals[3] = update_interval;
+		} else if (splits == 2) {
+			cascade_intervals[1] = MAX(1, update_interval / 2);
+		}
+	}
+	const uint64_t frame = RSG::rasterizer->get_frame_number();
+	uint32_t cache_hash = hash_murmur3_one_64(cache_generation);
+	cache_hash = hash_murmur3_one_64(RSG::light_storage->light_get_version(p_instance->base), cache_hash);
+	for (int axis = 0; axis < 3; axis++) {
+		cache_hash = hash_murmur3_one_real(light_transform.basis.rows[axis].x, cache_hash);
+		cache_hash = hash_murmur3_one_real(light_transform.basis.rows[axis].y, cache_hash);
+		cache_hash = hash_murmur3_one_real(light_transform.basis.rows[axis].z, cache_hash);
+	}
+	cache_hash = hash_murmur3_one_32(uint32_t(p_shadow_index), cache_hash);
+	cache_hash = hash_murmur3_one_32(uint32_t(splits), cache_hash);
+	cache_hash = hash_murmur3_one_32(p_visible_layers, cache_hash);
+	cache_hash = hash_murmur3_one_real(texture_size, cache_hash);
+	const uint64_t cache_key = hash_fmix32(cache_hash);
+
 	for (int i = 0; i < splits; i++) {
 		RENDER_TIMESTAMP("Cull DirectionalLight3D, Split " + itos(i));
+
+		const bool cacheable = cascade_intervals[i] > 1;
+		InstanceLightData::DirectionalCascadeCache &cache = light->directional_cascade_cache[i];
+		Cull::Shadow::Cascade &cascade = cull.shadows[p_shadow_index].cascades[i];
+		cascade.reused = false;
 
 		// setup a camera matrix for that range!
 		Projection camera_matrix;
@@ -2276,7 +2445,11 @@ void RendererSceneCull::_light_instance_setup_directional_shadow(int p_shadow_in
 		bool res = camera_matrix.get_endpoints(p_cam_transform, endpoints);
 		ERR_CONTINUE(!res);
 
-		light_culler->prepare_directional_light_cascade(p_shadow_index, i, receiver_frustum_planes, endpoints);
+		if (!cacheable) {
+			// Tighter caster culling fits only this frame's slice; a cached
+			// cascade must hold every caster of its whole region.
+			light_culler->prepare_directional_light_cascade(p_shadow_index, i, receiver_frustum_planes, endpoints);
+		}
 
 		// obtain the light frustum ranges (given endpoints)
 
@@ -2353,6 +2526,11 @@ void RendererSceneCull::_light_instance_setup_directional_shadow(int p_shadow_in
 
 			radius *= texture_size / (texture_size - 2.0); //add a texel by each side
 
+			// Cached cascades cover a margin around the slice, so the camera can
+			// move a little before they must be rendered again.
+			const real_t margin = cacheable ? radius * DIRECTIONAL_CASCADE_CACHE_MARGIN : 0.0;
+			radius += margin;
+
 			z_min_cam = z_vec.dot(center) - radius;
 
 			{
@@ -2368,6 +2546,31 @@ void RendererSceneCull::_light_instance_setup_directional_shadow(int p_shadow_in
 					x_min -= soft_shadow_expand;
 					y_min -= soft_shadow_expand;
 				}
+			}
+
+			if (cacheable) {
+				// Keep the cached cascade when this frame's slice (its casters'
+				// region and the receivers' depth) lies inside the cached one,
+				// a quarter margin in from its edges for the shadow filter.
+				const real_t inset = margin * 0.25;
+				const bool due = (frame + uint64_t(i)) % uint64_t(cascade_intervals[i]) == 0 || frame - cache.frame >= uint64_t(cascade_intervals[i]);
+				if (!due && cache.valid && cache.key == cache_key && x_min >= cache.x_min + inset && x_max <= cache.x_max - inset && y_min >= cache.y_min + inset && y_max <= cache.y_max - inset && z_min >= cache.z_min + inset && z_max <= cache.z_max - inset) {
+					cascade.projection = cache.projection;
+					cascade.transform = cache.transform;
+					cascade.zfar = cache.zfar;
+					cascade.split = cache.split;
+					cascade.shadow_texel_size = cache.shadow_texel_size;
+					cascade.bias_scale = cache.bias_scale;
+					cascade.range_begin = cache.range_begin;
+					cascade.uv_scale = cache.uv_scale;
+					cascade.reused = true;
+					continue;
+				}
+				x_min -= margin;
+				x_max += margin;
+				y_min -= margin;
+				y_max += margin;
+				z_min -= margin;
 			}
 
 			// This trick here is what stabilizes the shadow (make potential jaggies to not move)
@@ -2420,6 +2623,28 @@ void RendererSceneCull::_light_instance_setup_directional_shadow(int p_shadow_in
 			cull.shadows[p_shadow_index].cascades[i].bias_scale = (z_max - z_min_cam);
 			cull.shadows[p_shadow_index].cascades[i].range_begin = z_max - z_vec.dot(p_cam_transform.origin);
 			cull.shadows[p_shadow_index].cascades[i].uv_scale = uv_scale;
+		}
+
+		if (cacheable) {
+			cache.valid = true;
+			cache.key = cache_key;
+			cache.frame = frame;
+			cache.x_min = x_min;
+			cache.x_max = x_max;
+			cache.y_min = y_min;
+			cache.y_max = y_max;
+			cache.z_min = z_min;
+			cache.z_max = z_max;
+			cache.projection = cascade.projection;
+			cache.transform = cascade.transform;
+			cache.zfar = cascade.zfar;
+			cache.split = cascade.split;
+			cache.shadow_texel_size = cascade.shadow_texel_size;
+			cache.bias_scale = cascade.bias_scale;
+			cache.range_begin = cascade.range_begin;
+			cache.uv_scale = cascade.uv_scale;
+		} else {
+			cache.valid = false;
 		}
 	}
 }
@@ -2497,7 +2722,7 @@ bool RendererSceneCull::_light_instance_update_shadow(Instance *p_instance, cons
 							}
 						}
 
-						shadow_data.instances.push_back(static_cast<InstanceGeometryData *>(instance->base_data)->geometry_instance);
+						_push_shadow_caster(shadow_data, static_cast<InstanceGeometryData *>(instance->base_data)->geometry_instance);
 					}
 
 					RSG::mesh_storage->update_mesh_instances();
@@ -2580,7 +2805,7 @@ bool RendererSceneCull::_light_instance_update_shadow(Instance *p_instance, cons
 							}
 						}
 
-						shadow_data.instances.push_back(static_cast<InstanceGeometryData *>(instance->base_data)->geometry_instance);
+						_push_shadow_caster(shadow_data, static_cast<InstanceGeometryData *>(instance->base_data)->geometry_instance);
 					}
 
 					RSG::mesh_storage->update_mesh_instances();
@@ -2649,7 +2874,7 @@ bool RendererSceneCull::_light_instance_update_shadow(Instance *p_instance, cons
 						RSG::mesh_storage->mesh_instance_check_for_update(instance->mesh_instance);
 					}
 				}
-				shadow_data.instances.push_back(static_cast<InstanceGeometryData *>(instance->base_data)->geometry_instance);
+				_push_shadow_caster(shadow_data, static_cast<InstanceGeometryData *>(instance->base_data)->geometry_instance);
 			}
 
 			RSG::mesh_storage->update_mesh_instances();
@@ -2717,7 +2942,7 @@ bool RendererSceneCull::_light_instance_update_shadow(Instance *p_instance, cons
 					}
 				}
 
-				shadow_data.instances.push_back(static_cast<InstanceGeometryData *>(instance->base_data)->geometry_instance);
+				_push_shadow_caster(shadow_data, static_cast<InstanceGeometryData *>(instance->base_data)->geometry_instance);
 			}
 
 			RSG::mesh_storage->update_mesh_instances();
@@ -2832,8 +3057,353 @@ void RendererSceneCull::render_camera(const Ref<RenderSceneBuffers> &p_render_bu
 	// For now just cull on the first camera
 	RendererSceneOcclusionCull::get_singleton()->buffer_update(p_viewport, camera_data.main_transform, camera_data.main_projection, camera_data.is_orthogonal);
 
+	mirror_reflector = -1;
+	mirror_buffers.unref();
+	if (camera_data.view_count == 1 && !camera_data.is_orthogonal) {
+		_render_mirror(camera_data, p_render_buffers, environment, camera->attributes, camera->visible_layers, p_scenario, p_viewport, p_viewport_size, p_shadow_atlas, p_screen_mesh_lod_threshold, p_window_output_max_value);
+	}
+
 	_render_scene(&camera_data, p_render_buffers, environment, camera->attributes, compositor, camera->visible_layers, p_scenario, p_viewport, p_shadow_atlas, RID(), -1, p_screen_mesh_lod_threshold, p_window_output_max_value, true, r_render_info);
+
+	// Only this frame's render holds the mirror's buffers (they are freed after the views).
+	mirror_reflector = -1;
+	mirror_buffers.unref();
+	for (RendererSceneRender::RenderPlanarReflection &r : planar_reflection_render_list) {
+		r.mirror_buffers.unref();
+	}
 #endif
+}
+
+void RendererSceneCull::_update_planar_reflection_data(Scenario *p_scenario) {
+	if (!p_scenario->planar_reflections_dirty) {
+		return;
+	}
+	p_scenario->planar_reflection_data.clear();
+	for (const RID &rid : p_scenario->planar_reflections) {
+		const PlanarReflection *pr = planar_reflection_owner.get_or_null(rid);
+		if (pr && pr->visible && pr->data.size.x > 0.0 && pr->data.size.y > 0.0) {
+			p_scenario->planar_reflection_data.push_back(pr->data);
+		}
+	}
+	p_scenario->planar_reflections_dirty = false;
+}
+
+// The fraction of the screen a reflector's rectangle covers (clipped to the view
+// frustum), and the middle of that part in NDC.
+// How much of a planar reflector to show at this camera distance
+// (rendering/global_illumination/reflections/planar_max_distance): 1 up to 80% of
+// the distance, fading to 0 at it (the probes take over). The distance is to the
+// reflector's nearest point, so a large floor counts as near while one stands on it.
+static float _planar_distance_fade(const RendererSceneRender::RenderPlanarReflection &p_reflector, const Vector3 &p_camera) {
+	float max_distance = GLOBAL_GET_CACHED(float, "rendering/global_illumination/reflections/planar_max_distance");
+	if (max_distance <= 0.0) {
+		return 1.0;
+	}
+	const Basis &b = p_reflector.transform.basis;
+	Vector3 u = b.get_column(0).normalized();
+	Vector3 v = b.get_column(2).normalized();
+	Vector3 to_camera = p_camera - p_reflector.transform.origin;
+	Vector3 nearest = p_reflector.transform.origin + u * CLAMP(to_camera.dot(u), -p_reflector.size.x * 0.5f, p_reflector.size.x * 0.5f) + v * CLAMP(to_camera.dot(v), -p_reflector.size.y * 0.5f, p_reflector.size.y * 0.5f);
+	float distance = p_camera.distance_to(nearest);
+	return CLAMP((max_distance - distance) / (0.2f * max_distance), 0.0f, 1.0f);
+}
+
+static float _planar_screen_coverage(const Projection &p_view_projection, const Vector3 *p_corners, Vector2 &r_centroid) {
+	// Sutherland-Hodgman in clip space against w +- x >= 0, w +- y >= 0 and the near
+	// plane (w + z >= 0): 4 corners gain at most one vertex per plane.
+	Vector4 polygon[10];
+	Vector4 clipped[10];
+	int count = 4;
+	for (int c = 0; c < 4; c++) {
+		polygon[c] = p_view_projection.xform(Vector4(p_corners[c].x, p_corners[c].y, p_corners[c].z, 1.0));
+	}
+	static const Vector4 planes[5] = { Vector4(-1, 0, 0, 1), Vector4(1, 0, 0, 1), Vector4(0, -1, 0, 1), Vector4(0, 1, 0, 1), Vector4(0, 0, 1, 1) };
+	for (const Vector4 &plane : planes) {
+		int out = 0;
+		for (int i = 0; i < count; i++) {
+			const Vector4 &a = polygon[i];
+			const Vector4 &b = polygon[(i + 1) % count];
+			float da = plane.dot(a);
+			float db = plane.dot(b);
+			if (da >= 0.0) {
+				clipped[out++] = a;
+			}
+			if ((da >= 0.0) != (db >= 0.0)) {
+				clipped[out++] = a + (b - a) * (da / (da - db));
+			}
+		}
+		count = out;
+		if (count < 3) {
+			return 0.0;
+		}
+		for (int i = 0; i < count; i++) {
+			polygon[i] = clipped[i];
+		}
+	}
+	float area = 0.0;
+	Vector2 sum;
+	for (int i = 0; i < count; i++) {
+		const Vector4 &a = polygon[i];
+		const Vector4 &b = polygon[(i + 1) % count];
+		Vector2 pa(a.x / a.w, a.y / a.w);
+		Vector2 pb(b.x / b.w, b.y / b.w);
+		area += pa.cross(pb);
+		sum += pa;
+	}
+	r_centroid = sum / float(count);
+	return Math::abs(area) * 0.5 / 4.0; // The screen spans 2 x 2 in NDC.
+}
+
+void RendererSceneCull::_render_mirror(const RendererSceneRender::CameraData &p_camera_data, const Ref<RenderSceneBuffers> &p_render_buffers, RID p_environment, RID p_camera_attributes, uint32_t p_visible_layers, RID p_scenario, RID p_viewport, Size2 p_viewport_size, RID p_shadow_atlas, float p_screen_mesh_lod_threshold, float p_window_output_max_value) {
+	Scenario *scenario = scenario_owner.get_or_null(p_scenario);
+	ERR_FAIL_NULL(scenario);
+	const uint64_t frame = RSG::rasterizer->get_frame_number();
+
+	// Buffers of views that stopped rendering (or stopped needing a mirror) are freed after a while.
+	for (KeyValue<RID, MirrorView> &kv : mirror_views) {
+		if (frame - kv.value.last_frame > 120 && kv.value.render_buffers.is_valid()) {
+			kv.value.render_buffers.unref();
+			RSG::texture_storage->render_target_free(kv.value.render_target);
+			kv.value.render_target = RID();
+			kv.value.size = Size2i();
+		}
+	}
+
+	int mode = GLOBAL_GET_CACHED(int, "rendering/global_illumination/reflections/planar_mirror_render");
+	if (mode == 0 || scenario->planar_reflections.is_empty() || !GLOBAL_GET_CACHED(bool, "rendering/global_illumination/reflections/planar_enabled") || OS::get_singleton()->get_current_rendering_method() != "forward_plus") {
+		return;
+	}
+	_update_planar_reflection_data(scenario);
+
+	// The reflector that needs the pass most: the part of the screen it covers, times
+	// how much of what it reflects is off screen (see below).
+	const Transform3D &cam = p_camera_data.main_transform;
+	const Transform3D inv_cam = cam.affine_inverse();
+	const Projection view_projection = p_camera_data.main_projection * Projection(inv_cam);
+	const Projection inv_view_projection = view_projection.inverse();
+	Vector<Plane> frustum = p_camera_data.main_projection.get_projection_planes(cam);
+	// Updated for this camera just before (render_camera()).
+	const RendererSceneOcclusionCull::HZBuffer *occlusion_buffer = RendererSceneOcclusionCull::get_singleton()->buffer_get_ptr(p_viewport);
+	MirrorView &mv = mirror_views[p_viewport];
+	// Upright reflectors (mirrors) come first: they reflect what is behind the camera,
+	// which only the pass can show, while a floor's projection has most of what it
+	// reflects. A floor near the camera covered more of the screen and took the pass,
+	// and the mirror in view turned soft and smeared. Floors get it when no mirror
+	// covers at least MIN_MIRROR_COVERAGE of the screen.
+	const float MIN_MIRROR_COVERAGE = 0.005;
+	int best = -1;
+	float best_score = 0.0;
+	int best_upright = -1;
+	float best_upright_score = 0.0;
+	for (uint32_t i = 0; i < scenario->planar_reflection_data.size(); i++) {
+		const RendererSceneRender::RenderPlanarReflection &r = scenario->planar_reflection_data[i];
+		if (!(r.layers & p_visible_layers) || r.intensity <= 0.0 || _planar_distance_fade(r, cam.origin) <= 0.0) {
+			continue;
+		}
+		const Basis &b = r.transform.basis;
+		Vector3 normal = b.get_column(1).normalized();
+		if (mode == 1 && Math::abs(normal.y) >= 0.7) {
+			continue; // Floors and water: the screen-space pass sees most of what they reflect.
+		}
+		Vector3 to_camera = cam.origin - r.transform.origin;
+		float side = normal.dot(to_camera);
+		if (side <= 0.01) {
+			continue; // Seen from behind.
+		}
+		Vector3 axis_u = b.get_column(0).normalized();
+		Vector3 axis_v = b.get_column(2).normalized();
+		Vector3 hu = axis_u * (r.size.x * 0.5);
+		Vector3 hv = axis_v * (r.size.y * 0.5);
+		Vector3 corners[4] = { r.transform.origin - hu - hv, r.transform.origin + hu - hv, r.transform.origin + hu + hv, r.transform.origin - hu + hv };
+		bool culled = false;
+		for (const Plane &plane : frustum) {
+			bool all_outside = true;
+			for (int c = 0; c < 4; c++) {
+				if (!plane.is_point_over(corners[c])) {
+					all_outside = false;
+					break;
+				}
+			}
+			if (all_outside) {
+				culled = true;
+				break;
+			}
+		}
+		if (culled) {
+			continue;
+		}
+		// Behind walls (only when the scene has occluders: the frustum test alone
+		// takes mirrors in other rooms).
+		if (occlusion_buffer) {
+			AABB box(corners[0], Vector3());
+			for (int c = 1; c < 4; c++) {
+				box.expand_to(corners[c]);
+			}
+			box = box.grow(0.01);
+			InstanceBounds bounds(box);
+			uint64_t timeout = 0;
+			if (occlusion_buffer->is_occluded(bounds.bounds, cam.origin, inv_cam, p_camera_data.main_projection, p_camera_data.main_projection.get_z_near(), false, timeout)) {
+				continue;
+			}
+		}
+		// The part of the screen it covers (area and distance alone made a large floor
+		// win over a mirror filling the view: the floor's nearest point is close).
+		Vector2 centroid;
+		float coverage = _planar_screen_coverage(view_projection, corners, centroid);
+		if (coverage <= 0.0) {
+			continue;
+		}
+		// How much of what it reflects is off screen: the reflected ray of a view ray
+		// v turns by 2 acos(|v.n|) from it, so a mirror seen face on reflects what is
+		// behind the camera (all of it off screen), a floor seen at a grazing angle
+		// mostly what is on screen (the projection has it; the pass adds hidden
+		// sides). v goes through the middle of the covered part of the screen.
+		Vector3 through = inv_view_projection.xform(Vector3(centroid.x, centroid.y, 0.0));
+		Vector3 view_ray = (through - cam.origin).normalized();
+		float facing = view_ray.dot(normal);
+		float score = coverage * (0.2 + 0.8 * facing * facing);
+		// Last frame's choice keeps the pass unless another needs it clearly more:
+		// switching changes both reflectors' look.
+		if (normal.is_equal_approx(mv.last_normal) && r.transform.origin.is_equal_approx(mv.last_origin)) {
+			score *= 1.5;
+		}
+		if (score > best_score) {
+			best_score = score;
+			best = i;
+		}
+		if (Math::abs(normal.y) < 0.7 && coverage >= MIN_MIRROR_COVERAGE && score > best_upright_score) {
+			best_upright_score = score;
+			best_upright = i;
+		}
+	}
+	if (best_upright >= 0) {
+		best = best_upright;
+	}
+	if (best < 0) {
+		return;
+	}
+
+	const RendererSceneRender::RenderPlanarReflection &r = scenario->planar_reflection_data[best];
+	Vector3 normal = r.transform.basis.get_column(1).normalized();
+	float d = normal.dot(r.transform.origin);
+	// Reflection across the plane: I - 2 n n^T, then 2 d n.
+	Basis reflection(Vector3(1, 0, 0) - 2.0 * normal.x * normal, Vector3(0, 1, 0) - 2.0 * normal.y * normal, Vector3(0, 0, 1) - 2.0 * normal.z * normal);
+	Transform3D mirror_transform = Transform3D(reflection, 2.0 * d * normal) * cam;
+
+	mv.last_frame = frame;
+	mv.last_normal = normal;
+	mv.last_origin = r.transform.origin;
+
+	// The part of the screen the reflector covers (NDC), a little larger for
+	// normal distortion and blur. Corners behind or at the camera: all of it.
+	Vector2 ndc_min(-1, -1);
+	Vector2 ndc_max(1, 1);
+	{
+		Vector3 axis_u = r.transform.basis.get_column(0).normalized() * (r.size.x * 0.5);
+		Vector3 axis_v = r.transform.basis.get_column(2).normalized() * (r.size.y * 0.5);
+		Vector2 lo(1e20, 1e20);
+		Vector2 hi(-1e20, -1e20);
+		bool all_in_front = true;
+		for (int c = 0; c < 4; c++) {
+			Vector3 corner = r.transform.origin + ((c & 1) ? axis_u : -axis_u) + ((c & 2) ? axis_v : -axis_v);
+			Vector4 clip = view_projection.xform(Vector4(corner.x, corner.y, corner.z, 1.0));
+			if (clip.w < p_camera_data.main_projection.get_z_near() * 1.01) {
+				all_in_front = false;
+				break;
+			}
+			Vector2 ndc(clip.x / clip.w, clip.y / clip.w);
+			lo = lo.min(ndc);
+			hi = hi.max(ndc);
+		}
+		if (all_in_front) {
+			ndc_min = (lo - Vector2(0.04, 0.04)).max(Vector2(-1, -1));
+			ndc_max = (hi + Vector2(0.04, 0.04)).min(Vector2(1, 1));
+		}
+	}
+	// Rendered size in eighths of the screen, rounded up; shrinks after 30 frames.
+	Vector2i wanted(CLAMP(int(Math::ceil((ndc_max.x - ndc_min.x) * 4.0)), 1, 8), CLAMP(int(Math::ceil((ndc_max.y - ndc_min.y) * 4.0)), 1, 8));
+	if (wanted.x > mv.eighths.x || wanted.y > mv.eighths.y) {
+		mv.eighths = mv.eighths.max(wanted);
+		mv.shrink_frames = 0;
+	} else if (wanted != mv.eighths && ++mv.shrink_frames > 30) {
+		mv.eighths = wanted;
+		mv.shrink_frames = 0;
+	}
+	// Grow the rectangle around its center to that size, kept on screen where possible.
+	Vector2 extent = Vector2(mv.eighths) * 0.25;
+	Vector2 center = (ndc_min + ndc_max) * 0.5;
+	center = center.clamp(Vector2(-1, -1) + extent * 0.5, Vector2(1, 1) - extent * 0.5);
+	ndc_min = center - extent * 0.5;
+	ndc_max = center + extent * 0.5;
+
+	// Crop the projection to that rectangle (clip x' = sx x + tx w, same for y).
+	Projection crop;
+	crop.columns[0][0] = 2.0 / extent.x;
+	crop.columns[3][0] = -(ndc_min.x + ndc_max.x) / extent.x;
+	crop.columns[1][1] = 2.0 / extent.y;
+	crop.columns[3][1] = -(ndc_min.y + ndc_max.y) / extent.y;
+
+	float scale = CLAMP(GLOBAL_GET_CACHED(float, "rendering/global_illumination/reflections/planar_mirror_scale"), 0.25f, 1.0f);
+	Size2i size = Size2i(MAX(int(p_viewport_size.x * scale * mv.eighths.x / 8.0), 16), MAX(int(p_viewport_size.y * scale * mv.eighths.y / 8.0), 16));
+
+	// The pass has no anti-aliasing of its own and is rendered at lower resolution, so
+	// its edges were stair-stepped. It is shifted by a sub-pixel amount every frame
+	// (Halton 2, 3 over 16 frames, as TAA does): the planar temporal pass accumulates
+	// it into smooth edges.
+	uint32_t phase = uint32_t(frame % 16);
+	Vector2 jitter = Vector2(get_halton_value(phase, 2), get_halton_value(phase, 3)) / Vector2(size);
+
+	RendererSceneRender::CameraData mirror_camera;
+	// The view's projection, cropped: the mirror's pixels see the reflection at
+	// their own screen position.
+	mirror_camera.set_camera(mirror_transform, crop * p_camera_data.main_projection, false, p_camera_data.vaspect, jitter, float(phase), p_camera_data.visible_layers);
+	mirror_camera.mirror_pass = true;
+	mirror_camera.cull_projection = p_camera_data.main_projection;
+	// Slightly in front of the plane: the reflecting surface itself isn't drawn.
+	mirror_camera.clip_plane = Plane(normal, d + MAX(r.thickness * 0.2f, 0.005f));
+
+	if (mv.render_buffers.is_null()) {
+		mv.render_buffers = RSG::scene->render_buffers_create();
+		mv.render_target = RSG::texture_storage->render_target_create();
+		mv.size = Size2i();
+	}
+	if (mv.size != size) {
+		mv.size = size;
+		RSG::texture_storage->render_target_set_size(mv.render_target, size.x, size.y, 1);
+		RenderSceneBuffersConfiguration rb_config;
+		rb_config.set_render_target(mv.render_target);
+		rb_config.set_internal_size(size);
+		rb_config.set_target_size(size);
+		rb_config.set_view_count(1);
+		rb_config.set_scaling_3d_mode(RSE::VIEWPORT_SCALING_3D_MODE_OFF);
+		rb_config.set_msaa_3d(RSE::VIEWPORT_MSAA_DISABLED);
+		rb_config.set_screen_space_aa(RSE::VIEWPORT_SCREEN_SPACE_AA_DISABLED);
+		rb_config.set_texture_mipmap_bias(std::log2(scale));
+		rb_config.set_use_taa(false);
+		mv.render_buffers->configure(&rb_config);
+	}
+	mv.render_buffers->set_gi_source(p_render_buffers);
+
+	RENDER_TIMESTAMP("> Render Planar Mirror");
+	_render_scene(&mirror_camera, mv.render_buffers, p_environment, p_camera_attributes, RID(), p_visible_layers, p_scenario, p_viewport, p_shadow_atlas, RID(), -1, p_screen_mesh_lod_threshold, p_window_output_max_value, true, nullptr);
+	RENDER_TIMESTAMP("< Render Planar Mirror");
+
+	mirror_reflector = best;
+	mirror_buffers = mv.render_buffers;
+	// Screen UV of the effect shaders: x right, y down.
+	mirror_uv_rect = Rect2(ndc_min.x * 0.5 + 0.5, 0.5 - ndc_max.y * 0.5, extent.x * 0.5, extent.y * 0.5);
+}
+
+void RendererSceneCull::free_mirror_views() {
+	mirror_buffers.unref();
+	planar_reflection_render_list.clear();
+	for (KeyValue<RID, MirrorView> &kv : mirror_views) {
+		kv.value.render_buffers.unref();
+		if (kv.value.render_target.is_valid()) {
+			RSG::texture_storage->render_target_free(kv.value.render_target);
+		}
+	}
+	mirror_views.clear();
 }
 
 void RendererSceneCull::_visibility_cull_threaded(uint32_t p_thread, VisibilityCullData *cull_data) {
@@ -3001,7 +3571,7 @@ void RendererSceneCull::_scene_cull(CullData &cull_data, InstanceCullResult &cul
 					}
 
 				} else if (base_type == RSE::INSTANCE_REFLECTION_PROBE) {
-					if (cull_data.render_reflection_probe != idata.instance) {
+					if (cull_data.reflection_probes_enabled && cull_data.render_reflection_probe != idata.instance) {
 						//avoid entering The Matrix
 
 						if ((idata.flags & InstanceData::FLAG_REFLECTION_PROBE_DIRTY) || RSG::light_storage->reflection_probe_instance_needs_redraw(RID::from_uint64(idata.instance_data_rid))) {
@@ -3276,7 +3846,10 @@ void RendererSceneCull::_scene_cull(CullData &cull_data, InstanceCullResult &cul
 						}
 
 						ERR_FAIL_NULL(geom->geometry_instance);
+						// Locked: the renderer may mark the instance dirty.
+						cull_data.cull->lock.lock();
 						geom->geometry_instance->pair_voxel_gi_instances(instance_pair_buffer, idx);
+						cull_data.cull->lock.unlock();
 
 						idata.flags &= ~InstanceData::FLAG_GEOM_VOXEL_GI_DIRTY;
 					}
@@ -3296,22 +3869,40 @@ void RendererSceneCull::_scene_cull(CullData &cull_data, InstanceCullResult &cul
 					}
 
 					if (keep) {
-						cull_result.geometry_instances.push_back(idata.instance_geometry);
+						if (cull_data.gpu_split && idata.instance_geometry->gpu_drawn) {
+							cull_result.gpu_geometry_instances.push_back(idata.instance_geometry);
+							cull_result.gpu_slots.push_back(idata.instance_geometry->gpu_cull_slot);
+						} else {
+							cull_result.geometry_instances.push_back(idata.instance_geometry);
+						}
 					}
 				}
 			}
 
 			for (uint32_t j = 0; j < cull_data.cull->shadow_count; j++) {
 				for (uint32_t k = 0; k < cull_data.cull->shadows[j].cascade_count; k++) {
+					if (cull_data.cull->shadows[j].cascades[k].reused) {
+						continue; // Kept from an earlier frame.
+					}
+					// The cascade frustum first: it is cheap and rejects most
+					// instances, so few reach the light culler's planes.
+					if (!IN_FRUSTUM(cull_data.cull->shadows[j].cascades[k].frustum)) {
+						continue;
+					}
 					if (!light_culler->cull_directional_light(cull_data.scenario->instance_aabbs[i], j, k)) { // pass the cascade index
 						continue;
 					}
-					if (IN_FRUSTUM(cull_data.cull->shadows[j].cascades[k].frustum) && VIS_CHECK) {
+					if (VIS_CHECK) {
 						uint32_t base_type = idata.flags & InstanceData::FLAG_BASE_TYPE_MASK;
 
 						const bool is_inactive_particle = (base_type == RSE::INSTANCE_PARTICLES) && RSG::particles_storage->particles_is_inactive(idata.base_rid);
 						if (((1 << base_type) & RSE::INSTANCE_GEOMETRY_MASK) && idata.flags & InstanceData::FLAG_CAST_SHADOWS && (LAYER_CHECK & cull_data.cull->shadows[j].caster_mask) && !is_inactive_particle) {
-							cull_result.directional_shadows[j].cascade_geometry_instances[k].push_back(idata.instance_geometry);
+							if (cull_data.gpu_split && idata.instance_geometry->gpu_drawn) {
+								cull_result.directional_shadows[j].cascade_gpu_instances[k].push_back(idata.instance_geometry);
+								cull_result.directional_shadows[j].cascade_gpu_slots[k].push_back(idata.instance_geometry->gpu_cull_slot);
+							} else {
+								cull_result.directional_shadows[j].cascade_geometry_instances[k].push_back(idata.instance_geometry);
+							}
 							mesh_visible = true;
 						}
 					}
@@ -3405,8 +3996,18 @@ void RendererSceneCull::_scene_particles_set_view_axis(RID p_particles, const Ve
 void RendererSceneCull::_render_scene(const RendererSceneRender::CameraData *p_camera_data, const Ref<RenderSceneBuffers> &p_render_buffers, RID p_environment, RID p_force_camera_attributes, RID p_compositor, uint32_t p_visible_layers, RID p_scenario, RID p_viewport, RID p_shadow_atlas, RID p_reflection_probe, int p_reflection_probe_pass, float p_screen_mesh_lod_threshold, float p_window_output_max_value, bool p_using_shadows, RenderingServerTypes::RenderInfo *r_render_info) {
 	Instance *render_reflection_probe = instance_owner.get_or_null(p_reflection_probe); //if null, not rendering to it
 
+	// A mirror pass's camera is reflected (negative determinant). The light culler
+	// and the shadow cascades build planes from the frustum's corners by winding:
+	// give them the same frustum (symmetric in x) with a proper rotation.
+	Transform3D frustum_transform = p_camera_data->main_transform;
+	if (frustum_transform.basis.determinant() < 0) {
+		frustum_transform.basis = frustum_transform.basis * Basis::from_scale(Vector3(-1, 1, 1));
+	}
+
 	// Prepare the light - camera volume culling system.
-	light_culler->prepare_camera(p_camera_data->main_transform, p_camera_data->main_projection);
+	// Shadows and light culling use the whole view's projection (a mirror pass's is cropped).
+	const Projection &shadow_projection = p_camera_data->mirror_pass ? p_camera_data->cull_projection : p_camera_data->main_projection;
+	light_culler->prepare_camera(frustum_transform, shadow_projection);
 
 	Scenario *scenario = scenario_owner.get_or_null(p_scenario);
 	Vector3 camera_position = p_camera_data->main_transform.origin;
@@ -3420,6 +4021,9 @@ void RendererSceneCull::_render_scene(const RendererSceneRender::CameraData *p_c
 	if (p_reflection_probe.is_null()) {
 		//no rendering code here, this is only to set up what needs to be done, request regions, etc.
 		scene_render->sdfgi_update(p_render_buffers, p_environment, camera_position); //update conditions for SDFGI (whether its used or not)
+		if (!p_camera_data->mirror_pass) {
+			reflection_probe_camera_position = camera_position; // Update priority of budgeted reflection probe updates.
+		}
 	}
 
 	RENDER_TIMESTAMP("Update Visibility Dependencies");
@@ -3458,12 +4062,26 @@ void RendererSceneCull::_render_scene(const RendererSceneRender::CameraData *p_c
 	/* STEP 2 - CULL */
 
 	Vector<Plane> planes = p_camera_data->main_projection.get_projection_planes(p_camera_data->main_transform);
+	if (p_camera_data->mirror_pass) {
+		// What lies behind the mirror is clipped in the shaders anyway: don't
+		// draw it at all (the frustum's planes point outward).
+		planes.push_back(-p_camera_data->clip_plane);
+		// What lies wholly farther behind the mirror than planar_mirror_max_distance
+		// isn't drawn (the background shows there): objects that reach closer stay,
+		// so large walls and terrain don't leave holes.
+		float max_distance = GLOBAL_GET_CACHED(float, "rendering/global_illumination/reflections/planar_mirror_max_distance");
+		if (max_distance > 0.0) {
+			planes.push_back(Plane(p_camera_data->clip_plane.normal, p_camera_data->clip_plane.d + max_distance));
+		}
+	}
 	cull.frustum = Frustum(planes);
 
 	// RT: build wider AABB cull volume for TLAS and light gathering.
-	// DDGI traces probe rays against the same TLAS, so it needs the wider set too.
+	// DDGI traces probe rays against the same TLAS, so it needs the wider set
+	// too (unless it only samples baked probes).
 	cull.rt_enabled = p_environment.is_valid() &&
-			(scene_render->environment_get_pathtracing_enabled(p_environment) || scene_render->environment_get_ddgi_enabled(p_environment));
+			(scene_render->environment_get_pathtracing_enabled(p_environment) ||
+					(scene_render->environment_get_ddgi_enabled(p_environment) && !scene_render->environment_get_ddgi_baked_only(p_environment)));
 	if (cull.rt_enabled) {
 		float z_far = p_camera_data->main_projection.get_z_far();
 		Vector3 cam_origin = p_camera_data->main_transform.origin;
@@ -3502,7 +4120,7 @@ void RendererSceneCull::_render_scene(const RendererSceneRender::CameraData *p_c
 		RSG::light_storage->set_directional_shadow_count(lights_with_shadow.size());
 
 		for (int i = 0; i < lights_with_shadow.size(); i++) {
-			_light_instance_setup_directional_shadow(i, lights_with_shadow[i], p_camera_data->main_transform, p_camera_data->main_projection, p_camera_data->is_orthogonal, p_camera_data->vaspect);
+			_light_instance_setup_directional_shadow(i, lights_with_shadow[i], frustum_transform, shadow_projection, p_camera_data->is_orthogonal, p_camera_data->vaspect, p_visible_layers);
 		}
 	}
 
@@ -3532,6 +4150,8 @@ void RendererSceneCull::_render_scene(const RendererSceneRender::CameraData *p_c
 	}
 
 	scene_cull_result.clear();
+	const bool gpu_split = scene_render->gpu_instances_begin_cull();
+	gpu_split_active = gpu_split; // Positional shadow culls below split their casters too.
 
 	{
 		uint64_t cull_from = 0;
@@ -3546,9 +4166,12 @@ void RendererSceneCull::_render_scene(const RendererSceneRender::CameraData *p_c
 		cull_data.cam_transform = p_camera_data->main_transform;
 		cull_data.visible_layers = p_visible_layers;
 		cull_data.render_reflection_probe = render_reflection_probe;
-		cull_data.occlusion_buffer = RendererSceneOcclusionCull::get_singleton()->buffer_get_ptr(p_viewport);
+		// The occlusion buffer is the main camera's: of no use to a mirror pass.
+		cull_data.occlusion_buffer = p_camera_data->mirror_pass ? nullptr : RendererSceneOcclusionCull::get_singleton()->buffer_get_ptr(p_viewport);
 		cull_data.camera_matrix = &p_camera_data->main_projection;
 		cull_data.visibility_viewport_mask = scenario->viewport_visibility_masks.has(p_viewport) ? scenario->viewport_visibility_masks[p_viewport] : 0;
+		cull_data.reflection_probes_enabled = GLOBAL_GET_CACHED(bool, "rendering/global_illumination/reflections/probes_enabled");
+		cull_data.gpu_split = gpu_split;
 #ifdef DEBUG_CULL_TIME
 		uint64_t time_from = OS::get_singleton()->get_ticks_usec();
 #endif
@@ -3600,12 +4223,17 @@ void RendererSceneCull::_render_scene(const RendererSceneRender::CameraData *p_c
 				const Cull::Shadow::Cascade &c = cull.shadows[i].cascades[j];
 				//			print_line("shadow " + itos(i) + " cascade " + itos(j) + " elements: " + itos(c.cull_result.size()));
 				RSG::light_storage->light_instance_set_shadow_transform(cull.shadows[i].light_instance, c.projection, c.transform, c.zfar, c.split, j, c.shadow_texel_size, c.bias_scale, c.range_begin, c.uv_scale);
+				if (c.reused) {
+					continue; // The atlas still holds it; only its parameters were set again.
+				}
 				if (max_shadows_used == MAX_UPDATE_SHADOWS) {
 					continue;
 				}
 				render_shadow_data[max_shadows_used].light = cull.shadows[i].light_instance;
 				render_shadow_data[max_shadows_used].pass = j;
 				render_shadow_data[max_shadows_used].instances.merge_unordered(scene_cull_result.directional_shadows[i].cascade_geometry_instances[j]);
+				render_shadow_data[max_shadows_used].gpu_instances.merge_unordered(scene_cull_result.directional_shadows[i].cascade_gpu_instances[j]);
+				render_shadow_data[max_shadows_used].gpu_slots = scene_cull_result.directional_shadows[i].cascade_gpu_slots[j];
 				max_shadows_used++;
 			}
 		}
@@ -3629,11 +4257,11 @@ void RendererSceneCull::_render_scene(const RendererSceneRender::CameraData *p_c
 			{ //compute coverage
 
 				Transform3D cam_xf = p_camera_data->main_transform;
-				float zn = p_camera_data->main_projection.get_z_near();
+				float zn = shadow_projection.get_z_near();
 				Plane p(-cam_xf.basis.get_column(2), cam_xf.origin + cam_xf.basis.get_column(2) * -zn); //camera near plane
 
 				// near plane half width and height
-				Vector2 vp_half_extents = p_camera_data->main_projection.get_viewport_half_extents();
+				Vector2 vp_half_extents = shadow_projection.get_viewport_half_extents();
 
 				switch (RSG::light_storage->light_get_type(ins->base)) {
 					case RSE::LIGHT_OMNI: {
@@ -3750,7 +4378,7 @@ void RendererSceneCull::_render_scene(const RendererSceneRender::CameraData *p_c
 			if (redraw && max_shadows_used < MAX_UPDATE_SHADOWS) {
 				//must redraw!
 				RENDER_TIMESTAMP("> Render Light3D " + itos(i));
-				if (_light_instance_update_shadow(ins, p_camera_data->main_transform, p_camera_data->main_projection, p_camera_data->is_orthogonal, p_camera_data->vaspect, p_shadow_atlas, scenario, p_screen_mesh_lod_threshold, p_visible_layers)) {
+				if (_light_instance_update_shadow(ins, p_camera_data->main_transform, shadow_projection, p_camera_data->is_orthogonal, p_camera_data->vaspect, p_shadow_atlas, scenario, p_screen_mesh_lod_threshold, p_visible_layers)) {
 					light->make_shadow_dirty();
 				}
 				RENDER_TIMESTAMP("< Render Light3D " + itos(i));
@@ -3815,20 +4443,47 @@ void RendererSceneCull::_render_scene(const RendererSceneRender::CameraData *p_c
 
 	RID occluders_tex;
 	const RendererSceneRender::CameraData *prev_camera_data = p_camera_data;
-	if (p_viewport.is_valid()) {
+	if (p_viewport.is_valid() && !p_camera_data->mirror_pass) {
 		occluders_tex = RSG::viewport->viewport_get_occluder_debug_texture(p_viewport);
 		prev_camera_data = RSG::viewport->viewport_get_prev_camera_data(p_viewport);
 	}
 
 	RENDER_TIMESTAMP("Render 3D Scene");
-	scene_render->render_scene(p_render_buffers, p_camera_data, prev_camera_data, scene_cull_result.geometry_instances, scene_cull_result.light_instances, scene_cull_result.reflections, scene_cull_result.voxel_gi_instances, scene_cull_result.decals, scene_cull_result.lightmaps, scene_cull_result.fog_volumes, p_environment, camera_attributes, p_compositor, p_shadow_atlas, occluders_tex, p_reflection_probe.is_valid() ? RID() : scenario->reflection_atlas, p_reflection_probe, p_reflection_probe_pass, p_screen_mesh_lod_threshold, render_shadow_data, max_shadows_used, render_sdfgi_data, cull.sdfgi.region_count, p_window_output_max_value, &sdfgi_update_data, r_render_info, &scene_cull_result.rt_geometry_instances, &scene_cull_result.rt_light_instances);
+	// Planar reflectors of the scenario seen by this camera's layers (Forward+ culls and picks them).
+	const LocalVector<RendererSceneRender::RenderPlanarReflection> *planar_reflections = nullptr;
+	if (p_reflection_probe.is_null() && !p_camera_data->mirror_pass && !scenario->planar_reflections.is_empty()) {
+		_update_planar_reflection_data(scenario);
+		planar_reflection_render_list.clear();
+		for (uint32_t i = 0; i < scenario->planar_reflection_data.size(); i++) {
+			const RendererSceneRender::RenderPlanarReflection &r = scenario->planar_reflection_data[i];
+			float fade = _planar_distance_fade(r, p_camera_data->main_transform.origin);
+			if ((r.layers & p_visible_layers) && fade > 0.0) {
+				planar_reflection_render_list.push_back(r);
+				planar_reflection_render_list[planar_reflection_render_list.size() - 1].intensity *= fade;
+				if (int(i) == mirror_reflector) {
+					RendererSceneRender::RenderPlanarReflection &added = planar_reflection_render_list[planar_reflection_render_list.size() - 1];
+					added.mirror_buffers = mirror_buffers;
+					added.mirror_uv_rect = mirror_uv_rect;
+				}
+			}
+		}
+		if (!planar_reflection_render_list.is_empty()) {
+			planar_reflections = &planar_reflection_render_list;
+		}
+	}
 
-	if (p_viewport.is_valid()) {
+	scene_render->set_gpu_instance_view(gpu_split ? p_scenario.get_id() : 0, gpu_split ? &scene_cull_result.gpu_geometry_instances : nullptr, gpu_split ? &scene_cull_result.gpu_slots : nullptr, p_visible_layers);
+	scene_render->render_scene(p_render_buffers, p_camera_data, prev_camera_data, scene_cull_result.geometry_instances, scene_cull_result.light_instances, scene_cull_result.reflections, scene_cull_result.voxel_gi_instances, scene_cull_result.decals, scene_cull_result.lightmaps, scene_cull_result.fog_volumes, p_environment, camera_attributes, p_compositor, p_shadow_atlas, occluders_tex, p_reflection_probe.is_valid() ? RID() : scenario->reflection_atlas, p_reflection_probe, p_reflection_probe_pass, p_screen_mesh_lod_threshold, render_shadow_data, max_shadows_used, render_sdfgi_data, cull.sdfgi.region_count, p_window_output_max_value, &sdfgi_update_data, r_render_info, &scene_cull_result.rt_geometry_instances, &scene_cull_result.rt_light_instances, planar_reflections);
+	scene_render->set_gpu_instance_view(0, nullptr, nullptr, 0);
+
+	if (p_viewport.is_valid() && !p_camera_data->mirror_pass) {
 		RSG::viewport->viewport_set_prev_camera_data(p_viewport, p_camera_data);
 	}
 
 	for (uint32_t i = 0; i < max_shadows_used; i++) {
 		render_shadow_data[i].instances.clear();
+		render_shadow_data[i].gpu_instances.clear();
+		render_shadow_data[i].gpu_slots.clear();
 	}
 	max_shadows_used = 0;
 
@@ -3911,51 +4566,8 @@ bool RendererSceneCull::_render_reflection_probe_step(Instance *p_instance, int 
 	}
 
 	if (p_step == 0) {
-		static const Vector3 view_normals[6] = {
-			Vector3(+1, 0, 0),
-			Vector3(-1, 0, 0),
-			Vector3(0, +1, 0),
-			Vector3(0, -1, 0),
-			Vector3(0, 0, +1),
-			Vector3(0, 0, -1)
-		};
-		static const Vector3 view_up[6] = {
-			Vector3(0, -1, 0),
-			Vector3(0, -1, 0),
-			Vector3(0, 0, +1),
-			Vector3(0, 0, -1),
-			Vector3(0, -1, 0),
-			Vector3(0, -1, 0)
-		};
-
-		Vector3 probe_size = RSG::light_storage->reflection_probe_get_size(p_instance->base);
-		Vector3 origin_offset = RSG::light_storage->reflection_probe_get_origin_offset(p_instance->base);
-		float max_distance = RSG::light_storage->reflection_probe_get_origin_max_distance(p_instance->base);
-		float atlas_size = RSG::light_storage->reflection_atlas_get_size(scenario->reflection_atlas);
-		float mesh_lod_threshold = RSG::light_storage->reflection_probe_get_mesh_lod_threshold(p_instance->base) / atlas_size;
-		bool use_shadows = RSG::light_storage->reflection_probe_renders_shadows(p_instance->base);
-		RID shadow_atlas = use_shadows ? scenario->reflection_probe_shadow_atlas : RID();
-		RID environment = scenario->environment.is_valid() ? scenario->environment : scenario->fallback_environment;
-		Ref<RenderSceneBuffers> render_buffers = RSG::light_storage->reflection_probe_atlas_get_render_buffers(scenario->reflection_atlas);
-		for (uint32_t face = 0; face < 6; face++) {
-			// Compute distance from origin offset to the actual view distance limit.
-			Vector3 edge = view_normals[face] * probe_size / 2;
-			float distance = Math::abs(view_normals[face].dot(edge) - view_normals[face].dot(origin_offset));
-			max_distance = MAX(max_distance, distance);
-
-			// Render cubemap side.
-			Projection cm;
-			cm.set_perspective(90, 1, 0.01, max_distance);
-
-			Transform3D local_view;
-			local_view.set_look_at(origin_offset, origin_offset + view_normals[face], view_up[face]);
-
-			RendererSceneRender::CameraData camera_data;
-			Transform3D xform = p_instance->transform * local_view;
-			camera_data.set_camera(xform, cm, false, false);
-
-			RENDER_TIMESTAMP("Render ReflectionProbe, Face " + itos(face));
-			_render_scene(&camera_data, render_buffers, environment, RID(), RID(), RSG::light_storage->reflection_probe_get_cull_mask(p_instance->base), p_instance->scenario->self, RID(), shadow_atlas, reflection_probe->instance, face, mesh_lod_threshold, use_shadows);
+		for (int face = 0; face < 6; face++) {
+			_render_reflection_probe_face(p_instance, face);
 		}
 
 		RSG::light_storage->reflection_probe_instance_end_render(reflection_probe->instance, scenario->reflection_atlas);
@@ -3968,13 +4580,204 @@ bool RendererSceneCull::_render_reflection_probe_step(Instance *p_instance, int 
 	return false;
 }
 
+bool RendererSceneCull::_render_reflection_probe_face(Instance *p_instance, int p_face) {
+	InstanceReflectionProbeData *reflection_probe = static_cast<InstanceReflectionProbeData *>(p_instance->base_data);
+	Scenario *scenario = p_instance->scenario;
+	ERR_FAIL_NULL_V(scenario, false);
+
+	static const Vector3 view_normals[6] = {
+		Vector3(+1, 0, 0),
+		Vector3(-1, 0, 0),
+		Vector3(0, +1, 0),
+		Vector3(0, -1, 0),
+		Vector3(0, 0, +1),
+		Vector3(0, 0, -1)
+	};
+	static const Vector3 view_up[6] = {
+		Vector3(0, -1, 0),
+		Vector3(0, -1, 0),
+		Vector3(0, 0, +1),
+		Vector3(0, 0, -1),
+		Vector3(0, -1, 0),
+		Vector3(0, -1, 0)
+	};
+
+	Vector3 probe_size = RSG::light_storage->reflection_probe_get_size(p_instance->base);
+	Vector3 origin_offset = RSG::light_storage->reflection_probe_get_origin_offset(p_instance->base);
+	float max_distance = RSG::light_storage->reflection_probe_get_origin_max_distance(p_instance->base);
+	float atlas_size = RSG::light_storage->reflection_atlas_get_size(scenario->reflection_atlas);
+	float mesh_lod_threshold = RSG::light_storage->reflection_probe_get_mesh_lod_threshold(p_instance->base) / atlas_size;
+	bool use_shadows = RSG::light_storage->reflection_probe_renders_shadows(p_instance->base);
+	RID shadow_atlas = use_shadows ? scenario->reflection_probe_shadow_atlas : RID();
+	RID environment = scenario->environment.is_valid() ? scenario->environment : scenario->fallback_environment;
+	Ref<RenderSceneBuffers> render_buffers = RSG::light_storage->reflection_probe_atlas_get_render_buffers(scenario->reflection_atlas);
+
+	// The view distance limit is the largest of all faces (as when all six are rendered in one go).
+	for (int face = 0; face < 6; face++) {
+		Vector3 edge = view_normals[face] * probe_size / 2;
+		float distance = Math::abs(view_normals[face].dot(edge) - view_normals[face].dot(origin_offset));
+		max_distance = MAX(max_distance, distance);
+	}
+
+	// Render cubemap side.
+	Projection cm;
+	cm.set_perspective(90, 1, 0.01, max_distance);
+
+	Transform3D local_view;
+	local_view.set_look_at(origin_offset, origin_offset + view_normals[p_face], view_up[p_face]);
+
+	RendererSceneRender::CameraData camera_data;
+	Transform3D xform = p_instance->transform * local_view;
+	camera_data.set_camera(xform, cm, false, false);
+
+	RENDER_TIMESTAMP("Render ReflectionProbe, Face " + itos(p_face));
+	_render_scene(&camera_data, render_buffers, environment, RID(), RID(), RSG::light_storage->reflection_probe_get_cull_mask(p_instance->base), p_instance->scenario->self, RID(), shadow_atlas, reflection_probe->instance, p_face, mesh_lod_threshold, use_shadows);
+	return true;
+}
+
+void RendererSceneCull::_render_reflection_probes_budgeted(int p_faces_per_frame) {
+	reflection_probe_frame++;
+
+	Vector<SelfList<InstanceReflectionProbeData> *> done_list;
+
+	// 1. Roughness filtering of probes whose six faces are done: one step per
+	// probe and frame (a single step for realtime probes, one roughness layer
+	// for the others), at most two probes per frame.
+	int filter_steps = 0;
+	for (SelfList<InstanceReflectionProbeData> *rp = reflection_probe_render_list.first(); rp && filter_steps < 2; rp = rp->next()) {
+		InstanceReflectionProbeData *probe = rp->self();
+		// Steps 1 to 5 belong to the probe being captured, except for probes that
+		// were filtering when the budget was switched on (legacy steps count from 1).
+		if (probe->render_step < 1 || (probe->render_step < 6 && probe == reflection_probe_capturing)) {
+			continue;
+		}
+		if (!RSG::light_storage->reflection_probe_has_atlas_index(probe->instance)) {
+			done_list.push_back(rp); // Atlas reset: the probe is marked dirty and queued again.
+			continue;
+		}
+		RENDER_TIMESTAMP("Post-Process ReflectionProbe, Step " + itos(probe->render_step));
+		RenderingServerDefault::redraw_request();
+		if (RSG::light_storage->reflection_probe_instance_postprocess_step(probe->instance)) {
+			probe->last_capture_frame = reflection_probe_frame;
+			done_list.push_back(rp);
+		} else {
+			probe->render_step++;
+		}
+		filter_steps++;
+	}
+
+	// 2. Faces: continue the probe being captured, then start the most urgent
+	// waiting probe, until the frame's face budget is used.
+	int faces_left = p_faces_per_frame;
+	while (faces_left > 0) {
+		if (!reflection_probe_capturing) {
+			// Probes that have no reflection yet, moved or changed come first (only
+			// they are queued for "Once" probes); realtime probes are refreshed by
+			// age over distance, so near probes refresh more often and none starves.
+			float best_score = -1.0;
+			for (SelfList<InstanceReflectionProbeData> *rp = reflection_probe_render_list.first(); rp; rp = rp->next()) {
+				InstanceReflectionProbeData *probe = rp->self();
+				if (probe->render_step != 0 || done_list.has(rp)) {
+					continue;
+				}
+				Instance *owner = probe->owner;
+				bool update_always = RSG::light_storage->reflection_probe_get_update_mode(owner->base) == RSE::REFLECTION_PROBE_UPDATE_ALWAYS;
+				float radius = MAX(RSG::light_storage->reflection_probe_get_size(owner->base).length() * 0.5f, 0.1f);
+				float distance = MAX(owner->transform.origin.distance_to(reflection_probe_camera_position) - radius, 0.0f);
+				float age = float(reflection_probe_frame - probe->last_capture_frame);
+				float score = age / (1.0f + distance / radius);
+				if (!update_always || probe->last_capture_frame == 0) {
+					score += 1e6f;
+				}
+				if (score > best_score) {
+					best_score = score;
+					reflection_probe_capturing = probe;
+				}
+			}
+			if (!reflection_probe_capturing) {
+				break; // Nothing to capture.
+			}
+		}
+
+		InstanceReflectionProbeData *probe = reflection_probe_capturing;
+		Instance *owner = probe->owner;
+		Scenario *scenario = owner->scenario;
+		bool abort = !scenario;
+		if (!abort && probe->render_step == 0) {
+			RenderingServerDefault::redraw_request();
+			abort = !RSG::light_storage->reflection_probe_instance_begin_render(probe->instance, scenario->reflection_atlas); // All full, no atlas entry to render to.
+		} else if (!abort) {
+			// The atlas may have been reset (the probe is then marked dirty and starts over).
+			abort = !RSG::light_storage->reflection_probe_has_atlas_index(probe->instance);
+		}
+		if (abort) {
+			done_list.push_back(&probe->update_list);
+			reflection_probe_capturing = nullptr;
+			continue;
+		}
+
+		_render_reflection_probe_face(owner, probe->render_step);
+		probe->render_step++;
+		faces_left--;
+
+		if (probe->render_step == 6) {
+			RSG::light_storage->reflection_probe_instance_end_render(probe->instance, scenario->reflection_atlas);
+			reflection_probe_capturing = nullptr; // Filtered from the next frame on.
+		}
+	}
+
+	for (SelfList<InstanceReflectionProbeData> *rp : done_list) {
+		if (rp->in_list()) {
+			reflection_probe_render_list.remove(rp);
+		}
+		rp->self()->render_step = -1;
+	}
+}
+
 void RendererSceneCull::render_probes() {
 	/* REFLECTION PROBES */
+
+	// Captures sample the DDGI probes (probe_capture_ddgi); "Once" probes were
+	// captured while those were still converging: capture all probes again
+	// (each is queued the next time a view sees it, as after a move).
+	uint64_t ddgi_generation = scene_render->ddgi_get_capture_generation();
+	if (ddgi_generation != reflection_probe_ddgi_generation) {
+		reflection_probe_ddgi_generation = ddgi_generation;
+		if (GLOBAL_GET_CACHED(bool, "rendering/global_illumination/reflections/probe_capture_ddgi")) {
+			for (const RID &rid : scenario_owner.get_owned_list()) {
+				Scenario *scenario = scenario_owner.get_or_null(rid);
+				for (uint32_t i = 0; i < scenario->instance_data.size(); i++) {
+					InstanceData &idata = scenario->instance_data[i];
+					if ((idata.flags & InstanceData::FLAG_BASE_TYPE_MASK) == RSE::INSTANCE_REFLECTION_PROBE) {
+						idata.flags |= InstanceData::FLAG_REFLECTION_PROBE_DIRTY;
+					}
+				}
+			}
+		}
+	}
 
 	SelfList<InstanceReflectionProbeData> *ref_probe = reflection_probe_render_list.first();
 	Vector<SelfList<InstanceReflectionProbeData> *> done_list;
 
 	bool busy = false;
+
+	// 0 = legacy behavior: "Once" probes render all six faces in one frame
+	// (one probe at a time), "Always" probes render every frame.
+	int faces_per_frame = GLOBAL_GET_CACHED(int, "rendering/global_illumination/reflections/probe_update_faces_per_frame");
+	if (!GLOBAL_GET_CACHED(bool, "rendering/global_illumination/reflections/probes_enabled")) {
+		ref_probe = nullptr;
+	} else if (faces_per_frame > 0) {
+		if (ref_probe || reflection_probe_capturing) {
+			RENDER_TIMESTAMP("Render ReflectionProbes (budgeted)");
+			_render_reflection_probes_budgeted(faces_per_frame);
+			RENDER_TIMESTAMP("Render ReflectionProbes Done");
+		}
+		ref_probe = nullptr;
+	} else if (reflection_probe_capturing) {
+		// Switched to legacy updates mid-capture: start that probe over.
+		reflection_probe_capturing->render_step = 0;
+		reflection_probe_capturing = nullptr;
+	}
 
 	if (ref_probe) {
 		RENDER_TIMESTAMP("Render ReflectionProbes");
@@ -4017,6 +4820,7 @@ void RendererSceneCull::render_probes() {
 		for (SelfList<InstanceReflectionProbeData> *rp : done_list) {
 			reflection_probe_render_list.remove(rp);
 		}
+		RENDER_TIMESTAMP("Render ReflectionProbes Done");
 	}
 
 	/* VOXEL GIS */
@@ -4519,11 +5323,22 @@ bool RendererSceneCull::free(RID p_rid) {
 		scenario->instance_data.reset();
 		scenario->instance_visibility.reset();
 
+		for (const RID &rid : scenario->planar_reflections) {
+			PlanarReflection *pr = planar_reflection_owner.get_or_null(rid);
+			if (pr) {
+				pr->scenario = RID();
+			}
+		}
+		scenario->planar_reflections.clear();
+
 		RSG::light_storage->shadow_atlas_free(scenario->reflection_probe_shadow_atlas);
 		RSG::light_storage->reflection_atlas_free(scenario->reflection_atlas);
 		scenario_owner.free(p_rid);
 		RendererSceneOcclusionCull::get_singleton()->remove_scenario(p_rid);
 
+	} else if (planar_reflection_owner.owns(p_rid)) {
+		planar_reflection_set_scenario(p_rid, RID());
+		planar_reflection_owner.free(p_rid);
 	} else if (RendererSceneOcclusionCull::get_singleton() && RendererSceneOcclusionCull::get_singleton()->is_occluder(p_rid)) {
 		RendererSceneOcclusionCull::get_singleton()->free_occluder(p_rid);
 	} else if (instance_owner.owns(p_rid)) {
@@ -4619,6 +5434,7 @@ RendererSceneCull::RendererSceneCull() {
 
 	for (uint32_t i = 0; i < MAX_UPDATE_SHADOWS; i++) {
 		render_shadow_data[i].instances.set_page_pool(&geometry_instance_cull_page_pool);
+		render_shadow_data[i].gpu_instances.set_page_pool(&geometry_instance_cull_page_pool);
 	}
 	for (uint32_t i = 0; i < SDFGI_MAX_CASCADES * SDFGI_MAX_REGIONS_PER_CASCADE; i++) {
 		render_sdfgi_data[i].instances.set_page_pool(&geometry_instance_cull_page_pool);
@@ -4650,6 +5466,8 @@ RendererSceneCull::~RendererSceneCull() {
 
 	for (uint32_t i = 0; i < MAX_UPDATE_SHADOWS; i++) {
 		render_shadow_data[i].instances.reset();
+		render_shadow_data[i].gpu_instances.reset();
+		render_shadow_data[i].gpu_slots.reset();
 	}
 	for (uint32_t i = 0; i < SDFGI_MAX_CASCADES * SDFGI_MAX_REGIONS_PER_CASCADE; i++) {
 		render_sdfgi_data[i].instances.reset();

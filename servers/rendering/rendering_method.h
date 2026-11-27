@@ -70,6 +70,20 @@ public:
 	virtual void occluder_initialize(RID p_occluder) = 0;
 	virtual void occluder_set_mesh(RID p_occluder, const PackedVector3Array &p_vertices, const PackedInt32Array &p_indices) = 0;
 
+	/* PLANAR REFLECTION API */
+
+	virtual RID planar_reflection_allocate() = 0;
+	virtual void planar_reflection_initialize(RID p_planar_reflection) = 0;
+	virtual void planar_reflection_set_scenario(RID p_planar_reflection, RID p_scenario) = 0;
+	virtual void planar_reflection_set_transform(RID p_planar_reflection, const Transform3D &p_transform) = 0;
+	virtual void planar_reflection_set_size(RID p_planar_reflection, const Vector2 &p_size) = 0;
+	virtual void planar_reflection_set_layer_mask(RID p_planar_reflection, uint32_t p_layers) = 0;
+	virtual void planar_reflection_set_visible(RID p_planar_reflection, bool p_visible) = 0;
+	virtual void planar_reflection_set_intensity(RID p_planar_reflection, float p_intensity) = 0;
+	virtual void planar_reflection_set_thickness(RID p_planar_reflection, float p_thickness) = 0;
+	virtual void planar_reflection_set_normal_distortion(RID p_planar_reflection, float p_distortion) = 0;
+	virtual void planar_reflection_set_roughness_cutoff(RID p_planar_reflection, float p_roughness) = 0;
+
 	virtual RID scenario_allocate() = 0;
 	virtual void scenario_initialize(RID p_rid) = 0;
 
@@ -327,6 +341,11 @@ public:
 	virtual bool environment_get_pathtracing_enabled(RID p_env) const = 0;
 	virtual void environment_set_ddgi(RID p_env, bool p_enable, int p_cascades, float p_probe_spacing, const Vector3i &p_probe_grid, float p_energy, float p_normal_bias, float p_view_bias, float p_hysteresis, bool p_probe_relocation, bool p_probe_classification, bool p_follow_camera, int p_debug_mode) = 0;
 	virtual void environment_set_ddgi_volume(RID p_env, bool p_node_volume, const Vector3 &p_center, const Vector3 &p_size) = 0;
+	virtual void environment_set_ddgi_bounce_energy(RID p_env, float p_energy) = 0;
+	virtual void environment_set_ddgi_realtime_updates(RID p_env, bool p_enable) = 0;
+	virtual void environment_set_ddgi_baked_data(RID p_env, int p_mode, const Dictionary &p_data) = 0;
+	virtual Dictionary ddgi_get_probe_data(const Ref<RenderSceneBuffers> &p_render_buffers) = 0;
+	virtual Dictionary gpu_geometry_get_statistics(const Ref<RenderSceneBuffers> &p_render_buffers) = 0;
 	virtual bool environment_get_ddgi_enabled(RID p_env) const = 0;
 	virtual int environment_get_pathtracing_debug_mode(RID p_env) const = 0;
 	virtual int environment_get_pathtracing_samples_per_pixel(RID p_env) const = 0;
@@ -370,6 +389,8 @@ public:
 
 	virtual void render_empty_scene(const Ref<RenderSceneBuffers> &p_render_buffers, RID p_scenario, RID p_shadow_atlas, float p_window_output_max_value) = 0;
 
+	// Frees the buffers of planar reflection mirror passes (before the rasterizer goes away).
+	virtual void free_mirror_views() {}
 	virtual void render_camera(const Ref<RenderSceneBuffers> &p_render_buffers, RID p_camera, RID p_scenario, RID p_viewport, Size2 p_viewport_size, uint32_t p_jitter_phase_count, float p_mesh_lod_threshold, RID p_shadow_atlas, float p_window_output_max_value, RenderingServerTypes::RenderInfo *r_render_info = nullptr) = 0;
 
 	virtual void update() = 0;

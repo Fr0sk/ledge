@@ -107,7 +107,7 @@ private:
 	real_t friction = 1.0;
 	real_t linear_damp = 0.0;
 	real_t angular_damp = 0.0;
-	// RigidBody3D only ever sends this (via BODY_PARAM_CENTER_OF_MASS) when
+	// RigidBody3D only ever sends this (via PS3DE::BODY_PARAM_CENTER_OF_MASS) when
 	// center_of_mass_mode is CUSTOM -- there's no separate "mode" param, so a
 	// value having been sent at all IS the "custom" signal. _build_actor()
 	// recreates px_actor (a static <-> dynamic switch, a removed shape, ...),
@@ -115,7 +115,7 @@ private:
 	// pose every time -- reapplied there too, not just in set_param().
 	bool has_custom_center_of_mass = false;
 	Vector3 center_of_mass;
-	// BODY_PARAM_INERTIA, in the body's local axes; a component <= 0 keeps the
+	// PS3DE::BODY_PARAM_INERTIA, in the body's local axes; a component <= 0 keeps the
 	// shape-computed value for that axis (same rule as Jolt).
 	Vector3 inertia;
 	// Applied every step until changed (RigidBody3D.constant_force/_torque),

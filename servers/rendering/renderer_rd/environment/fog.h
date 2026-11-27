@@ -144,6 +144,7 @@ private:
 			VOLUMETRIC_FOG_PROCESS_SHADER_FILTER,
 			VOLUMETRIC_FOG_PROCESS_SHADER_FOG,
 			VOLUMETRIC_FOG_PROCESS_SHADER_COPY,
+			VOLUMETRIC_FOG_PROCESS_SHADER_DENSITY_WITH_DDGI,
 			VOLUMETRIC_FOG_PROCESS_SHADER_MAX,
 		};
 
@@ -306,6 +307,10 @@ public:
 		uint32_t width = 0;
 		uint32_t height = 0;
 		uint32_t depth = 0;
+		// False until the first update: a new volume's history is empty (cleared to
+		// zero), and blending it in fades the fog in over many frames. A mirror pass
+		// recreates its volume whenever its buffers are resized.
+		bool has_history = false;
 
 		float length;
 		float spread;
@@ -370,6 +375,13 @@ public:
 		Ref<GI::RenderBuffersGI> rbgi;
 		RID env;
 		SkyRD *sky;
+
+		// DDGI probes of this view (all valid, or all empty when DDGI is off):
+		// they light the fog instead of the unoccluded sky ambient light.
+		RID ddgi_data_buffer;
+		RID ddgi_probe_buffer;
+		RID ddgi_irradiance_atlas;
+		RID ddgi_distance_atlas;
 	};
 	void volumetric_fog_update(const VolumetricFogSettings &p_settings, const Projection &p_cam_projection, const Transform3D &p_cam_transform, const Transform3D &p_prev_cam_inv_transform, RID p_shadow_atlas, int p_directional_light_count, bool p_use_directional_shadows, int p_positional_light_count, int p_voxel_gi_count, const PagedArray<RID> &p_fog_volumes);
 };

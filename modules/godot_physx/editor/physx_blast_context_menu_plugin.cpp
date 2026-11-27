@@ -45,10 +45,6 @@
 
 void PhysXBlastFractureMenuPlugin::get_options(const OptionsData &p_data) {
 	if (target_slot == CONTEXT_SLOT_SCENE_TREE) {
-		Node *edited_scene = EditorNode::get_singleton()->get_edited_scene();
-		if (!edited_scene) {
-			return;
-		}
 		const TypedArray<Node> nodes = p_data.get("selected_nodes", TypedArray<Node>());
 		if (nodes.size() != 1) {
 			return;

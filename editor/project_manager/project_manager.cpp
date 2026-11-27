@@ -39,6 +39,7 @@
 #include "core/object/callable_mp.h"
 #include "core/os/keyboard.h"
 #include "core/os/os.h"
+#include "core/os/time.h"
 #include "core/version.h"
 #include "editor/asset_library/asset_library_editor_plugin.h"
 #include "editor/doc/editor_help.h"
@@ -651,6 +652,47 @@ void ProjectManager::_open_selected_projects() {
 	get_tree()->quit();
 }
 
+// Written into the project's .godot folder once the warning was accepted (or the
+// project was created with this build). Deleting .godot shows the warning again.
+// The name is from when this build required a backup first; projects marked then
+// are not warned again.
+static const char *FORK_WARNING_MARKER = ".godot/nvidia_dlss_physx_backup.cfg";
+
+bool ProjectManager::_fork_warning_seen(const String &p_path) {
+	return FileAccess::exists(p_path.path_join(FORK_WARNING_MARKER));
+}
+
+void ProjectManager::_fork_warning_mark(const String &p_path) {
+	Ref<DirAccess> dir = DirAccess::create(DirAccess::ACCESS_FILESYSTEM);
+	dir->make_dir_recursive(p_path.path_join(".godot"));
+	Ref<ConfigFile> marker;
+	marker.instantiate();
+	marker->set_value("warning", "accepted", Time::get_singleton()->get_datetime_string_from_system());
+	const Error err = marker->save(p_path.path_join(FORK_WARNING_MARKER));
+	if (err != OK) {
+		ERR_PRINT(vformat("Couldn't write the compatibility warning marker for the project at '%s' (error %d).", p_path, err));
+	}
+}
+
+void ProjectManager::_fork_warning_mark_selected() {
+	for (const ProjectList::Item &item : project_list->get_selected_projects()) {
+		if (!item.missing && !_fork_warning_seen(item.path)) {
+			_fork_warning_mark(item.path);
+		}
+	}
+}
+
+void ProjectManager::_fork_warning_ask_show(const String &p_name, const String &p_path) {
+	fork_warning_ask->set_text(vformat(TTR("This editor is a custom Godot build (NVIDIA DLSS and path tracer, PhysX 5) that changes Godot's core renderer. Opening \"%s\" in it can change the project's files so that it no longer works in official Godot, and can break your game.\n\nIf you want to keep a working copy, back up the project first (Duplicate in the project list makes a copy).\n\nProject path: %s"), p_name, p_path));
+	fork_warning_ask->popup_centered();
+	fork_warning_ask->get_cancel_button()->grab_focus(); // To prevent accidents.
+}
+
+void ProjectManager::_fork_warning_confirmed() {
+	_fork_warning_mark_selected();
+	_open_selected_projects_check_warnings();
+}
+
 void ProjectManager::_open_selected_projects_check_warnings() {
 	const HashSet<String> &selected_list = project_list->get_selected_project_keys();
 	if (selected_list.size() < 1) {
@@ -660,13 +702,28 @@ void ProjectManager::_open_selected_projects_check_warnings() {
 	const Size2i popup_min_size = Size2i(400.0 * EDSCALE, 0);
 
 	if (selected_list.size() > 1) {
-		multi_open_ask->set_text(vformat(TTR("You requested to open %d projects in parallel. Do you confirm?\nNote that usual checks for engine version compatibility will be bypassed."), selected_list.size()));
+		String text = vformat(TTR("You requested to open %d projects in parallel. Do you confirm?\nNote that usual checks for engine version compatibility will be bypassed."), selected_list.size());
+		int unwarned = 0;
+		for (const ProjectList::Item &item : project_list->get_selected_projects()) {
+			if (!item.missing && !_fork_warning_seen(item.path)) {
+				unwarned++;
+			}
+		}
+		if (unwarned > 0) {
+			text += "\n\n" + vformat(TTR("Warning: %d of these projects have not been opened in this custom Godot\nbuild before. It changes Godot's core renderer: opening them can change\ntheir files so that they no longer work in official Godot, and can break\nyour game."), unwarned);
+		}
+		multi_open_ask->set_text(text);
 		multi_open_ask->popup_centered(popup_min_size);
 		return;
 	}
 
 	ProjectList::Item project = project_list->get_selected_projects()[0];
 	if (project.missing) {
+		return;
+	}
+
+	if (!_fork_warning_seen(project.path)) {
+		_fork_warning_ask_show(project.project_name, project.path);
 		return;
 	}
 
@@ -986,6 +1043,10 @@ void ProjectManager::_on_recovery_mode_popup_open_recovery() {
 }
 
 void ProjectManager::_on_project_created(const String &dir, bool edit) {
+	if (project_dialog->get_mode() == ProjectDialog::MODE_NEW) {
+		// No warning for a project created with this build.
+		_fork_warning_mark(dir);
+	}
 	project_list->add_project(dir, false);
 	project_list->save_config();
 	search_box->clear();
@@ -1935,6 +1996,7 @@ ProjectManager::ProjectManager() {
 		multi_open_ask->set_flag(Window::FLAG_RESIZE_DISABLED, true);
 		multi_open_ask->set_ok_button_text(TTRC("Edit"));
 		multi_open_ask->get_ok_button()->connect(SceneStringName(pressed), callable_mp(this, &ProjectManager::_open_selected_projects));
+		multi_open_ask->connect(SceneStringName(confirmed), callable_mp(this, &ProjectManager::_fork_warning_mark_selected));
 		add_child(multi_open_ask);
 
 		multi_run_ask = memnew(ConfirmationDialog);
@@ -1950,6 +2012,14 @@ ProjectManager::ProjectManager() {
 		open_recovery_mode_ask->set_ok_button_text(TTRC("Edit in Recovery Mode"));
 		open_recovery_mode_ask->get_ok_button()->connect(SceneStringName(pressed), callable_mp(this, &ProjectManager::_on_recovery_mode_popup_open_recovery));
 		add_child(open_recovery_mode_ask);
+
+		fork_warning_ask = memnew(ConfirmationDialog);
+		fork_warning_ask->set_title(TTRC("Your Project Can Break"));
+		fork_warning_ask->set_min_size(Size2(560, 0) * EDSCALE);
+		fork_warning_ask->set_autowrap(true);
+		fork_warning_ask->set_ok_button_text(TTRC("Open Anyway"));
+		fork_warning_ask->get_ok_button()->connect(SceneStringName(pressed), callable_mp(this, &ProjectManager::_fork_warning_confirmed));
+		add_child(fork_warning_ask);
 
 		ask_update_settings = memnew(ConfirmationDialog);
 		add_child(ask_update_settings);

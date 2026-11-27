@@ -11,5 +11,29 @@ Path tracer work (test scene, supported features, step plan, findings) is tracke
 [PATHTRACER_TESTING.md](PATHTRACER_TESTING.md). Read it before touching the path
 tracer, and update its step table and findings log as you go.
 
+Scene runtime work (data-oriented Node / SceneTree / Node3D optimization) is
+tracked in [docs/scene-runtime/MEMORY.md](docs/scene-runtime/MEMORY.md):
+architecture, roadmap, benchmarks. Read it before working on it.
+
+Weather and wind (`modules/weather/`) are tracked in [WEATHER.md](WEATHER.md):
+design, step table, tests and findings. Keep it current with each step.
+
+The built-in level streamer (`modules/level_streaming/`) is described in
+[docs/level-streaming.md](docs/level-streaming.md), with its acceptance
+test. Run that test after changing the module or the export hook.
+
+GPU-driven renderer work (Forward+ modernization) is tracked in
+[docs/renderer/MEMORY.md](docs/renderer/MEMORY.md): current phase, next step,
+links to the architecture audit, roadmap and benchmarks. Read it before
+working on it and update it at the end of each session.
+
+Everything the project learns (research, findings, decisions, improvement
+ideas, measurements) goes into the knowledge base in [kb/](kb/index.md), an
+Open Knowledge Format (OKF) v0.2 bundle. Read [kb/kb-howto.md](kb/kb-howto.md),
+and update the bundle and its log in the same commit as the work. Read
+[kb/mistakes/](kb/mistakes/index.md) and [kb/successes/](kb/successes/index.md)
+before testing or measuring, and add to them whenever something goes wrong
+or clearly works.
+
 Shared lessons and working rules for agents are in [AGENT_MEMORY.md](AGENT_MEMORY.md).
 Keep it current and public-safe (no personal names, paths or private projects).

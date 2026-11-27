@@ -1,0 +1,422 @@
+/**************************************************************************/
+/*  planar_reflections.cpp                                                */
+/**************************************************************************/
+/*                         This file is part of:                          */
+/*                             GODOT ENGINE                               */
+/*                        https://godotengine.org                         */
+/**************************************************************************/
+/* Copyright (c) 2014-present Godot Engine contributors (see AUTHORS.md). */
+/* Copyright (c) 2007-2014 Juan Linietsky, Ariel Manzur.                  */
+/*                                                                        */
+/* Permission is hereby granted, free of charge, to any person obtaining  */
+/* a copy of this software and associated documentation files (the        */
+/* "Software"), to deal in the Software without restriction, including    */
+/* without limitation the rights to use, copy, modify, merge, publish,    */
+/* distribute, sublicense, and/or sell copies of the Software, and to     */
+/* permit persons to whom the Software is furnished to do so, subject to  */
+/* the following conditions:                                              */
+/*                                                                        */
+/* The above copyright notice and this permission notice shall be         */
+/* included in all copies or substantial portions of the Software.        */
+/*                                                                        */
+/* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,        */
+/* EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF     */
+/* MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. */
+/* IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY   */
+/* CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,   */
+/* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE      */
+/* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                 */
+/**************************************************************************/
+
+#include "planar_reflections.h"
+
+#include "core/config/project_settings.h"
+
+#include "servers/rendering/renderer_rd/storage_rd/material_storage.h"
+#include "servers/rendering/renderer_rd/storage_rd/texture_storage.h"
+#include "servers/rendering/renderer_rd/uniform_set_cache_rd.h"
+
+using namespace RendererRD;
+
+// A reflector's rectangle on screen (NDC), clipped to the view frustum; at most
+// 4 corners plus one per clip plane.
+static int _planar_screen_polygon(const Projection &p_view_projection, const RendererSceneRender::RenderPlanarReflection &p_reflector, Vector2 *r_polygon) {
+	const Basis &b = p_reflector.transform.basis;
+	Vector3 hu = b.get_column(0).normalized() * (p_reflector.size.x * 0.5);
+	Vector3 hv = b.get_column(2).normalized() * (p_reflector.size.y * 0.5);
+	const Vector3 &o = p_reflector.transform.origin;
+	const Vector3 corners[4] = { o - hu - hv, o + hu - hv, o + hu + hv, o - hu + hv };
+	Vector4 polygon[10];
+	Vector4 clipped[10];
+	int count = 4;
+	for (int c = 0; c < 4; c++) {
+		polygon[c] = p_view_projection.xform(Vector4(corners[c].x, corners[c].y, corners[c].z, 1.0));
+	}
+	static const Vector4 planes[5] = { Vector4(-1, 0, 0, 1), Vector4(1, 0, 0, 1), Vector4(0, -1, 0, 1), Vector4(0, 1, 0, 1), Vector4(0, 0, 1, 1) };
+	for (const Vector4 &plane : planes) {
+		int out = 0;
+		for (int i = 0; i < count; i++) {
+			const Vector4 &a = polygon[i];
+			const Vector4 &c = polygon[(i + 1) % count];
+			float da = plane.dot(a);
+			float dc = plane.dot(c);
+			if (da >= 0.0) {
+				clipped[out++] = a;
+			}
+			if ((da >= 0.0) != (dc >= 0.0)) {
+				clipped[out++] = a + (c - a) * (da / (da - dc));
+			}
+		}
+		count = out;
+		if (count < 3) {
+			return 0;
+		}
+		for (int i = 0; i < count; i++) {
+			polygon[i] = clipped[i];
+		}
+	}
+	for (int i = 0; i < count; i++) {
+		r_polygon[i] = Vector2(polygon[i].x, polygon[i].y) / polygon[i].w;
+	}
+	return count;
+}
+
+// Whether two convex screen polygons overlap by more than a sliver (they may
+// share an edge, as a wall mirror standing on a floor does).
+static bool _planar_polygons_overlap(const Vector2 *p_a, int p_a_count, const Vector2 *p_b, int p_b_count) {
+	if (p_a_count < 3 || p_b_count < 3) {
+		return false;
+	}
+	// Clip a by each edge of b (Sutherland-Hodgman), oriented by b's winding.
+	float b_area = 0.0;
+	for (int i = 0; i < p_b_count; i++) {
+		b_area += p_b[i].cross(p_b[(i + 1) % p_b_count]);
+	}
+	float winding = b_area >= 0.0 ? 1.0 : -1.0;
+	Vector2 polygon[24];
+	Vector2 clipped[24];
+	int count = p_a_count;
+	for (int i = 0; i < count; i++) {
+		polygon[i] = p_a[i];
+	}
+	for (int e = 0; e < p_b_count; e++) {
+		Vector2 e0 = p_b[e];
+		Vector2 e1 = p_b[(e + 1) % p_b_count];
+		Vector2 edge = e1 - e0;
+		int out = 0;
+		for (int i = 0; i < count && out < 22; i++) {
+			const Vector2 &a = polygon[i];
+			const Vector2 &c = polygon[(i + 1) % count];
+			float da = edge.cross(a - e0) * winding;
+			float dc = edge.cross(c - e0) * winding;
+			if (da >= 0.0) {
+				clipped[out++] = a;
+			}
+			if ((da >= 0.0) != (dc >= 0.0)) {
+				clipped[out++] = a + (c - a) * (da / (da - dc));
+			}
+		}
+		count = out;
+		if (count < 3) {
+			return false;
+		}
+		for (int i = 0; i < count; i++) {
+			polygon[i] = clipped[i];
+		}
+	}
+	float area = 0.0;
+	for (int i = 0; i < count; i++) {
+		area += polygon[i].cross(polygon[(i + 1) % count]);
+	}
+	return Math::abs(area) * 0.5 > 1e-6; // Of the 2 x 2 NDC screen.
+}
+
+PlanarReflections::PlanarReflections() {
+	Vector<String> modes;
+	modes.push_back("\n#define MODE_PROJECT\n");
+	modes.push_back("\n#define MODE_RESOLVE\n");
+	modes.push_back("\n#define MODE_TEMPORAL\n");
+	shader.initialize(modes);
+	shader_version = shader.version_create();
+	for (int i = 0; i < MODE_MAX; i++) {
+		pipelines[i] = RD::get_singleton()->compute_pipeline_create(shader.version_get_shader(shader_version, i));
+	}
+	params_buffer = RD::get_singleton()->uniform_buffer_create(sizeof(Params));
+}
+
+PlanarReflections::~PlanarReflections() {
+	RD::get_singleton()->free_rid(params_buffer);
+	shader.version_free(shader_version);
+}
+
+int PlanarReflections::select_reflectors(const LocalVector<RendererSceneRender::RenderPlanarReflection> &p_reflectors, const Transform3D &p_cam_transform, const Projection &p_cam_projection, uint32_t p_visible_layers, int p_max, const RendererSceneRender::RenderPlanarReflection **r_selected) {
+	p_max = CLAMP(p_max, 0, MAX_REFLECTORS);
+	if (p_max == 0 || p_reflectors.is_empty()) {
+		return 0;
+	}
+
+	Vector<Plane> frustum = p_cam_projection.get_projection_planes(p_cam_transform);
+	Vector3 cam_pos = p_cam_transform.origin;
+	Vector3 cam_forward = -p_cam_transform.basis.get_column(2).normalized();
+	bool orthogonal = p_cam_projection.is_orthogonal();
+
+	struct Candidate {
+		const RendererSceneRender::RenderPlanarReflection *reflector = nullptr;
+		float distance = 0.0;
+		bool operator<(const Candidate &p_other) const { return distance < p_other.distance; }
+	};
+	LocalVector<Candidate> candidates;
+
+	for (const RendererSceneRender::RenderPlanarReflection &r : p_reflectors) {
+		if (r.intensity <= 0.0 || !(r.layers & p_visible_layers)) {
+			continue;
+		}
+		const Basis &b = r.transform.basis;
+		Vector3 normal = b.get_column(1).normalized();
+		Vector3 origin = r.transform.origin;
+		// Single sided: the camera must be on the reflected side.
+		float side = orthogonal ? -cam_forward.dot(normal) : normal.dot(cam_pos - origin);
+		if (side <= 0.0) {
+			continue;
+		}
+		Vector3 hu = b.get_column(0) * (r.size.x * 0.5);
+		Vector3 hv = b.get_column(2) * (r.size.y * 0.5);
+		Vector3 corners[4] = { origin - hu - hv, origin + hu - hv, origin + hu + hv, origin - hu + hv };
+		bool culled = false;
+		for (const Plane &plane : frustum) {
+			bool all_outside = true;
+			for (int c = 0; c < 4; c++) {
+				if (!plane.is_point_over(corners[c])) {
+					all_outside = false;
+					break;
+				}
+			}
+			if (all_outside) {
+				culled = true;
+				break;
+			}
+		}
+		if (culled) {
+			continue;
+		}
+		Candidate candidate;
+		candidate.reflector = &r;
+		candidate.distance = r.mirror_buffers.is_valid() ? -1.0f : MAX(cam_pos.distance_to(origin) - (hu + hv).length(), 0.0f);
+		candidates.push_back(candidate);
+	}
+
+	candidates.sort();
+	int count = MIN((int)candidates.size(), p_max);
+	for (int i = 0; i < count; i++) {
+		r_selected[i] = candidates[i].reflector;
+	}
+	return count;
+}
+
+RID PlanarReflections::get_output(const Ref<RenderSceneBuffersRD> &p_render_buffers) {
+	bool output_is_history = false;
+	if (p_render_buffers->has_custom_data(RB_PLANAR_STATE)) {
+		Ref<PlanarReflectionsState> state = p_render_buffers->get_custom_data(RB_PLANAR_STATE);
+		output_is_history = state->output_is_history;
+	}
+	return p_render_buffers->get_texture(RB_SCOPE_PLANAR_REFLECTIONS, output_is_history ? RB_PLANAR_HISTORY : RB_PLANAR_COLOR);
+}
+
+void PlanarReflections::process(Ref<RenderSceneBuffersRD> p_render_buffers, RID p_depth, RID p_normal_roughness, RID p_last_frame, const Projection &p_projection, const Vector2 &p_jitter, const Transform3D &p_cam_transform, const Projection &p_reprojection, const RendererSceneRender::RenderPlanarReflection *const *p_reflectors, int p_count, bool p_half_size, int p_mirror_reflector, RID p_mirror_color, RID p_mirror_depth, const Rect2 &p_mirror_uv_rect) {
+	ERR_FAIL_COND(p_render_buffers.is_null());
+	ERR_FAIL_COND(p_count <= 0 || p_count > MAX_REFLECTORS);
+	UniformSetCacheRD *uniform_set_cache = UniformSetCacheRD::get_singleton();
+	ERR_FAIL_NULL(uniform_set_cache);
+	MaterialStorage *material_storage = MaterialStorage::get_singleton();
+	ERR_FAIL_NULL(material_storage);
+
+	Size2i screen_size = p_render_buffers->get_internal_size();
+	Size2i target_size = p_half_size ? Size2i((screen_size.x + 1) / 2, (screen_size.y + 1) / 2) : screen_size;
+
+	// Buffers: recreated when the size changes.
+	if (p_render_buffers->has_texture(RB_SCOPE_PLANAR_REFLECTIONS, RB_PLANAR_COLOR)) {
+		RD::TextureFormat format = p_render_buffers->get_texture_format(RB_SCOPE_PLANAR_REFLECTIONS, RB_PLANAR_COLOR);
+		if ((int)format.width != target_size.x || (int)format.height != target_size.y) {
+			p_render_buffers->clear_context(RB_SCOPE_PLANAR_REFLECTIONS);
+		}
+	}
+	bool history_valid = true;
+	if (!p_render_buffers->has_texture(RB_SCOPE_PLANAR_REFLECTIONS, RB_PLANAR_COLOR)) {
+		const uint32_t color_usage = RD::TEXTURE_USAGE_SAMPLING_BIT | RD::TEXTURE_USAGE_STORAGE_BIT;
+		p_render_buffers->create_texture(RB_SCOPE_PLANAR_REFLECTIONS, RB_PLANAR_INTERMEDIATE, RD::DATA_FORMAT_R32_UINT, RD::TEXTURE_USAGE_STORAGE_BIT | RD::TEXTURE_USAGE_STORAGE_ATOMIC_BIT | RD::TEXTURE_USAGE_CAN_COPY_TO_BIT, RD::TEXTURE_SAMPLES_1, target_size, 1, 1);
+		p_render_buffers->create_texture(RB_SCOPE_PLANAR_REFLECTIONS, RB_PLANAR_CURRENT, RD::DATA_FORMAT_R16G16B16A16_SFLOAT, color_usage, RD::TEXTURE_SAMPLES_1, target_size, 1, 1);
+		p_render_buffers->create_texture(RB_SCOPE_PLANAR_REFLECTIONS, RB_PLANAR_COLOR, RD::DATA_FORMAT_R16G16B16A16_SFLOAT, color_usage, RD::TEXTURE_SAMPLES_1, target_size, 1, 1);
+		p_render_buffers->create_texture(RB_SCOPE_PLANAR_REFLECTIONS, RB_PLANAR_HISTORY, RD::DATA_FORMAT_R16G16B16A16_SFLOAT, color_usage, RD::TEXTURE_SAMPLES_1, target_size, 1, 1);
+		p_render_buffers->create_texture(RB_SCOPE_PLANAR_REFLECTIONS, RB_PLANAR_PARAMS, RD::DATA_FORMAT_R16G16B16A16_SFLOAT, color_usage, RD::TEXTURE_SAMPLES_1, target_size, 1, 1);
+		p_render_buffers->create_texture(RB_SCOPE_PLANAR_REFLECTIONS, RB_PLANAR_MOTION, RD::DATA_FORMAT_R16G16_SFLOAT, color_usage, RD::TEXTURE_SAMPLES_1, target_size, 1, 1);
+		history_valid = false;
+	}
+	RID intermediate = p_render_buffers->get_texture(RB_SCOPE_PLANAR_REFLECTIONS, RB_PLANAR_INTERMEDIATE);
+	RID current = p_render_buffers->get_texture(RB_SCOPE_PLANAR_REFLECTIONS, RB_PLANAR_CURRENT);
+	// The two color textures take turns: last frame's result is this frame's history.
+	Ref<PlanarReflectionsState> state;
+	if (p_render_buffers->has_custom_data(RB_PLANAR_STATE)) {
+		state = p_render_buffers->get_custom_data(RB_PLANAR_STATE);
+	} else {
+		state.instantiate();
+		p_render_buffers->set_custom_data(RB_PLANAR_STATE, state);
+	}
+	if (!history_valid) {
+		state->output_is_history = true; // So that this frame writes RB_PLANAR_COLOR.
+	}
+	state->output_is_history = !state->output_is_history;
+	RID color = p_render_buffers->get_texture(RB_SCOPE_PLANAR_REFLECTIONS, state->output_is_history ? RB_PLANAR_HISTORY : RB_PLANAR_COLOR);
+	RID history = p_render_buffers->get_texture(RB_SCOPE_PLANAR_REFLECTIONS, state->output_is_history ? RB_PLANAR_COLOR : RB_PLANAR_HISTORY);
+	RID params_texture = p_render_buffers->get_texture(RB_SCOPE_PLANAR_REFLECTIONS, RB_PLANAR_PARAMS);
+	RID motion = p_render_buffers->get_texture(RB_SCOPE_PLANAR_REFLECTIONS, RB_PLANAR_MOTION);
+
+	// Parameters, reflectors in view space.
+	Params params = {};
+	// With the same sub-pixel jitter as the depth buffer (TAA, FSR2, DLSS), or the
+	// reflection would move by a fraction of a pixel every frame.
+	Projection correction;
+	correction.set_depth_correction(true);
+	correction.add_jitter_offset(p_jitter);
+	Projection projection = correction * p_projection;
+	MaterialStorage::store_camera(projection, params.projection);
+	MaterialStorage::store_camera(projection.inverse(), params.inv_projection);
+	MaterialStorage::store_camera(p_reprojection, params.reprojection);
+	params.screen_size[0] = screen_size.x;
+	params.screen_size[1] = screen_size.y;
+	params.target_size[0] = target_size.x;
+	params.target_size[1] = target_size.y;
+	params.reflector_count = p_count;
+	params.max_color_lod = MAX(float(RD::get_singleton()->texture_get_format(p_last_frame).mipmaps) - 1.0f, 0.0f);
+	params.orthogonal = p_projection.is_orthogonal() ? 1 : 0;
+	params.history_valid = history_valid ? 1 : 0;
+	bool use_mirror = p_mirror_reflector >= 0 && p_mirror_reflector < p_count && p_mirror_color.is_valid() && p_mirror_depth.is_valid();
+	params.mirror_reflector = use_mirror ? p_mirror_reflector : -1;
+	params.mirror_max_lod = use_mirror ? MAX(float(RD::get_singleton()->texture_get_format(p_mirror_color).mipmaps) - 1.0f, 0.0f) : 0.0f;
+	params.mirror_background_to_probes = GLOBAL_GET_CACHED(float, "rendering/global_illumination/reflections/planar_mirror_max_distance") > 0.0 ? 1 : 0;
+	params.pad = 0;
+	params.mirror_rect[0] = p_mirror_uv_rect.position.x;
+	params.mirror_rect[1] = p_mirror_uv_rect.position.y;
+	params.mirror_rect[2] = MAX(p_mirror_uv_rect.size.x, 1e-4f);
+	params.mirror_rect[3] = MAX(p_mirror_uv_rect.size.y, 1e-4f);
+
+	Transform3D to_view = p_cam_transform.affine_inverse();
+
+	// Which reflectors can lie in front of which along a camera ray: only those
+	// whose screen areas overlap. The projection tests every reflector against
+	// the others for every pixel (covered_by_other_reflector()); most pairs, like
+	// a wall mirror standing on a floor, never overlap.
+	uint32_t overlap_masks[MAX_REFLECTORS] = {};
+	{
+		Projection view_projection = p_projection * Projection(to_view);
+		Vector2 polygons[MAX_REFLECTORS][9];
+		int counts[MAX_REFLECTORS];
+		for (int i = 0; i < p_count; i++) {
+			counts[i] = _planar_screen_polygon(view_projection, *p_reflectors[i], polygons[i]);
+			// Bounds in the shaders' screen UV (y flipped by the depth correction),
+			// grown by 2% of the screen (jitter, the temporal pass's 3 x 3 neighborhood).
+			Vector2 lo(1e20, 1e20);
+			Vector2 hi(-1e20, -1e20);
+			for (int k = 0; k < counts[i]; k++) {
+				Vector2 uv(polygons[i][k].x * 0.5 + 0.5, -polygons[i][k].y * 0.5 + 0.5);
+				lo = lo.min(uv);
+				hi = hi.max(uv);
+			}
+			if (counts[i] == 0) {
+				lo = Vector2(2, 2); // Off screen: an empty rectangle.
+				hi = Vector2(-2, -2);
+			}
+			params.reflector_rects[i][0] = lo.x - 0.02;
+			params.reflector_rects[i][1] = lo.y - 0.02;
+			params.reflector_rects[i][2] = hi.x + 0.02;
+			params.reflector_rects[i][3] = hi.y + 0.02;
+		}
+		for (int i = 0; i < p_count; i++) {
+			for (int j = i + 1; j < p_count; j++) {
+				if (_planar_polygons_overlap(polygons[i], counts[i], polygons[j], counts[j])) {
+					overlap_masks[i] |= 1u << j;
+					overlap_masks[j] |= 1u << i;
+				}
+			}
+		}
+	}
+
+	for (int i = 0; i < p_count; i++) {
+		const RendererSceneRender::RenderPlanarReflection &r = *p_reflectors[i];
+		const Basis &b = r.transform.basis;
+		Vector3 normal = to_view.basis.xform(b.get_column(1)).normalized();
+		Vector3 center = to_view.xform(r.transform.origin);
+		Vector3 u = to_view.basis.xform(b.get_column(0));
+		Vector3 v = to_view.basis.xform(b.get_column(2));
+		float half_u = r.size.x * 0.5 * u.length();
+		float half_v = r.size.y * 0.5 * v.length();
+		u.normalize();
+		v.normalize();
+
+		ReflectorData &d = params.reflectors[i];
+		d.plane[0] = normal.x;
+		d.plane[1] = normal.y;
+		d.plane[2] = normal.z;
+		d.plane[3] = normal.dot(center);
+		d.center[0] = center.x;
+		d.center[1] = center.y;
+		d.center[2] = center.z;
+		d.center[3] = r.intensity;
+		d.axis_u[0] = u.x;
+		d.axis_u[1] = u.y;
+		d.axis_u[2] = u.z;
+		d.axis_u[3] = half_u;
+		d.axis_v[0] = v.x;
+		d.axis_v[1] = v.y;
+		d.axis_v[2] = v.z;
+		d.axis_v[3] = half_v;
+		d.params[0] = r.thickness;
+		d.params[1] = r.normal_distortion;
+		d.params[2] = r.roughness_cutoff;
+		memcpy(&d.params[3], &overlap_masks[i], sizeof(uint32_t)); // Read as bits by the shader.
+	}
+	RD::get_singleton()->buffer_update(params_buffer, 0, sizeof(Params), &params);
+
+	RD::get_singleton()->draw_command_begin_label("Planar Reflections");
+
+	RD::get_singleton()->texture_clear(intermediate, Color(0, 0, 0, 0), 0, 1, 0, 1);
+
+	RID nearest = material_storage->sampler_rd_get_default(RSE::CANVAS_ITEM_TEXTURE_FILTER_NEAREST, RSE::CANVAS_ITEM_TEXTURE_REPEAT_DISABLED);
+	RID linear_mips = material_storage->sampler_rd_get_default(RSE::CANVAS_ITEM_TEXTURE_FILTER_LINEAR_WITH_MIPMAPS, RSE::CANVAS_ITEM_TEXTURE_REPEAT_DISABLED);
+
+	RD::Uniform u_params(RD::UNIFORM_TYPE_UNIFORM_BUFFER, 0, params_buffer);
+	RD::Uniform u_depth(RD::UNIFORM_TYPE_SAMPLER_WITH_TEXTURE, 1, Vector<RID>({ nearest, p_depth }));
+	RD::Uniform u_intermediate(RD::UNIFORM_TYPE_IMAGE, 2, intermediate);
+	RD::Uniform u_normal_roughness(RD::UNIFORM_TYPE_SAMPLER_WITH_TEXTURE, 3, Vector<RID>({ nearest, p_normal_roughness }));
+	RD::Uniform u_last_frame(RD::UNIFORM_TYPE_SAMPLER_WITH_TEXTURE, 4, Vector<RID>({ linear_mips, p_last_frame }));
+	RD::Uniform u_current_out(RD::UNIFORM_TYPE_IMAGE, 5, current);
+	RD::Uniform u_params_out(RD::UNIFORM_TYPE_IMAGE, 6, params_texture);
+	RD::Uniform u_motion_out(RD::UNIFORM_TYPE_IMAGE, 7, motion);
+	RID black = TextureStorage::get_singleton()->texture_rd_get_default(TextureStorage::DEFAULT_RD_TEXTURE_BLACK);
+	RD::Uniform u_mirror_color(RD::UNIFORM_TYPE_SAMPLER_WITH_TEXTURE, 8, Vector<RID>({ linear_mips, use_mirror ? p_mirror_color : black }));
+	RD::Uniform u_mirror_depth(RD::UNIFORM_TYPE_SAMPLER_WITH_TEXTURE, 9, Vector<RID>({ nearest, use_mirror ? p_mirror_depth : black }));
+
+	RD::ComputeListID compute_list = RD::get_singleton()->compute_list_begin();
+	for (int mode = MODE_PROJECT; mode <= MODE_RESOLVE; mode++) {
+		RID shader_rid = shader.version_get_shader(shader_version, mode);
+		RD::get_singleton()->compute_list_bind_compute_pipeline(compute_list, pipelines[mode]);
+		RD::get_singleton()->compute_list_bind_uniform_set(compute_list, uniform_set_cache->get_cache(shader_rid, 0, u_params, u_depth, u_intermediate, u_normal_roughness, u_last_frame, u_current_out, u_params_out, u_motion_out, u_mirror_color, u_mirror_depth), 0);
+		RD::get_singleton()->compute_list_dispatch_threads(compute_list, target_size.x, target_size.y, 1);
+		RD::get_singleton()->compute_list_add_barrier(compute_list);
+	}
+
+	// Temporal accumulation into the output, which is then kept as next frame's history.
+	{
+		RID linear = material_storage->sampler_rd_get_default(RSE::CANVAS_ITEM_TEXTURE_FILTER_LINEAR, RSE::CANVAS_ITEM_TEXTURE_REPEAT_DISABLED);
+		RID shader_rid = shader.version_get_shader(shader_version, MODE_TEMPORAL);
+		RD::Uniform u_current(RD::UNIFORM_TYPE_SAMPLER_WITH_TEXTURE, 1, Vector<RID>({ nearest, current }));
+		RD::Uniform u_motion(RD::UNIFORM_TYPE_SAMPLER_WITH_TEXTURE, 2, Vector<RID>({ nearest, motion }));
+		RD::Uniform u_history(RD::UNIFORM_TYPE_SAMPLER_WITH_TEXTURE, 3, Vector<RID>({ linear, history }));
+		RD::Uniform u_color_out(RD::UNIFORM_TYPE_IMAGE, 4, color);
+		RD::get_singleton()->compute_list_bind_compute_pipeline(compute_list, pipelines[MODE_TEMPORAL]);
+		RD::get_singleton()->compute_list_bind_uniform_set(compute_list, uniform_set_cache->get_cache(shader_rid, 0, u_params, u_current, u_motion, u_history, u_color_out), 0);
+		RD::get_singleton()->compute_list_dispatch_threads(compute_list, target_size.x, target_size.y, 1);
+	}
+	RD::get_singleton()->compute_list_end();
+
+	RD::get_singleton()->draw_command_end_label();
+}

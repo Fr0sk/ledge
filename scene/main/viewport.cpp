@@ -4246,6 +4246,9 @@ void Viewport::set_vrs_mode(Viewport::VRSMode p_vrs_mode) {
 		case VRS_XR: {
 			RS::get_singleton()->viewport_set_vrs_mode(viewport, RSE::VIEWPORT_VRS_XR);
 		} break;
+		case VRS_ADAPTIVE: {
+			RS::get_singleton()->viewport_set_vrs_mode(viewport, RSE::VIEWPORT_VRS_ADAPTIVE);
+		} break;
 		default: {
 			RS::get_singleton()->viewport_set_vrs_mode(viewport, RSE::VIEWPORT_VRS_DISABLED);
 		} break;
@@ -5432,7 +5435,7 @@ void Viewport::_bind_methods() {
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "use_debanding"), "set_use_debanding", "is_using_debanding");
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "use_occlusion_culling"), "set_use_occlusion_culling", "is_using_occlusion_culling");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "mesh_lod_threshold", PROPERTY_HINT_RANGE, "0,1024,0.1"), "set_mesh_lod_threshold", "get_mesh_lod_threshold");
-	ADD_PROPERTY(PropertyInfo(Variant::INT, "debug_draw", PROPERTY_HINT_ENUM, "Disabled,Unshaded,Lighting,Overdraw,Wireframe,Normal Buffer,VoxelGI Albedo,VoxelGI Lighting,VoxelGI Emission,Shadow Atlas,Directional Shadow Map,Scene Luminance,SSAO,SSIL,Directional Shadow Splits,Decal Atlas,SDFGI Cascades,SDFGI Probes,VoxelGI/SDFGI Buffer,Disable Mesh LOD,OmniLight3D Cluster,SpotLight3D Cluster,Decal Cluster,ReflectionProbe Cluster,Occlusion Culling Buffer,Motion Vectors,Internal Buffer,AreaLight3D Cluster,AreaLight3D Atlas"), "set_debug_draw", "get_debug_draw");
+	ADD_PROPERTY(PropertyInfo(Variant::INT, "debug_draw", PROPERTY_HINT_ENUM, "Disabled,Unshaded,Lighting,Overdraw,Wireframe,Normal Buffer,VoxelGI Albedo,VoxelGI Lighting,VoxelGI Emission,Shadow Atlas,Directional Shadow Map,Scene Luminance,SSAO,SSIL,Directional Shadow Splits,Decal Atlas,SDFGI Cascades,SDFGI Probes,VoxelGI/SDFGI Buffer,Disable Mesh LOD,OmniLight3D Cluster,SpotLight3D Cluster,Decal Cluster,ReflectionProbe Cluster,Occlusion Culling Buffer,Motion Vectors,Internal Buffer,AreaLight3D Cluster,AreaLight3D Atlas,DLSS RR Diffuse Albedo,DLSS RR Specular Albedo,DLSS RR Normal/Roughness,DLSS RR Specular Hit Dist,Reconstructed Depth,Cluster LOD"), "set_debug_draw", "get_debug_draw");
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "use_hdr_2d"), "set_use_hdr_2d", "is_using_hdr_2d");
 
 #ifndef _3D_DISABLED
@@ -5451,7 +5454,7 @@ void Viewport::_bind_methods() {
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "anisotropic_filtering_level", PROPERTY_HINT_ENUM, String::utf8("Disabled (Fastest),2× (Faster),4× (Fast),8× (Average),16x (Slow)")), "set_anisotropic_filtering_level", "get_anisotropic_filtering_level");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "fsr_sharpness", PROPERTY_HINT_RANGE, "0,2,0.01"), "set_fsr_sharpness", "get_fsr_sharpness");
 	ADD_GROUP("Variable Rate Shading", "vrs_");
-	ADD_PROPERTY(PropertyInfo(Variant::INT, "vrs_mode", PROPERTY_HINT_ENUM, "Disabled,Texture,XR"), "set_vrs_mode", "get_vrs_mode");
+	ADD_PROPERTY(PropertyInfo(Variant::INT, "vrs_mode", PROPERTY_HINT_ENUM, "Disabled,Texture,XR,Adaptive"), "set_vrs_mode", "get_vrs_mode");
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "vrs_update_mode", PROPERTY_HINT_ENUM, "Disabled,Once,Always"), "set_vrs_update_mode", "get_vrs_update_mode");
 	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "vrs_texture", PROPERTY_HINT_RESOURCE_TYPE, Texture2D::get_class_static()), "set_vrs_texture", "get_vrs_texture");
 #endif
@@ -5581,6 +5584,7 @@ void Viewport::_bind_methods() {
 	BIND_ENUM_CONSTANT(DEBUG_DRAW_DLSS_RR_NORMAL_ROUGHNESS);
 	BIND_ENUM_CONSTANT(DEBUG_DRAW_DLSS_RR_SPECULAR_HIT_DIST);
 	BIND_ENUM_CONSTANT(DEBUG_DRAW_RECONSTRUCTED_DEPTH);
+	BIND_ENUM_CONSTANT(DEBUG_DRAW_CLUSTER_LOD);
 
 	BIND_ENUM_CONSTANT(DEFAULT_CANVAS_ITEM_TEXTURE_FILTER_NEAREST);
 	BIND_ENUM_CONSTANT(DEFAULT_CANVAS_ITEM_TEXTURE_FILTER_LINEAR);
@@ -5609,6 +5613,7 @@ void Viewport::_bind_methods() {
 	BIND_ENUM_CONSTANT(VRS_DISABLED);
 	BIND_ENUM_CONSTANT(VRS_TEXTURE);
 	BIND_ENUM_CONSTANT(VRS_XR);
+	BIND_ENUM_CONSTANT(VRS_ADAPTIVE);
 	BIND_ENUM_CONSTANT(VRS_MAX);
 
 	BIND_ENUM_CONSTANT(VRS_UPDATE_DISABLED);
@@ -5623,7 +5628,7 @@ void Viewport::_validate_property(PropertyInfo &p_property) const {
 	}
 	if (vrs_mode != VRS_TEXTURE && (p_property.name == "vrs_texture")) {
 		p_property.usage = PROPERTY_USAGE_NO_EDITOR;
-	} else if (vrs_mode == VRS_DISABLED && (p_property.name == "vrs_update_mode")) {
+	} else if ((vrs_mode == VRS_DISABLED || vrs_mode == VRS_ADAPTIVE) && (p_property.name == "vrs_update_mode")) {
 		p_property.usage = PROPERTY_USAGE_NO_EDITOR;
 	}
 }

@@ -264,7 +264,19 @@ public:
 	// DDGI
 	void environment_set_ddgi(RID p_env, bool p_enable, int p_cascades, float p_probe_spacing, const Vector3i &p_probe_grid, float p_energy, float p_normal_bias, float p_view_bias, float p_hysteresis, bool p_probe_relocation, bool p_probe_classification, bool p_follow_camera, int p_debug_mode);
 	void environment_set_ddgi_volume(RID p_env, bool p_node_volume, const Vector3 &p_center, const Vector3 &p_size);
+	void environment_set_ddgi_bounce_energy(RID p_env, float p_energy);
+	void environment_set_ddgi_realtime_updates(RID p_env, bool p_enable);
+	void environment_set_ddgi_baked_data(RID p_env, int p_mode, const Dictionary &p_data);
 	bool environment_get_ddgi_enabled(RID p_env) const;
+	/// True when DDGI only samples baked probes in this environment (no ray tracing needed).
+	bool environment_get_ddgi_baked_only(RID p_env) const;
+	/// The DDGI probes of a viewport's render buffers (see DDGIProbeData), or an empty dictionary.
+	virtual Dictionary ddgi_get_probe_data(const Ref<RenderSceneBuffers> &p_render_buffers) { return Dictionary(); }
+	/// Latest asynchronously read native GPU geometry counters of a viewport, or an empty dictionary.
+	virtual Dictionary gpu_geometry_get_statistics(const Ref<RenderSceneBuffers> &p_render_buffers) { return Dictionary(); }
+	// Changes when reflection probes should be captured again because the DDGI
+	// probes their captures sample have converged further (0 without DDGI).
+	virtual uint64_t ddgi_get_capture_generation() const { return 0; }
 
 	// Adjustment
 	void environment_set_adjustment(RID p_env, bool p_enable, float p_brightness, float p_contrast, float p_saturation, bool p_use_1d_color_correction, RID p_color_correction);
@@ -297,6 +309,10 @@ public:
 		RID light;
 		int pass = 0;
 		PagedArray<RenderGeometryInstance *> instances;
+		// Casters for the renderer's GPU path (directional cascades), listed
+		// apart like the camera's (set_gpu_instance_view).
+		PagedArray<RenderGeometryInstance *> gpu_instances;
+		LocalVector<uint32_t> gpu_slots;
 	};
 
 	struct RenderSDFGIData {
@@ -315,6 +331,24 @@ public:
 		uint32_t positional_light_count;
 	};
 
+	// A planar reflector (PlanarReflector3D): a rectangle through the transform's origin,
+	// spanned by its X and Z axes (times size / 2); the reflected side is +Y.
+	struct RenderPlanarReflection {
+		Transform3D transform;
+		Vector2 size = Vector2(10, 10);
+		uint32_t layers = 1;
+		float intensity = 1.0;
+		float thickness = 0.05;
+		float normal_distortion = 0.0;
+		float roughness_cutoff = 0.4;
+		// Set on the copy given to the renderer when a mirror pass rendered this
+		// reflector this frame (RendererSceneCull::_render_mirror()): the mirrored
+		// camera's buffers (linear HDR color in the internal texture), and the part
+		// of the screen they cover (screen UV, y down, as the effect shaders use).
+		Ref<RenderSceneBuffers> mirror_buffers;
+		Rect2 mirror_uv_rect;
+	};
+
 	struct CameraData {
 		// flags
 		uint32_t view_count;
@@ -331,11 +365,28 @@ public:
 		Vector2 taa_jitter;
 		float taa_frame_count = 0.0f;
 
+		// Mirror pass: the camera reflected across a planar reflector. Geometry on
+		// the negative side of clip_plane (world space) isn't drawn; GI isn't
+		// updated, only sampled.
+		bool mirror_pass = false;
+		Plane clip_plane;
+		// The view's whole projection (main_projection is cropped to the mirror's
+		// rectangle): shadow cascades and light culling assume a symmetric frustum.
+		Projection cull_projection;
+
 		void set_camera(const Transform3D p_transform, const Projection p_projection, bool p_is_orthogonal, bool p_vaspect, const Vector2 &p_taa_jitter = Vector2(), float p_taa_frame_count = 0.0f, uint32_t p_visible_layers = 0xFFFFFFFF);
 		void set_multiview_camera(const Transform3D &p_transform, const LocalVector<Transform3D> &p_offsets, const LocalVector<Projection> &p_projection, bool p_is_orthogonal, bool p_vaspect, uint32_t p_visible_layers = 0xFFFFFFFF);
 	};
 
-	virtual void render_scene(const Ref<RenderSceneBuffers> &p_render_buffers, const CameraData *p_camera_data, const CameraData *p_prev_camera_data, const PagedArray<RenderGeometryInstance *> &p_instances, const PagedArray<RID> &p_lights, const PagedArray<RID> &p_reflection_probes, const PagedArray<RID> &p_voxel_gi_instances, const PagedArray<RID> &p_decals, const PagedArray<RID> &p_lightmaps, const PagedArray<RID> &p_fog_volumes, RID p_environment, RID p_camera_attributes, RID p_compositor, RID p_shadow_atlas, RID p_occluder_debug_tex, RID p_reflection_atlas, RID p_reflection_probe, int p_reflection_probe_pass, float p_screen_mesh_lod_threshold, const RenderShadowData *p_render_shadows, int p_render_shadow_count, const RenderSDFGIData *p_render_sdfgi_regions, int p_render_sdfgi_region_count, float p_window_output_max_value, const RenderSDFGIUpdateData *p_sdfgi_update_data = nullptr, RenderingServerTypes::RenderInfo *r_render_info = nullptr, const PagedArray<RenderGeometryInstance *> *p_rt_instances = nullptr, const PagedArray<RID> *p_rt_lights = nullptr) = 0;
+	// GPU path for eligible instances (Forward+, Phase 2). Called before each
+	// camera cull; when it returns true, the cull lists instances with
+	// gpu_drawn apart from the others and hands that list over before
+	// render_scene() (0 and nullptr after it). The renderer draws them on the
+	// GPU, or for a view its GPU path does not cover, with the other instances.
+	virtual bool gpu_instances_begin_cull() { return false; }
+	virtual void set_gpu_instance_view(uint64_t p_scenario, const PagedArray<RenderGeometryInstance *> *p_instances, const LocalVector<uint32_t> *p_slots, uint32_t p_visible_layers) {}
+
+	virtual void render_scene(const Ref<RenderSceneBuffers> &p_render_buffers, const CameraData *p_camera_data, const CameraData *p_prev_camera_data, const PagedArray<RenderGeometryInstance *> &p_instances, const PagedArray<RID> &p_lights, const PagedArray<RID> &p_reflection_probes, const PagedArray<RID> &p_voxel_gi_instances, const PagedArray<RID> &p_decals, const PagedArray<RID> &p_lightmaps, const PagedArray<RID> &p_fog_volumes, RID p_environment, RID p_camera_attributes, RID p_compositor, RID p_shadow_atlas, RID p_occluder_debug_tex, RID p_reflection_atlas, RID p_reflection_probe, int p_reflection_probe_pass, float p_screen_mesh_lod_threshold, const RenderShadowData *p_render_shadows, int p_render_shadow_count, const RenderSDFGIData *p_render_sdfgi_regions, int p_render_sdfgi_region_count, float p_window_output_max_value, const RenderSDFGIUpdateData *p_sdfgi_update_data = nullptr, RenderingServerTypes::RenderInfo *r_render_info = nullptr, const PagedArray<RenderGeometryInstance *> *p_rt_instances = nullptr, const PagedArray<RID> *p_rt_lights = nullptr, const LocalVector<RenderPlanarReflection> *p_planar_reflections = nullptr) = 0;
 
 	virtual void render_material(const Transform3D &p_cam_transform, const Projection &p_cam_projection, bool p_cam_orthogonal, const PagedArray<RenderGeometryInstance *> &p_instances, RID p_framebuffer, const Rect2i &p_region) = 0;
 	virtual void render_particle_collider_heightfield(RID p_collider, const Transform3D &p_transform, const PagedArray<RenderGeometryInstance *> &p_instances) = 0;
@@ -349,6 +400,11 @@ public:
 
 	virtual void screen_space_roughness_limiter_set_active(bool p_enable, float p_amount, float p_limit) = 0;
 	virtual bool screen_space_roughness_limiter_is_active() const = 0;
+
+	// Non-zero when directional shadow passes clear only their own atlas
+	// region, so far cascades can be kept between frames. Changes whenever
+	// the atlas's contents are lost (reallocated).
+	virtual uint64_t directional_shadow_cache_generation() const { return 0; }
 
 	virtual void sub_surface_scattering_set_quality(RSE::SubSurfaceScatteringQuality p_quality) = 0;
 	virtual void sub_surface_scattering_set_scale(float p_scale, float p_depth_scale) = 0;

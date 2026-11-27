@@ -43,11 +43,22 @@ private:
 	static Mutex singleton_mutex;
 
 public:
-	enum ShaderGroup {
-		SHADER_GROUP_BASE, // Always compiled at the beginning.
-		SHADER_GROUP_ADVANCED,
-		SHADER_GROUP_MULTIVIEW,
-		SHADER_GROUP_ADVANCED_MULTIVIEW,
+	// Rendering features that need extra shader variants. Each distinct set of
+	// features a variant needs is one ShaderRD group, compiled for every material
+	// shader once all its features are enabled (enable_shader_features()). Group 0
+	// needs none and is always compiled. Finer than "advanced": motion vectors
+	// alone don't pull in the lightmap, separate specular, GI and bake variants.
+	enum ShaderFeature {
+		SHADER_FEATURE_SEPARATE_SPECULAR = 1 << 0,
+		SHADER_FEATURE_LIGHTMAP = 1 << 1,
+		SHADER_FEATURE_MOTION_VECTORS = 1 << 2,
+		SHADER_FEATURE_DUAL_PARABOLOID = 1 << 3,
+		SHADER_FEATURE_NORMAL_ROUGHNESS = 1 << 4,
+		SHADER_FEATURE_VOXEL_GI = 1 << 5,
+		SHADER_FEATURE_MATERIAL = 1 << 6,
+		SHADER_FEATURE_SDF = 1 << 7,
+		SHADER_FEATURE_MULTIVIEW = 1 << 8,
+		SHADER_FEATURE_ALL_ADVANCED = SHADER_FEATURE_SEPARATE_SPECULAR | SHADER_FEATURE_LIGHTMAP | SHADER_FEATURE_MOTION_VECTORS | SHADER_FEATURE_DUAL_PARABOLOID | SHADER_FEATURE_NORMAL_ROUGHNESS | SHADER_FEATURE_VOXEL_GI | SHADER_FEATURE_MATERIAL | SHADER_FEATURE_SDF,
 	};
 
 	// Not an enum because these values are constants that are processed as numbers
@@ -130,6 +141,11 @@ public:
 				uint32_t cluster_has_area_light : 1;
 				uint32_t use_lightmap_specular : 1;
 				uint32_t material_feedback : 1;
+				// Reflection probe capture sampling the DDGI probes (bindings 42-45);
+				// compiled out of every other pipeline.
+				uint32_t ddgi_probe_capture : 1;
+				uint32_t multimesh_gpu_culling : 1;
+				uint32_t gpu_instances : 1; // Instance data from the GPU path (binding 47).
 			};
 		};
 
@@ -144,6 +160,50 @@ public:
 				uint32_t cull_mode : 2;
 			};
 		};
+	};
+
+	struct MaterialData;
+
+	// D036: the parameters (the std140 MaterialUniforms block) of all materials
+	// of one shader, one slot each, in pages of storage buffers that never
+	// move. Materials of one page with the same textures share a uniform set
+	// (a group); its id replaces the material id in the render sort key, so
+	// they draw together and the instance data says which slot to read.
+	// Shared by the shader and its materials: the shader can go first.
+	struct MaterialTable {
+		static constexpr uint32_t FIRST_PAGE_SLOTS = 16;
+		static constexpr uint32_t MAX_PAGE_SLOTS = 4096;
+
+		struct Page {
+			RID buffer;
+			uint32_t capacity = 0;
+			uint32_t used = 0; // Slots handed out at least once.
+			LocalVector<uint32_t> free_slots;
+		};
+		struct GroupKey {
+			uint32_t page = 0;
+			Vector<RID> textures;
+			// Texture streaming feedback is per material: such materials keep a group of their own.
+			RID material_feedback;
+			bool operator==(const GroupKey &p_other) const { return page == p_other.page && material_feedback == p_other.material_feedback && textures == p_other.textures; }
+			uint32_t hash() const;
+		};
+		struct Group {
+			uint32_t id = 0;
+			GroupKey key;
+			RID uniform_set;
+			LocalVector<MaterialData *> members;
+		};
+
+		uint32_t refcount = 1;
+		uint32_t stride = 0; // ShaderData::ubo_size.
+		LocalVector<Page> pages;
+		HashMap<GroupKey, Group *> groups;
+
+		void allocate_slot(uint32_t &r_page, uint32_t &r_slot);
+		void free_slot(uint32_t p_page, uint32_t p_slot);
+		static void unref(MaterialTable *p_table);
+		static void _group_uniform_set_erased(void *p_group);
 	};
 
 	struct ShaderData : public RendererRD::MaterialStorage::ShaderData {
@@ -215,6 +275,10 @@ public:
 				h = hash_murmur3_one_32(ubershader, h);
 				return hash_fmix32(h);
 			}
+
+			bool operator==(const PipelineKey &p_other) const {
+				return vertex_format_id == p_other.vertex_format_id && framebuffer_format_id == p_other.framebuffer_format_id && cull_mode == p_other.cull_mode && primitive_type == p_other.primitive_type && version == p_other.version && color_pass_flags == p_other.color_pass_flags && shader_specialization.packed_0 == p_other.shader_specialization.packed_0 && shader_specialization.packed_1 == p_other.shader_specialization.packed_1 && shader_specialization.packed_2 == p_other.shader_specialization.packed_2 && wireframe == p_other.wireframe && ubershader == p_other.ubershader;
+			}
 		};
 
 		void _create_pipeline(PipelineKey p_pipeline_key);
@@ -229,11 +293,13 @@ public:
 
 		Vector<uint32_t> ubo_offsets;
 		uint32_t ubo_size = 0;
+		MaterialTable *material_table = nullptr; // Slots of ubo_size bytes.
 
 		String code;
 
 		DepthDraw depth_draw = DEPTH_DRAW_OPAQUE;
 		DepthTest depth_test = DEPTH_TEST_ENABLED;
+		bool writes_fragment_depth = false;
 
 		int blend_mode = BLEND_MODE_MIX;
 		int depth_test_disabledi = 0;
@@ -268,6 +334,7 @@ public:
 		bool uses_vertex_time = false;
 		bool uses_fragment_time = false;
 		bool writes_modelview_or_projection = false;
+		bool uses_custom_vertex_transform = false;
 		bool uses_world_coordinates = false;
 		bool uses_screen_texture_mipmaps = false;
 		bool uses_z_clip_scale = false;
@@ -397,7 +464,19 @@ public:
 
 	struct MaterialData : public RendererRD::MaterialStorage::MaterialData {
 		ShaderData *shader_data = nullptr;
-		RID uniform_set;
+		RID uniform_set; // The group's.
+		// Material table (D036): this material's parameter slot and group.
+		MaterialTable *table = nullptr;
+		uint32_t table_page = UINT32_MAX;
+		uint32_t table_slot = 0; // In the page; what the instance data carries.
+		MaterialTable::Group *group = nullptr;
+		uint32_t group_member = 0; // Index in group->members.
+		Vector<uint8_t> table_ubo;
+		Vector<RID> table_textures;
+		// Sort key id: materials with the same id draw alike (0: no uniform set).
+		uint32_t get_group_id() const { return group ? group->id : 0; }
+		void _table_leave_group();
+		void _table_release();
 		uint64_t last_pass = 0;
 		uint32_t index = 0;
 		RID next_pass;
@@ -415,6 +494,7 @@ public:
 
 	SceneForwardClusteredShaderRD shader;
 	ShaderCompiler compiler;
+	uint32_t material_group_last_id = 0;
 	bool emulate_point_size = false;
 	bool depth_prepass_enabled = false;
 
@@ -424,6 +504,8 @@ public:
 	RID overdraw_material;
 	RID debug_shadow_splits_material_shader;
 	RID debug_shadow_splits_material;
+	RID debug_cluster_lod_material_shader;
+	RID debug_cluster_lod_material;
 	RID default_shader_rd;
 	RID default_multiview_shader_rd; // This is lazily initialized, use "get_default_shader_rd" instead.
 	RID default_shader_sdfgi_rd;
@@ -443,17 +525,32 @@ public:
 	RID debug_shadow_splits_material_uniform_set;
 	ShaderData *debug_shadow_splits_material_shader_ptr = nullptr;
 
+	RID debug_cluster_lod_material_uniform_set;
+	ShaderData *debug_cluster_lod_material_shader_ptr = nullptr;
+
 	ShaderSpecialization default_specialization = {};
 
 	uint32_t pipeline_compilations[RSE::PIPELINE_SOURCE_MAX] = {};
+
+	// Pipeline creation time by kind, printed on exit with --verbose: [0] specialized, [1] ubershader.
+	SafeNumeric<uint32_t> pipelines_created[2];
+	SafeNumeric<uint64_t> pipeline_create_usec[2];
+
+	bool initializing_default_shader = false; // The default shader keeps its depth variants: shared shadows draw with it.
+	LocalVector<uint32_t> group_features; // ShaderFeature bits each group needs, by group id.
+	std::atomic<uint32_t> enabled_features = 0;
+	Mutex group_enable_mutex;
+	uint32_t _get_variant_group(uint32_t p_features);
+	void _ensure_variant_group_enabled(uint16_t p_shader_version);
 
 	SceneShaderForwardClustered();
 	~SceneShaderForwardClustered();
 
 	void init(const String p_defines);
 	void set_default_specialization(const ShaderSpecialization &p_specialization);
+	void enable_shader_features(uint32_t p_features);
 	void enable_multiview_shader_group();
-	void enable_advanced_shader_group(bool p_needs_multiview = false);
+	void enable_advanced_shader_group(bool p_needs_multiview = false); // Every feature: shader baking.
 	bool is_multiview_shader_group_enabled() const;
 	bool is_advanced_shader_group_enabled(bool p_multiview) const;
 	uint32_t get_pipeline_compilations(RSE::PipelineSource p_source);

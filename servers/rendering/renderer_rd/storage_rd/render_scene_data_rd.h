@@ -49,6 +49,9 @@ public:
 	uint32_t camera_visible_layers;
 	bool cam_orthogonal = false;
 	bool flip_y = false;
+	// Mirror pass (CameraData::mirror_pass): world space clip plane, kept side positive.
+	bool mirror_pass = false;
+	Plane clip_plane;
 
 	// For billboards to cast correct shadows.
 	Transform3D main_cam_transform;
@@ -67,6 +70,10 @@ public:
 	float z_far = 0.0;
 
 	float lod_distance_multiplier = 0.0;
+	// For the shadow passes: the view's own projection, without resolution scaling (a
+	// mirror pass's cropped projection would pick finer LODs, and its shadow maps are
+	// reused by the view).
+	float shadow_lod_distance_multiplier = 0.0;
 	float screen_mesh_lod_threshold = 0.0;
 
 	uint32_t directional_light_count = 0;
@@ -189,6 +196,8 @@ private:
 
 		float fog_sky_affect;
 		float _pad_std140[3];
+
+		float clip_plane[4]; // View space; vertices with dot(xyz, vertex) + w < 0 are clipped.
 	};
 
 	struct UBODATA {

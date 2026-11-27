@@ -1,18 +1,106 @@
 /**************************************************************************/
-/*  ddgi_volume.cpp                                                        */
+/*  ddgi_volume.cpp                                                       */
+/**************************************************************************/
+/*                         This file is part of:                          */
+/*                             GODOT ENGINE                               */
+/*                        https://godotengine.org                         */
+/**************************************************************************/
+/* Copyright (c) 2014-present Godot Engine contributors (see AUTHORS.md). */
+/* Copyright (c) 2007-2014 Juan Linietsky, Ariel Manzur.                  */
+/*                                                                        */
+/* Permission is hereby granted, free of charge, to any person obtaining  */
+/* a copy of this software and associated documentation files (the        */
+/* "Software"), to deal in the Software without restriction, including    */
+/* without limitation the rights to use, copy, modify, merge, publish,    */
+/* distribute, sublicense, and/or sell copies of the Software, and to     */
+/* permit persons to whom the Software is furnished to do so, subject to  */
+/* the following conditions:                                              */
+/*                                                                        */
+/* The above copyright notice and this permission notice shall be         */
+/* included in all copies or substantial portions of the Software.        */
+/*                                                                        */
+/* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,        */
+/* EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF     */
+/* MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. */
+/* IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY   */
+/* CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,   */
+/* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE      */
+/* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                 */
 /**************************************************************************/
 
 #include "ddgi_volume.h"
 
+#include "ddgi_bake_solver.h"
+
+#include "core/config/project_settings.h"
+#include "core/object/callable_mp.h"
 #include "core/object/class_db.h"
+#include "core/os/os.h"
+#include "scene/3d/camera_3d.h"
+#include "scene/3d/planar_reflector_3d.h"
+#include "scene/3d/reflection_probe.h"
+#include "scene/main/scene_tree.h"
+#include "scene/main/viewport.h"
 #include "scene/resources/3d/world_3d.h"
+#include "servers/rendering/rendering_device.h"
 #include "servers/rendering/rendering_server.h"
 
+// DDGIProbeData
+
+void DDGIProbeData::set_data(const Dictionary &p_data) {
+	data = p_data;
+	emit_changed();
+}
+
+Dictionary DDGIProbeData::get_data() const {
+	return data;
+}
+
+int DDGIProbeData::get_cascades() const {
+	return data.get("cascades", 0);
+}
+
+Vector3i DDGIProbeData::get_probe_grid() const {
+	return data.get("probe_grid", Vector3i());
+}
+
+float DDGIProbeData::get_probe_spacing() const {
+	return data.get("probe_spacing", 0.0);
+}
+
+Vector3 DDGIProbeData::get_center() const {
+	return data.get("center", Vector3());
+}
+
+bool DDGIProbeData::matches(int p_cascades, const Vector3i &p_grid, float p_spacing, const Vector3 &p_center) const {
+	return !data.is_empty() && get_cascades() == p_cascades && get_probe_grid() == p_grid &&
+			Math::is_equal_approx(get_probe_spacing(), p_spacing) && get_center().is_equal_approx(p_center);
+}
+
+void DDGIProbeData::_bind_methods() {
+	ClassDB::bind_method(D_METHOD("set_data", "data"), &DDGIProbeData::set_data);
+	ClassDB::bind_method(D_METHOD("get_data"), &DDGIProbeData::get_data);
+	ClassDB::bind_method(D_METHOD("get_cascades"), &DDGIProbeData::get_cascades);
+	ClassDB::bind_method(D_METHOD("get_probe_grid"), &DDGIProbeData::get_probe_grid);
+	ClassDB::bind_method(D_METHOD("get_probe_spacing"), &DDGIProbeData::get_probe_spacing);
+	ClassDB::bind_method(D_METHOD("get_center"), &DDGIProbeData::get_center);
+
+	ADD_PROPERTY(PropertyInfo(Variant::DICTIONARY, "data", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_NO_EDITOR | PROPERTY_USAGE_INTERNAL), "set_data", "get_data");
+}
+
+// DDGIVolume
+
+DDGIVolume::BakeBeginFunc DDGIVolume::bake_begin_function = nullptr;
+DDGIVolume::BakeStepFunc DDGIVolume::bake_step_function = nullptr;
+DDGIVolume::BakeEndFunc DDGIVolume::bake_end_function = nullptr;
+
 Vector3i DDGIVolume::_grid_from_size() const {
+	// The small tolerance keeps a size set from a probe count (an exact
+	// multiple of the spacing) from rounding up to one probe more.
 	return Vector3i(
-			CLAMP(int(Math::ceil(size.x / probe_spacing)) + 1, 2, 64),
-			CLAMP(int(Math::ceil(size.y / probe_spacing)) + 1, 2, 64),
-			CLAMP(int(Math::ceil(size.z / probe_spacing)) + 1, 2, 64));
+			CLAMP(int(Math::ceil(size.x / probe_spacing - 0.001f)) + 1, 2, 64),
+			CLAMP(int(Math::ceil(size.y / probe_spacing - 0.001f)) + 1, 2, 64),
+			CLAMP(int(Math::ceil(size.z / probe_spacing - 0.001f)) + 1, 2, 64));
 }
 
 Ref<Environment> DDGIVolume::_get_environment() const {
@@ -23,6 +111,10 @@ Ref<Environment> DDGIVolume::_get_environment() const {
 	return world.is_valid() ? world->get_environment() : Ref<Environment>();
 }
 
+bool DDGIVolume::_probe_data_matches() const {
+	return probe_data.is_valid() && is_inside_tree() && probe_data->matches(cascades, _grid_from_size(), probe_spacing, get_global_position());
+}
+
 void DDGIVolume::_apply_to_environment() {
 	Ref<Environment> env = _get_environment();
 	if (env.is_null()) {
@@ -31,6 +123,7 @@ void DDGIVolume::_apply_to_environment() {
 		}
 		return;
 	}
+	bool new_environment = applied_environment != env;
 	applied_environment = env;
 
 	env->set_ddgi_enabled(enabled);
@@ -38,36 +131,216 @@ void DDGIVolume::_apply_to_environment() {
 	env->set_ddgi_probe_spacing(probe_spacing);
 	env->set_ddgi_probe_grid(_grid_from_size());
 	env->set_ddgi_energy(energy);
+	env->set_ddgi_bounce_energy(bounce_energy);
+	env->set_ddgi_realtime_updates(realtime_updates);
 	env->set_ddgi_normal_bias(normal_bias);
 	env->set_ddgi_view_bias(view_bias);
 	env->set_ddgi_hysteresis(hysteresis);
 	env->set_ddgi_probe_relocation(probe_relocation);
 	env->set_ddgi_probe_classification(probe_classification);
-	env->set_ddgi_follow_camera(false);
+	// Following the camera, the size only sets the probe grid; the cascades
+	// scroll with the camera instead of staying in this box.
+	env->set_ddgi_follow_camera(infinite_world);
 	env->set_ddgi_debug_mode(debug_mode);
-	env->set_ddgi_volume(enabled, get_global_position(), size);
+	env->set_ddgi_volume(enabled && !infinite_world, get_global_position(), size);
+	if (new_environment) {
+		_apply_baked_data();
+	}
 	update_configuration_warnings();
 }
 
+void DDGIVolume::_apply_baked_data() {
+	if (applied_environment.is_null()) {
+		return;
+	}
+	// The renderer checks that the data fits the volume every frame, so a
+	// moved or resized volume falls back to dynamic updates until rebaked.
+	bool use = bake_mode != BAKE_MODE_DYNAMIC && probe_data.is_valid() && !infinite_world;
+	applied_environment->set_ddgi_baked_data(use ? int(bake_mode) : 0, use ? probe_data->get_data() : Dictionary());
+}
+
+void DDGIVolume::_update_auto_reflections() {
+	bool active = enabled && auto_reflections && is_inside_world();
+	set_process_internal(active);
+	if (!active) {
+		auto_reflector.clear();
+	} else {
+		auto_reflector.mark_dirty();
+	}
+}
+
+void DDGIVolume::_apply_reflection_resolution() {
+	// Godot's probes all share their world's atlas: the resolution is per world.
+	RenderingServer *rs = RenderingServer::get_singleton();
+	RID scenario = is_inside_world() ? get_world_3d()->get_scenario() : RID();
+	int count = GLOBAL_GET("rendering/reflections/reflection_atlas/reflection_count");
+	if (resolution_scenario.is_valid() && (resolution_scenario != scenario || auto_reflection_resolution == 0)) {
+		// Give the world back the project's resolution.
+		rs->scenario_set_reflection_atlas_size(resolution_scenario, GLOBAL_GET("rendering/reflections/reflection_atlas/reflection_size"), count);
+		resolution_scenario = RID();
+	}
+	if (scenario.is_valid() && auto_reflection_resolution > 0) {
+		rs->scenario_set_reflection_atlas_size(scenario, auto_reflection_resolution, count); // No-op when unchanged; else every probe is recaptured.
+		resolution_scenario = scenario;
+	}
+}
+
+void DDGIVolume::_on_tree_node_changed(Node *p_node) {
+	// Only what can change the automatic reflections; other nodes come and go often.
+	if (Object::cast_to<GeometryInstance3D>(p_node) || Object::cast_to<PlanarReflector3D>(p_node) || Object::cast_to<ReflectionProbe>(p_node)) {
+		auto_reflector.mark_dirty();
+	}
+}
+
 void DDGIVolume::_notification(int p_what) {
-	VisualInstance3D::_notification(p_what);
 	switch (p_what) {
-		case NOTIFICATION_ENTER_WORLD:
+		case NOTIFICATION_ENTER_TREE: {
+			get_tree()->connect(SNAME("node_added"), callable_mp(this, &DDGIVolume::_on_tree_node_changed));
+			get_tree()->connect(SNAME("node_removed"), callable_mp(this, &DDGIVolume::_on_tree_node_changed));
+		} break;
+		case NOTIFICATION_EXIT_TREE: {
+			get_tree()->disconnect(SNAME("node_added"), callable_mp(this, &DDGIVolume::_on_tree_node_changed));
+			get_tree()->disconnect(SNAME("node_removed"), callable_mp(this, &DDGIVolume::_on_tree_node_changed));
+		} break;
+		case NOTIFICATION_INTERNAL_PROCESS: {
+			DDGIAutoReflections::Settings settings;
+			settings.probe = auto_reflection_probe;
+			settings.probe_realtime = auto_reflection_probe_realtime;
+			settings.planar = auto_planar_reflections && RenderingServer::get_singleton()->get_current_rendering_method() == "forward_plus";
+			settings.planar_max_roughness = auto_planar_max_roughness;
+			settings.planar_mirror_max_roughness = auto_planar_mirror_max_roughness;
+			settings.planar_min_area = auto_planar_min_area;
+			settings.mirror_probes = auto_mirror_probes;
+			auto_reflector.update(this, settings, size, infinite_world, get_process_delta_time());
+		} break;
+		case NOTIFICATION_ENTER_WORLD: {
+			_apply_to_environment();
+			_update_auto_reflections();
+			_apply_reflection_resolution();
+		} break;
 		case NOTIFICATION_TRANSFORM_CHANGED: {
 			_apply_to_environment();
+			auto_reflector.mark_dirty();
 		} break;
 		case NOTIFICATION_EXIT_WORLD: {
+			set_process_internal(false);
+			auto_reflector.clear();
+			if (resolution_scenario.is_valid()) {
+				RenderingServer::get_singleton()->scenario_set_reflection_atlas_size(resolution_scenario, GLOBAL_GET("rendering/reflections/reflection_atlas/reflection_size"), GLOBAL_GET("rendering/reflections/reflection_atlas/reflection_count"));
+				resolution_scenario = RID();
+			}
 			if (applied_environment.is_valid()) {
+				// The node is the editor's DDGI switch: without it, DDGI is off.
+				applied_environment->set_ddgi_enabled(false);
 				applied_environment->set_ddgi_volume(false, Vector3(), Vector3(1, 1, 1));
+				applied_environment->set_ddgi_baked_data(0, Dictionary());
 				applied_environment.unref();
 			}
 		} break;
 	}
 }
 
+bool DDGIVolume::_set(const StringName &p_name, const Variant &p_value) {
+	// Scenes saved by development builds, before the rename to infinite_world.
+	if (p_name == SNAME("follow_camera")) {
+		set_infinite_world(p_value);
+		return true;
+	}
+	return false;
+}
+
+void DDGIVolume::set_auto_reflections(bool p_enabled) {
+	auto_reflections = p_enabled;
+	_update_auto_reflections();
+}
+
+bool DDGIVolume::is_auto_reflections_enabled() const {
+	return auto_reflections;
+}
+
+void DDGIVolume::set_auto_reflection_probe(bool p_enabled) {
+	auto_reflection_probe = p_enabled;
+	auto_reflector.mark_dirty();
+}
+
+bool DDGIVolume::is_auto_reflection_probe_enabled() const {
+	return auto_reflection_probe;
+}
+
+void DDGIVolume::set_auto_reflection_probe_realtime(bool p_enabled) {
+	auto_reflection_probe_realtime = p_enabled;
+}
+
+bool DDGIVolume::is_auto_reflection_probe_realtime_enabled() const {
+	return auto_reflection_probe_realtime;
+}
+
+void DDGIVolume::set_auto_planar_reflections(bool p_enabled) {
+	auto_planar_reflections = p_enabled;
+	auto_reflector.mark_dirty();
+}
+
+bool DDGIVolume::is_auto_planar_reflections_enabled() const {
+	return auto_planar_reflections;
+}
+
+void DDGIVolume::set_auto_planar_max_roughness(float p_roughness) {
+	auto_planar_max_roughness = CLAMP(p_roughness, 0.0f, 1.0f);
+	auto_reflector.mark_dirty();
+}
+
+float DDGIVolume::get_auto_planar_max_roughness() const {
+	return auto_planar_max_roughness;
+}
+
+void DDGIVolume::set_auto_planar_mirror_max_roughness(float p_roughness) {
+	auto_planar_mirror_max_roughness = CLAMP(p_roughness, 0.0f, 1.0f);
+	auto_reflector.mark_dirty();
+}
+
+float DDGIVolume::get_auto_planar_mirror_max_roughness() const {
+	return auto_planar_mirror_max_roughness;
+}
+
+void DDGIVolume::set_auto_planar_min_area(float p_area) {
+	auto_planar_min_area = MAX(p_area, 0.01f);
+	auto_reflector.mark_dirty();
+}
+
+float DDGIVolume::get_auto_planar_min_area() const {
+	return auto_planar_min_area;
+}
+
+void DDGIVolume::set_auto_mirror_probes(bool p_enabled) {
+	auto_mirror_probes = p_enabled;
+	auto_reflector.mark_dirty();
+}
+
+bool DDGIVolume::is_auto_mirror_probes_enabled() const {
+	return auto_mirror_probes;
+}
+
+void DDGIVolume::set_auto_reflection_resolution(int p_resolution) {
+	auto_reflection_resolution = p_resolution > 0 ? CLAMP(p_resolution, 32, 4096) : 0;
+	_apply_reflection_resolution();
+}
+
+int DDGIVolume::get_auto_reflection_resolution() const {
+	return auto_reflection_resolution;
+}
+
+Array DDGIVolume::get_auto_planar_reflectors() const {
+	return auto_reflector.get_planar_reflectors();
+}
+
+int DDGIVolume::get_auto_planar_reflector_count() const {
+	return auto_reflector.get_planar_reflector_count();
+}
+
 void DDGIVolume::set_enabled(bool p_enabled) {
 	enabled = p_enabled;
 	_apply_to_environment();
+	_update_auto_reflections();
 }
 
 bool DDGIVolume::is_enabled() const {
@@ -78,10 +351,20 @@ void DDGIVolume::set_size(const Vector3 &p_size) {
 	size = p_size.maxf(0.1f);
 	update_gizmos();
 	_apply_to_environment();
+	auto_reflector.mark_dirty();
 }
 
 Vector3 DDGIVolume::get_size() const {
 	return size;
+}
+
+void DDGIVolume::set_probe_count(const Vector3i &p_count) {
+	Vector3i count = p_count.clampi(2, 64);
+	set_size(Vector3(count - Vector3i(1, 1, 1)) * probe_spacing);
+}
+
+Vector3i DDGIVolume::get_probe_count() const {
+	return _grid_from_size();
 }
 
 void DDGIVolume::set_probe_spacing(float p_spacing) {
@@ -109,6 +392,24 @@ void DDGIVolume::set_energy(float p_energy) {
 
 float DDGIVolume::get_energy() const {
 	return energy;
+}
+
+void DDGIVolume::set_bounce_energy(float p_energy) {
+	bounce_energy = CLAMP(p_energy, 0.0f, 2.0f);
+	_apply_to_environment();
+}
+
+float DDGIVolume::get_bounce_energy() const {
+	return bounce_energy;
+}
+
+void DDGIVolume::set_realtime_updates(bool p_enabled) {
+	realtime_updates = p_enabled;
+	_apply_to_environment();
+}
+
+bool DDGIVolume::is_realtime_updates_enabled() const {
+	return realtime_updates;
 }
 
 void DDGIVolume::set_normal_bias(float p_bias) {
@@ -156,6 +457,16 @@ bool DDGIVolume::is_probe_classification_enabled() const {
 	return probe_classification;
 }
 
+void DDGIVolume::set_infinite_world(bool p_enabled) {
+	infinite_world = p_enabled;
+	_apply_to_environment();
+	_apply_baked_data();
+}
+
+bool DDGIVolume::is_infinite_world() const {
+	return infinite_world;
+}
+
 void DDGIVolume::set_debug_mode(Environment::DDGIDebugMode p_mode) {
 	debug_mode = p_mode;
 	_apply_to_environment();
@@ -163,6 +474,217 @@ void DDGIVolume::set_debug_mode(Environment::DDGIDebugMode p_mode) {
 
 Environment::DDGIDebugMode DDGIVolume::get_debug_mode() const {
 	return debug_mode;
+}
+
+void DDGIVolume::set_bake_mode(BakeMode p_mode) {
+	bake_mode = p_mode;
+	_apply_baked_data();
+	update_configuration_warnings();
+}
+
+DDGIVolume::BakeMode DDGIVolume::get_bake_mode() const {
+	return bake_mode;
+}
+
+void DDGIVolume::set_probe_data(const Ref<DDGIProbeData> &p_data) {
+	probe_data = p_data;
+	_apply_baked_data();
+	update_configuration_warnings();
+}
+
+Ref<DDGIProbeData> DDGIVolume::get_probe_data() const {
+	return probe_data;
+}
+
+Dictionary DDGIVolume::_bake_trace(int p_updates, int p_progress_from, int p_progress_to, bool *r_cancelled) {
+	Ref<Environment> env = _get_environment();
+	const int updates = p_updates;
+	const Vector3i grid = _grid_from_size();
+	const int64_t total_probes = int64_t(grid.x) * grid.y * grid.z * cascades;
+
+	// The bake traces with the largest probe budget the renderer allows
+	// (16384 probes per frame), not the realtime one: with the realtime
+	// budget it needed hundreds of frames, and the fixed cost of each frame
+	// (drawing the views, the editor) was most of the bake time. Rays per
+	// probe and the atlas resolution stay those of the quality setting, so
+	// the bake matches it at runtime. The settings are restored afterwards.
+	ProjectSettings *ps = ProjectSettings::get_singleton();
+	static const char *quality_keys[5] = {
+		"rendering/global_illumination/ddgi/quality",
+		"rendering/global_illumination/ddgi/custom_rays_per_probe",
+		"rendering/global_illumination/ddgi/custom_probes_per_frame",
+		"rendering/global_illumination/ddgi/custom_irradiance_texels",
+		"rendering/global_illumination/ddgi/custom_distance_texels",
+	};
+	Variant saved_quality[5];
+	for (int k = 0; k < 5; k++) {
+		saved_quality[k] = ps->get_setting(quality_keys[k]);
+	}
+	// Baked probes keep the emitters' light: baked-only views have no ray
+	// tracing for the direct emissive lights.
+	const Variant saved_emissive_lights = ps->get_setting("rendering/global_illumination/ddgi/emissive_lights");
+	ps->set_setting("rendering/global_illumination/ddgi/emissive_lights", false);
+	// Rays, irradiance and distance texels of the presets (RenderDDGI::get_quality()).
+	static const int presets[4][3] = { { 64, 6, 12 }, { 128, 6, 14 }, { 192, 8, 14 }, { 256, 8, 16 } };
+	const int quality = saved_quality[0];
+	const bool preset = quality >= 0 && quality < 4;
+	const int per_frame = (int)MIN(total_probes, int64_t(16384));
+	ps->set_setting(quality_keys[0], 4); // Custom.
+	ps->set_setting(quality_keys[1], preset ? presets[quality][0] : int(saved_quality[1]));
+	ps->set_setting(quality_keys[2], per_frame);
+	ps->set_setting(quality_keys[3], preset ? presets[quality][1] : int(saved_quality[3]));
+	ps->set_setting(quality_keys[4], preset ? presets[quality][2] : int(saved_quality[4]));
+
+	// Frames per round of updates (all probes once), and a few rounds for the
+	// scheduler to reach the full budget.
+	const int rounds = (int)((total_probes + per_frame - 1) / per_frame);
+	const int warmup = 8;
+	const int frames = (updates + warmup) * rounds;
+
+	// Trace from scratch, not from an older bake.
+	env->set_ddgi_baked_data(0, Dictionary());
+	const float saved_hysteresis = env->get_ddgi_hysteresis();
+
+	// A small offscreen view of the same world: the probes of a fixed volume
+	// don't depend on the camera, and the view keeps them updating.
+	SubViewport *vp = memnew(SubViewport);
+	// Native resolution, no upscaler or anti-aliasing: new viewports take
+	// the project's defaults, and DLSS or FSR at a size this small fail (and
+	// post effects need a few mip levels). 64x64 costs next to nothing.
+	vp->set_size(Size2i(64, 64));
+	vp->set_scaling_3d_mode(Viewport::SCALING_3D_MODE_BILINEAR);
+	vp->set_scaling_3d_scale(1.0);
+	vp->set_msaa_3d(Viewport::MSAA_DISABLED);
+	vp->set_screen_space_aa(Viewport::SCREEN_SPACE_AA_DISABLED);
+	vp->set_use_taa(false);
+	vp->set_update_mode(SubViewport::UPDATE_ALWAYS);
+	vp->set_world_3d(get_world_3d());
+	Camera3D *camera = memnew(Camera3D);
+	vp->add_child(camera);
+	add_child(vp, false, INTERNAL_MODE_BACK);
+	camera->set_transform(Transform3D(Basis(), get_global_position()));
+	camera->make_current();
+
+	bool cancelled = false;
+	const int fast_updates = updates / 3;
+	float hysteresis = -1.0f;
+	for (int i = 0; i < frames; i++) {
+		// First a low hysteresis, so the bounced light builds up quickly, then
+		// a running average (the weight of update n is 1 / n): the least
+		// noise for the number of updates.
+		const int update = MAX(i / rounds - warmup, 0);
+		float h = 0.85f;
+		if (update >= fast_updates) {
+			const int n = update - fast_updates + 1;
+			h = CLAMP(1.0f - 1.0f / float(n + 1), 0.85f, 0.99f);
+		}
+		if (h != hysteresis) {
+			hysteresis = h;
+			env->set_ddgi_hysteresis(h);
+		}
+		RS::get_singleton()->draw(false);
+		if (bake_step_function && (i % 8) == 0 && bake_step_function(p_progress_from + int(int64_t(i) * (p_progress_to - p_progress_from) / frames), vformat(RTR("Tracing probes (%d / %d frames)"), i, frames))) {
+			cancelled = true;
+			break;
+		}
+	}
+
+	Dictionary data;
+	if (!cancelled) {
+		data = RS::get_singleton()->viewport_get_ddgi_probe_data(vp->get_viewport_rid());
+	}
+	env->set_ddgi_hysteresis(saved_hysteresis);
+	for (int k = 0; k < 5; k++) {
+		ps->set_setting(quality_keys[k], saved_quality[k]);
+	}
+	ps->set_setting("rendering/global_illumination/ddgi/emissive_lights", saved_emissive_lights);
+	remove_child(vp);
+	memdelete(vp);
+	*r_cancelled = cancelled;
+	return data;
+}
+
+Ref<DDGIProbeData> DDGIVolume::bake(int p_updates_per_probe) {
+	ERR_FAIL_COND_V_MSG(!is_inside_tree(), Ref<DDGIProbeData>(), "DDGIVolume must be inside the scene tree to bake.");
+	ERR_FAIL_COND_V_MSG(!enabled, Ref<DDGIProbeData>(), "DDGIVolume is disabled; enable it to bake.");
+	ERR_FAIL_COND_V_MSG(infinite_world, Ref<DDGIProbeData>(), "An infinite world DDGIVolume (probes following the camera) can't be baked. Turn off infinite_world.");
+	Ref<Environment> env = _get_environment();
+	ERR_FAIL_COND_V_MSG(env.is_null(), Ref<DDGIProbeData>(), "DDGIVolume needs a WorldEnvironment with an Environment to bake.");
+	RenderingDevice *rd = RenderingServer::get_singleton()->get_rendering_device();
+	ERR_FAIL_COND_V_MSG(!rd || !rd->has_feature(RD::SUPPORTS_RAYTRACING_PIPELINE), Ref<DDGIProbeData>(), "Baking DDGI needs hardware ray tracing: the Forward+ renderer, the Vulkan driver and a GPU with ray tracing pipelines.");
+
+	// Every probe is updated about this many times.
+	const int updates = p_updates_per_probe > 0 ? p_updates_per_probe : 96;
+	const Vector3i grid = _grid_from_size();
+	// The least-squares refinement needs a second bake with half the probe
+	// spacing, on a grid of 2n - 1 probes per side (the coarse probes and
+	// the points between them), within the 64 probes per side the renderer
+	// allows.
+	const Vector3i fine_grid = grid * 2 - Vector3i(1, 1, 1);
+	bool refine = bake_least_squares && fine_grid.x <= 64 && fine_grid.y <= 64 && fine_grid.z <= 64;
+	if (bake_least_squares && !refine) {
+		WARN_PRINT(vformat("DDGI bake: least-squares refinement skipped: it needs at most 32 probes per side (this volume has %s).", grid));
+	}
+
+	if (bake_begin_function) {
+		bake_begin_function();
+	}
+	bool cancelled = false;
+	Dictionary data = _bake_trace(updates, 0, refine ? 150 : 1000, &cancelled);
+	if (refine && !cancelled && !data.is_empty()) {
+		// The fine grid: the same center, half the spacing, and a size that
+		// makes it exactly 2n - 1 probes per side.
+		const float saved_spacing = probe_spacing;
+		const Vector3 saved_size = size;
+		probe_spacing = saved_spacing * 0.5f;
+		size = Vector3(grid - Vector3i(1, 1, 1)) * saved_spacing;
+		_apply_to_environment();
+		Dictionary fine = _bake_trace(updates, 150, 950, &cancelled);
+		probe_spacing = saved_spacing;
+		size = saved_size;
+		_apply_to_environment();
+		if (!cancelled && !fine.is_empty()) {
+			if (bake_step_function) {
+				bake_step_function(950, RTR("Solving probes"));
+			}
+			DDGIBakeSolver::Settings settings;
+			settings.normal_bias = normal_bias;
+			DDGIBakeSolver::Report report;
+			String error;
+			uint64_t t0 = OS::get_singleton()->get_ticks_msec();
+			Dictionary solved = DDGIBakeSolver::solve(data, fine, settings, &report, &error);
+			if (solved.is_empty()) {
+				WARN_PRINT("DDGI bake: least-squares refinement skipped: " + error + ".");
+			} else {
+				data = solved;
+				print_line(vformat("DDGI bake: least-squares refinement from %d fine probes in %d ms; interpolation error %.4f -> %.4f, irradiance changed by %.1f%%.",
+						report.samples, OS::get_singleton()->get_ticks_msec() - t0, report.residual_before, report.residual_after, report.mean_change * 100.0f));
+			}
+		}
+	}
+	if (bake_end_function) {
+		bake_end_function();
+	}
+	_apply_baked_data();
+
+	if (cancelled) {
+		return Ref<DDGIProbeData>();
+	}
+	ERR_FAIL_COND_V_MSG(data.is_empty(), Ref<DDGIProbeData>(), "DDGI bake failed: the renderer returned no probes. DDGI must be running for this volume (Forward+, Vulkan, ray tracing).");
+
+	Ref<DDGIProbeData> result;
+	result.instantiate();
+	result->set_data(data);
+	set_probe_data(result);
+	return result;
+}
+
+void DDGIVolume::set_bake_least_squares(bool p_enabled) {
+	bake_least_squares = p_enabled;
+}
+
+bool DDGIVolume::is_bake_least_squares_enabled() const {
+	return bake_least_squares;
 }
 
 AABB DDGIVolume::get_aabb() const {
@@ -174,8 +696,29 @@ PackedStringArray DDGIVolume::get_configuration_warnings() const {
 	if (_get_environment().is_null()) {
 		warnings.push_back(RTR("DDGIVolume needs a WorldEnvironment with an Environment resource in the same World3D."));
 	}
+	// Sampling baked probes needs no ray tracing; updating them does.
+	const bool baked_only = bake_mode == BAKE_MODE_BAKED && _probe_data_matches() && !infinite_world;
 	if (RenderingServer::get_singleton()->get_current_rendering_method() != "forward_plus") {
 		warnings.push_back(RTR("DDGI needs the Forward+ renderer."));
+	} else if (!baked_only && OS::get_singleton()->get_current_rendering_driver_name() == "d3d12") {
+		warnings.push_back(RTR("DDGI needs hardware ray tracing, which the D3D12 driver doesn't implement. Use the Vulkan driver, or bake the probes and set Bake Mode to Baked."));
+	} else if (!baked_only) {
+		RenderingDevice *rd = RenderingServer::get_singleton()->get_rendering_device();
+		if (rd && !rd->has_feature(RD::SUPPORTS_RAYTRACING_PIPELINE)) {
+			warnings.push_back(RTR("DDGI needs a GPU and driver with Vulkan ray tracing pipelines; this one has none. Bake the probes on a machine with ray tracing and set Bake Mode to Baked."));
+		}
+	}
+	if (!infinite_world && is_inside_tree() && !get_global_basis().orthonormalized().is_equal_approx(Basis())) {
+		warnings.push_back(RTR("DDGIVolume ignores rotation: the probe grid is always aligned with the world axes."));
+	}
+	if (bake_mode != BAKE_MODE_DYNAMIC) {
+		if (infinite_world) {
+			warnings.push_back(RTR("Baked probes need a fixed volume: turn off Infinite World."));
+		} else if (probe_data.is_null()) {
+			warnings.push_back(RTR("No baked probe data: select the DDGIVolume and use Bake DDGI in the 3D editor toolbar. Until then the probes are updated dynamically."));
+		} else if (!_probe_data_matches()) {
+			warnings.push_back(RTR("The baked probe data doesn't fit this volume anymore (position, size, probe spacing or cascades changed). Bake again; until then the probes are updated dynamically."));
+		}
 	}
 	return warnings;
 }
@@ -185,12 +728,18 @@ void DDGIVolume::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("is_enabled"), &DDGIVolume::is_enabled);
 	ClassDB::bind_method(D_METHOD("set_size", "size"), &DDGIVolume::set_size);
 	ClassDB::bind_method(D_METHOD("get_size"), &DDGIVolume::get_size);
+	ClassDB::bind_method(D_METHOD("set_probe_count", "count"), &DDGIVolume::set_probe_count);
+	ClassDB::bind_method(D_METHOD("get_probe_count"), &DDGIVolume::get_probe_count);
 	ClassDB::bind_method(D_METHOD("set_probe_spacing", "spacing"), &DDGIVolume::set_probe_spacing);
 	ClassDB::bind_method(D_METHOD("get_probe_spacing"), &DDGIVolume::get_probe_spacing);
 	ClassDB::bind_method(D_METHOD("set_cascades", "cascades"), &DDGIVolume::set_cascades);
 	ClassDB::bind_method(D_METHOD("get_cascades"), &DDGIVolume::get_cascades);
 	ClassDB::bind_method(D_METHOD("set_energy", "energy"), &DDGIVolume::set_energy);
 	ClassDB::bind_method(D_METHOD("get_energy"), &DDGIVolume::get_energy);
+	ClassDB::bind_method(D_METHOD("set_bounce_energy", "energy"), &DDGIVolume::set_bounce_energy);
+	ClassDB::bind_method(D_METHOD("get_bounce_energy"), &DDGIVolume::get_bounce_energy);
+	ClassDB::bind_method(D_METHOD("set_realtime_updates", "enabled"), &DDGIVolume::set_realtime_updates);
+	ClassDB::bind_method(D_METHOD("is_realtime_updates_enabled"), &DDGIVolume::is_realtime_updates_enabled);
 	ClassDB::bind_method(D_METHOD("set_normal_bias", "bias"), &DDGIVolume::set_normal_bias);
 	ClassDB::bind_method(D_METHOD("get_normal_bias"), &DDGIVolume::get_normal_bias);
 	ClassDB::bind_method(D_METHOD("set_view_bias", "bias"), &DDGIVolume::set_view_bias);
@@ -201,20 +750,73 @@ void DDGIVolume::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("is_probe_relocation_enabled"), &DDGIVolume::is_probe_relocation_enabled);
 	ClassDB::bind_method(D_METHOD("set_probe_classification", "enabled"), &DDGIVolume::set_probe_classification);
 	ClassDB::bind_method(D_METHOD("is_probe_classification_enabled"), &DDGIVolume::is_probe_classification_enabled);
+	ClassDB::bind_method(D_METHOD("set_infinite_world", "enabled"), &DDGIVolume::set_infinite_world);
+	ClassDB::bind_method(D_METHOD("is_infinite_world"), &DDGIVolume::is_infinite_world);
 	ClassDB::bind_method(D_METHOD("set_debug_mode", "mode"), &DDGIVolume::set_debug_mode);
 	ClassDB::bind_method(D_METHOD("get_debug_mode"), &DDGIVolume::get_debug_mode);
+	ClassDB::bind_method(D_METHOD("set_bake_mode", "mode"), &DDGIVolume::set_bake_mode);
+	ClassDB::bind_method(D_METHOD("set_bake_least_squares", "enabled"), &DDGIVolume::set_bake_least_squares);
+	ClassDB::bind_method(D_METHOD("is_bake_least_squares_enabled"), &DDGIVolume::is_bake_least_squares_enabled);
+	ClassDB::bind_method(D_METHOD("get_bake_mode"), &DDGIVolume::get_bake_mode);
+	ClassDB::bind_method(D_METHOD("set_probe_data", "data"), &DDGIVolume::set_probe_data);
+	ClassDB::bind_method(D_METHOD("get_probe_data"), &DDGIVolume::get_probe_data);
+	ClassDB::bind_method(D_METHOD("bake", "updates_per_probe"), &DDGIVolume::bake, DEFVAL(0));
+	ClassDB::bind_method(D_METHOD("set_auto_reflections", "enabled"), &DDGIVolume::set_auto_reflections);
+	ClassDB::bind_method(D_METHOD("is_auto_reflections_enabled"), &DDGIVolume::is_auto_reflections_enabled);
+	ClassDB::bind_method(D_METHOD("set_auto_reflection_probe", "enabled"), &DDGIVolume::set_auto_reflection_probe);
+	ClassDB::bind_method(D_METHOD("is_auto_reflection_probe_enabled"), &DDGIVolume::is_auto_reflection_probe_enabled);
+	ClassDB::bind_method(D_METHOD("set_auto_reflection_probe_realtime", "enabled"), &DDGIVolume::set_auto_reflection_probe_realtime);
+	ClassDB::bind_method(D_METHOD("is_auto_reflection_probe_realtime_enabled"), &DDGIVolume::is_auto_reflection_probe_realtime_enabled);
+	ClassDB::bind_method(D_METHOD("set_auto_planar_reflections", "enabled"), &DDGIVolume::set_auto_planar_reflections);
+	ClassDB::bind_method(D_METHOD("is_auto_planar_reflections_enabled"), &DDGIVolume::is_auto_planar_reflections_enabled);
+	ClassDB::bind_method(D_METHOD("set_auto_planar_max_roughness", "roughness"), &DDGIVolume::set_auto_planar_max_roughness);
+	ClassDB::bind_method(D_METHOD("get_auto_planar_max_roughness"), &DDGIVolume::get_auto_planar_max_roughness);
+	ClassDB::bind_method(D_METHOD("set_auto_planar_mirror_max_roughness", "roughness"), &DDGIVolume::set_auto_planar_mirror_max_roughness);
+	ClassDB::bind_method(D_METHOD("get_auto_planar_mirror_max_roughness"), &DDGIVolume::get_auto_planar_mirror_max_roughness);
+	ClassDB::bind_method(D_METHOD("set_auto_planar_min_area", "area"), &DDGIVolume::set_auto_planar_min_area);
+	ClassDB::bind_method(D_METHOD("get_auto_planar_min_area"), &DDGIVolume::get_auto_planar_min_area);
+	ClassDB::bind_method(D_METHOD("set_auto_mirror_probes", "enabled"), &DDGIVolume::set_auto_mirror_probes);
+	ClassDB::bind_method(D_METHOD("is_auto_mirror_probes_enabled"), &DDGIVolume::is_auto_mirror_probes_enabled);
+	ClassDB::bind_method(D_METHOD("set_auto_reflection_resolution", "resolution"), &DDGIVolume::set_auto_reflection_resolution);
+	ClassDB::bind_method(D_METHOD("get_auto_reflection_resolution"), &DDGIVolume::get_auto_reflection_resolution);
+	ClassDB::bind_method(D_METHOD("get_auto_planar_reflector_count"), &DDGIVolume::get_auto_planar_reflector_count);
+	ClassDB::bind_method(D_METHOD("get_auto_planar_reflectors"), &DDGIVolume::get_auto_planar_reflectors);
 
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "enabled"), "set_enabled", "is_enabled");
-	ADD_PROPERTY(PropertyInfo(Variant::VECTOR3, "size", PROPERTY_HINT_NONE, "suffix:m"), "set_size", "get_size");
-	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "probe_spacing", PROPERTY_HINT_RANGE, "0.05,16,0.01,or_greater,suffix:m"), "set_probe_spacing", "get_probe_spacing");
+	// Size, spacing and probe count are linked: editing one updates the others in the inspector.
+	ADD_PROPERTY(PropertyInfo(Variant::VECTOR3, "size", PROPERTY_HINT_NONE, "suffix:m", PROPERTY_USAGE_DEFAULT | PROPERTY_USAGE_UPDATE_ALL_IF_MODIFIED), "set_size", "get_size");
+	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "probe_spacing", PROPERTY_HINT_RANGE, "0.05,16,0.01,or_greater,suffix:m", PROPERTY_USAGE_DEFAULT | PROPERTY_USAGE_UPDATE_ALL_IF_MODIFIED), "set_probe_spacing", "get_probe_spacing");
+	// Not stored: it follows from size and spacing.
+	ADD_PROPERTY(PropertyInfo(Variant::VECTOR3I, "probe_count", PROPERTY_HINT_RANGE, "2,64,1", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_UPDATE_ALL_IF_MODIFIED), "set_probe_count", "get_probe_count");
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "cascades", PROPERTY_HINT_RANGE, "1,4,1"), "set_cascades", "get_cascades");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "energy", PROPERTY_HINT_RANGE, "0,8,0.01,or_greater"), "set_energy", "get_energy");
+	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "bounce_energy", PROPERTY_HINT_RANGE, "0,2,0.01"), "set_bounce_energy", "get_bounce_energy");
+	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "realtime_updates"), "set_realtime_updates", "is_realtime_updates_enabled");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "normal_bias", PROPERTY_HINT_RANGE, "0,1,0.01"), "set_normal_bias", "get_normal_bias");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "view_bias", PROPERTY_HINT_RANGE, "0,1,0.01"), "set_view_bias", "get_view_bias");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "hysteresis", PROPERTY_HINT_RANGE, "0,0.999,0.001"), "set_hysteresis", "get_hysteresis");
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "probe_relocation"), "set_probe_relocation", "is_probe_relocation_enabled");
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "probe_classification"), "set_probe_classification", "is_probe_classification_enabled");
+	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "infinite_world"), "set_infinite_world", "is_infinite_world");
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "debug_mode", PROPERTY_HINT_ENUM, "Disabled,Indirect Light,Probe Irradiance,Probe Distance,Probe States,Probe Update Priority,Cascades"), "set_debug_mode", "get_debug_mode");
+	ADD_GROUP("Reflections", "auto_");
+	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "auto_reflections"), "set_auto_reflections", "is_auto_reflections_enabled");
+	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "auto_reflection_probe"), "set_auto_reflection_probe", "is_auto_reflection_probe_enabled");
+	ADD_PROPERTY(PropertyInfo(Variant::INT, "auto_reflection_resolution", PROPERTY_HINT_ENUM, "Project Setting:0,128:128,256:256,512:512,1024:1024,2048:2048"), "set_auto_reflection_resolution", "get_auto_reflection_resolution");
+	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "auto_reflection_probe_realtime"), "set_auto_reflection_probe_realtime", "is_auto_reflection_probe_realtime_enabled");
+	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "auto_planar_reflections"), "set_auto_planar_reflections", "is_auto_planar_reflections_enabled");
+	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "auto_planar_max_roughness", PROPERTY_HINT_RANGE, "0,1,0.01"), "set_auto_planar_max_roughness", "get_auto_planar_max_roughness");
+	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "auto_planar_mirror_max_roughness", PROPERTY_HINT_RANGE, "0,1,0.01"), "set_auto_planar_mirror_max_roughness", "get_auto_planar_mirror_max_roughness");
+	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "auto_planar_min_area", PROPERTY_HINT_RANGE, U"0.1,100,0.1,or_greater,suffix:m\u00B2"), "set_auto_planar_min_area", "get_auto_planar_min_area");
+	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "auto_mirror_probes"), "set_auto_mirror_probes", "is_auto_mirror_probes_enabled");
+	ADD_GROUP("Baking", "");
+	ADD_PROPERTY(PropertyInfo(Variant::INT, "bake_mode", PROPERTY_HINT_ENUM, "Dynamic,Baked,Baked + Dynamic"), "set_bake_mode", "get_bake_mode");
+	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "bake_least_squares"), "set_bake_least_squares", "is_bake_least_squares_enabled");
+	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "probe_data", PROPERTY_HINT_RESOURCE_TYPE, DDGIProbeData::get_class_static()), "set_probe_data", "get_probe_data");
+
+	BIND_ENUM_CONSTANT(BAKE_MODE_DYNAMIC);
+	BIND_ENUM_CONSTANT(BAKE_MODE_BAKED);
+	BIND_ENUM_CONSTANT(BAKE_MODE_BAKED_DYNAMIC);
 }
 
 DDGIVolume::DDGIVolume() {

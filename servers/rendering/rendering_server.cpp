@@ -2396,6 +2396,7 @@ void RenderingServer::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("mesh_surface_get_index_buffer_rd_rid", "mesh", "surface"), &RenderingServer::mesh_surface_get_index_buffer_rd_rid);
 
 	ClassDB::bind_method(D_METHOD("mesh_set_shadow_mesh", "mesh", "shadow_mesh"), &RenderingServer::mesh_set_shadow_mesh);
+	ClassDB::bind_method(D_METHOD("mesh_set_cluster_data", "mesh", "data"), &RenderingServer::mesh_set_cluster_data);
 
 	BIND_ENUM_CONSTANT(RSE::ARRAY_VERTEX);
 	BIND_ENUM_CONSTANT(RSE::ARRAY_NORMAL);
@@ -2495,6 +2496,7 @@ void RenderingServer::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("multimesh_instance_get_color", "multimesh", "index"), &RenderingServer::multimesh_instance_get_color);
 	ClassDB::bind_method(D_METHOD("multimesh_instance_get_custom_data", "multimesh", "index"), &RenderingServer::multimesh_instance_get_custom_data);
 	ClassDB::bind_method(D_METHOD("multimesh_set_visible_instances", "multimesh", "visible"), &RenderingServer::multimesh_set_visible_instances);
+	ClassDB::bind_method(D_METHOD("multimesh_set_distance_thinning", "multimesh", "begin", "end"), &RenderingServer::multimesh_set_distance_thinning);
 	ClassDB::bind_method(D_METHOD("multimesh_get_visible_instances", "multimesh"), &RenderingServer::multimesh_get_visible_instances);
 	ClassDB::bind_method(D_METHOD("multimesh_set_buffer", "multimesh", "buffer"), &RenderingServer::multimesh_set_buffer);
 	ClassDB::bind_method(D_METHOD("multimesh_get_command_buffer_rd_rid", "multimesh"), &RenderingServer::multimesh_get_command_buffer_rd_rid);
@@ -2846,6 +2848,19 @@ void RenderingServer::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("occluder_create"), &RenderingServer::occluder_create);
 	ClassDB::bind_method(D_METHOD("occluder_set_mesh", "occluder", "vertices", "indices"), &RenderingServer::occluder_set_mesh);
 
+	/* PLANAR REFLECTION */
+
+	ClassDB::bind_method(D_METHOD("planar_reflection_create"), &RenderingServer::planar_reflection_create);
+	ClassDB::bind_method(D_METHOD("planar_reflection_set_scenario", "planar_reflection", "scenario"), &RenderingServer::planar_reflection_set_scenario);
+	ClassDB::bind_method(D_METHOD("planar_reflection_set_transform", "planar_reflection", "transform"), &RenderingServer::planar_reflection_set_transform);
+	ClassDB::bind_method(D_METHOD("planar_reflection_set_size", "planar_reflection", "size"), &RenderingServer::planar_reflection_set_size);
+	ClassDB::bind_method(D_METHOD("planar_reflection_set_layer_mask", "planar_reflection", "layers"), &RenderingServer::planar_reflection_set_layer_mask);
+	ClassDB::bind_method(D_METHOD("planar_reflection_set_visible", "planar_reflection", "visible"), &RenderingServer::planar_reflection_set_visible);
+	ClassDB::bind_method(D_METHOD("planar_reflection_set_intensity", "planar_reflection", "intensity"), &RenderingServer::planar_reflection_set_intensity);
+	ClassDB::bind_method(D_METHOD("planar_reflection_set_thickness", "planar_reflection", "thickness"), &RenderingServer::planar_reflection_set_thickness);
+	ClassDB::bind_method(D_METHOD("planar_reflection_set_normal_distortion", "planar_reflection", "distortion"), &RenderingServer::planar_reflection_set_normal_distortion);
+	ClassDB::bind_method(D_METHOD("planar_reflection_set_roughness_cutoff", "planar_reflection", "roughness"), &RenderingServer::planar_reflection_set_roughness_cutoff);
+
 	/* CAMERA */
 
 	ClassDB::bind_method(D_METHOD("camera_create"), &RenderingServer::camera_create);
@@ -2924,6 +2939,8 @@ void RenderingServer::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("viewport_get_measured_render_time_cpu", "viewport"), &RenderingServer::viewport_get_measured_render_time_cpu);
 
 	ClassDB::bind_method(D_METHOD("viewport_get_measured_render_time_gpu", "viewport"), &RenderingServer::viewport_get_measured_render_time_gpu);
+	ClassDB::bind_method(D_METHOD("viewport_get_ddgi_probe_data", "viewport"), &RenderingServer::viewport_get_ddgi_probe_data);
+	ClassDB::bind_method(D_METHOD("viewport_get_gpu_geometry_statistics", "viewport"), &RenderingServer::viewport_get_gpu_geometry_statistics);
 
 	ClassDB::bind_method(D_METHOD("viewport_set_vrs_mode", "viewport", "mode"), &RenderingServer::viewport_set_vrs_mode);
 	ClassDB::bind_method(D_METHOD("viewport_set_vrs_update_mode", "viewport", "mode"), &RenderingServer::viewport_set_vrs_update_mode);
@@ -3033,10 +3050,12 @@ void RenderingServer::_bind_methods() {
 	BIND_ENUM_CONSTANT(RSE::VIEWPORT_DEBUG_DRAW_DLSS_RR_NORMAL_ROUGHNESS);
 	BIND_ENUM_CONSTANT(RSE::VIEWPORT_DEBUG_DRAW_DLSS_RR_SPECULAR_HIT_DIST);
 	BIND_ENUM_CONSTANT(RSE::VIEWPORT_DEBUG_DRAW_RECONSTRUCTED_DEPTH);
+	BIND_ENUM_CONSTANT(RSE::VIEWPORT_DEBUG_DRAW_CLUSTER_LOD);
 
 	BIND_ENUM_CONSTANT(RSE::VIEWPORT_VRS_DISABLED);
 	BIND_ENUM_CONSTANT(RSE::VIEWPORT_VRS_TEXTURE);
 	BIND_ENUM_CONSTANT(RSE::VIEWPORT_VRS_XR);
+	BIND_ENUM_CONSTANT(RSE::VIEWPORT_VRS_ADAPTIVE);
 	BIND_ENUM_CONSTANT(RSE::VIEWPORT_VRS_MAX);
 
 	BIND_ENUM_CONSTANT(RSE::VIEWPORT_VRS_UPDATE_DISABLED);
@@ -3107,6 +3126,9 @@ void RenderingServer::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("environment_set_pathtracing", "env", "enable", "debug_mode", "samples_per_pixel", "max_bounces", "denoiser"), &RenderingServer::environment_set_pathtracing);
 	ClassDB::bind_method(D_METHOD("environment_set_ddgi", "env", "enable", "cascades", "probe_spacing", "probe_grid", "energy", "normal_bias", "view_bias", "hysteresis", "probe_relocation", "probe_classification", "follow_camera", "debug_mode"), &RenderingServer::environment_set_ddgi);
 	ClassDB::bind_method(D_METHOD("environment_set_ddgi_volume", "env", "node_volume", "center", "size"), &RenderingServer::environment_set_ddgi_volume);
+	ClassDB::bind_method(D_METHOD("environment_set_ddgi_bounce_energy", "env", "energy"), &RenderingServer::environment_set_ddgi_bounce_energy);
+	ClassDB::bind_method(D_METHOD("environment_set_ddgi_realtime_updates", "env", "enable"), &RenderingServer::environment_set_ddgi_realtime_updates);
+	ClassDB::bind_method(D_METHOD("environment_set_ddgi_baked_data", "env", "mode", "data"), &RenderingServer::environment_set_ddgi_baked_data);
 	ClassDB::bind_method(D_METHOD("environment_set_volumetric_fog", "env", "enable", "density", "albedo", "emission", "emission_energy", "anisotropy", "length", "detail_spread", "gi_inject", "temporal_reprojection", "temporal_reprojection_amount", "ambient_inject", "sky_affect"), &RenderingServer::environment_set_volumetric_fog);
 
 	ClassDB::bind_method(D_METHOD("environment_glow_set_use_bicubic_upscale", "enable"), &RenderingServer::environment_glow_set_use_bicubic_upscale);
@@ -3304,6 +3326,7 @@ void RenderingServer::_bind_methods() {
 	BIND_ENUM_CONSTANT(RSE::INSTANCE_FLAG_USE_DYNAMIC_GI);
 	BIND_ENUM_CONSTANT(RSE::INSTANCE_FLAG_DRAW_NEXT_FRAME_IF_VISIBLE);
 	BIND_ENUM_CONSTANT(RSE::INSTANCE_FLAG_IGNORE_OCCLUSION_CULLING);
+	BIND_ENUM_CONSTANT(RSE::INSTANCE_FLAG_USE_CLUSTER_LOD);
 	BIND_ENUM_CONSTANT(RSE::INSTANCE_FLAG_MAX);
 
 	BIND_ENUM_CONSTANT(RSE::SHADOW_CASTING_SETTING_OFF);
@@ -3714,6 +3737,34 @@ void RenderingServer::init() {
 	GLOBAL_DEF(PropertyInfo(Variant::FLOAT, "rendering/lights_and_shadows/contact_shadow/surface_thickness", PROPERTY_HINT_RANGE, "0.001,0.1,0.001"), 0.01);
 
 	GLOBAL_DEF(PropertyInfo(Variant::INT, "rendering/lights_and_shadows/directional_shadow/size", PROPERTY_HINT_RANGE, "256,16384"), 4096);
+	GLOBAL_DEF(PropertyInfo(Variant::INT, "rendering/lights_and_shadows/directional_shadow/far_cascade_update_interval", PROPERTY_HINT_RANGE, "1,8,1"), 4);
+	GLOBAL_DEF(PropertyInfo(Variant::FLOAT, "rendering/mesh_lod/lod_change/shadow_threshold_scale", PROPERTY_HINT_RANGE, "1,16,0.1"), 4.0);
+
+	// GPU-driven geometry (Forward+). Registered here, not by the renderer, so
+	// they exist and show in Project Settings with every rendering method.
+	// All but streaming/enabled are read every frame and switch live.
+	GLOBAL_DEF("rendering/geometry/cluster_lod/enabled", true);
+	GLOBAL_DEF(PropertyInfo(Variant::FLOAT, "rendering/geometry/cluster_lod/error_pixels", PROPERTY_HINT_RANGE, "0,64,0.1,or_greater"), 1.0);
+	GLOBAL_DEF("rendering/geometry/cluster_lod/mesh_instance_default", false);
+	GLOBAL_DEF("rendering/geometry/cluster_lod/occlusion_enabled", true);
+	GLOBAL_DEF("rendering/geometry/cluster_lod/occlusion_two_pass", true);
+	GLOBAL_DEF("rendering/geometry/cluster_lod/streaming/enabled", true);
+	GLOBAL_DEF(PropertyInfo(Variant::FLOAT, "rendering/geometry/cluster_lod/streaming/budget_mb", PROPERTY_HINT_RANGE, "0.25,4096,0.25,or_greater"), 64.0);
+	GLOBAL_DEF("rendering/geometry/multimesh_gpu_culling/enabled", true);
+	GLOBAL_DEF("rendering/geometry/multimesh_gpu_culling/shadows", true);
+	GLOBAL_DEF("rendering/geometry/multimesh_gpu_culling/occlusion", true);
+	GLOBAL_DEF("rendering/geometry/multimesh_gpu_culling/occlusion_two_pass", true);
+	GLOBAL_DEF("rendering/geometry/gpu_instance_table/enabled", true);
+	GLOBAL_DEF(PropertyInfo(Variant::INT, "rendering/geometry/gpu_instance_table/validate", PROPERTY_HINT_ENUM, "Off,Check,Check With Self-Test"), 0);
+	GLOBAL_DEF("rendering/geometry/gpu_instances/enabled", true);
+	GLOBAL_DEF(PropertyInfo(Variant::INT, "rendering/geometry/gpu_instances/validate", PROPERTY_HINT_ENUM, "Off,Check,Check With Self-Test"), 0);
+	GLOBAL_DEF("rendering/geometry/gpu_instances/occlusion", true);
+	GLOBAL_DEF("rendering/geometry/gpu_instances/occlusion_two_pass", true);
+	GLOBAL_DEF(PropertyInfo(Variant::INT, "rendering/geometry/gpu_instances/shadow_min_casters", PROPERTY_HINT_RANGE, "0,4096,1,or_greater"), 256);
+	GLOBAL_DEF("rendering/geometry/mesh_occlusion/enabled", true);
+	GLOBAL_DEF("rendering/geometry/mesh_occlusion/two_pass", true);
+	// Adaptive variable rate shading: read every frame.
+	GLOBAL_DEF(PropertyInfo(Variant::FLOAT, "rendering/vrs/adaptive_threshold", PROPERTY_HINT_RANGE, "0,1,0.001"), 0.1);
 	GLOBAL_DEF("rendering/lights_and_shadows/directional_shadow/size.mobile", 2048);
 	GLOBAL_DEF(PropertyInfo(Variant::INT, "rendering/lights_and_shadows/directional_shadow/soft_shadow_filter_quality", PROPERTY_HINT_ENUM, "Hard (Fastest),Soft Very Low (Faster),Soft Low (Fast),Soft Medium (Average),Soft High (Slow),Soft Ultra (Slowest)"), 2);
 	GLOBAL_DEF("rendering/lights_and_shadows/directional_shadow/soft_shadow_filter_quality.mobile", 0);
@@ -3857,7 +3908,26 @@ void RenderingServer::init() {
 	GLOBAL_DEF(PropertyInfo(Variant::INT, "rendering/global_illumination/ddgi/custom_probes_per_frame", PROPERTY_HINT_RANGE, "64,65536,64"), 2048);
 	GLOBAL_DEF(PropertyInfo(Variant::INT, "rendering/global_illumination/ddgi/custom_irradiance_texels", PROPERTY_HINT_RANGE, "4,16,1"), 6);
 	GLOBAL_DEF(PropertyInfo(Variant::INT, "rendering/global_illumination/ddgi/custom_distance_texels", PROPERTY_HINT_RANGE, "8,32,1"), 14);
+	GLOBAL_DEF(PropertyInfo(Variant::FLOAT, "rendering/global_illumination/ddgi/light_transition_time", PROPERTY_HINT_RANGE, "0,1,0.01,suffix:s"), 0.2);
+	GLOBAL_DEF(PropertyInfo(Variant::INT, "rendering/global_illumination/ddgi/realtime_rays_per_probe", PROPERTY_HINT_RANGE, "16,512,8"), 64);
 	GLOBAL_DEF(PropertyInfo(Variant::FLOAT, "rendering/global_illumination/ddgi/gpu_time_budget_ms", PROPERTY_HINT_RANGE, "0,16,0.1,or_greater,suffix:ms"), 0.0);
+	GLOBAL_DEF(PropertyInfo(Variant::INT, "rendering/global_illumination/ddgi/apply_resolution", PROPERTY_HINT_ENUM, "Full,1/2 (2x2 Blocks),1/4 (4x4 Blocks),1/8 (8x8 Blocks)"), 2);
+	GLOBAL_DEF("rendering/global_illumination/ddgi/emissive_lights", true);
+	GLOBAL_DEF("rendering/global_illumination/ddgi/adaptive_budget", true);
+
+	GLOBAL_DEF("rendering/global_illumination/reflections/probes_enabled", true);
+	GLOBAL_DEF(PropertyInfo(Variant::INT, "rendering/global_illumination/reflections/probe_update_faces_per_frame", PROPERTY_HINT_RANGE, "0,24,1"), 2);
+	GLOBAL_DEF(PropertyInfo(Variant::FLOAT, "rendering/global_illumination/reflections/probe_ddgi_normalization", PROPERTY_HINT_RANGE, "0,1,0.01"), 1.0);
+	GLOBAL_DEF(PropertyInfo(Variant::FLOAT, "rendering/global_illumination/reflections/probe_normalization_max", PROPERTY_HINT_RANGE, "1,16,0.1"), 4.0);
+	GLOBAL_DEF("rendering/global_illumination/reflections/ddgi_overrides_probe_ambient", true);
+	GLOBAL_DEF("rendering/global_illumination/reflections/probe_capture_ddgi", true);
+	GLOBAL_DEF("rendering/global_illumination/reflections/planar_enabled", true);
+	GLOBAL_DEF(PropertyInfo(Variant::INT, "rendering/global_illumination/reflections/planar_max_reflectors", PROPERTY_HINT_RANGE, "1,8,1"), 4);
+	GLOBAL_DEF(PropertyInfo(Variant::INT, "rendering/global_illumination/reflections/planar_resolution", PROPERTY_HINT_ENUM, "Full,Half"), 0);
+	GLOBAL_DEF(PropertyInfo(Variant::INT, "rendering/global_illumination/reflections/planar_mirror_render", PROPERTY_HINT_ENUM, "Disabled,Upright Reflectors,All Reflectors"), 2);
+	GLOBAL_DEF(PropertyInfo(Variant::FLOAT, "rendering/global_illumination/reflections/planar_mirror_scale", PROPERTY_HINT_RANGE, "0.25,1.0,0.05"), 0.5);
+	GLOBAL_DEF(PropertyInfo(Variant::FLOAT, "rendering/global_illumination/reflections/planar_max_distance", PROPERTY_HINT_RANGE, "0,500,0.1,or_greater,suffix:m"), 0.0);
+	GLOBAL_DEF(PropertyInfo(Variant::FLOAT, "rendering/global_illumination/reflections/planar_mirror_max_distance", PROPERTY_HINT_RANGE, "0,500,0.1,or_greater,suffix:m"), 0.0);
 
 	// OpenGL limits
 	GLOBAL_DEF_RST(PropertyInfo(Variant::INT, "rendering/limits/opengl/max_renderable_elements", PROPERTY_HINT_RANGE, "1024,65536,1"), 65536);

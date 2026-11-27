@@ -35,6 +35,7 @@ TEST_FORCE_LINK(test_node)
 #include "core/io/file_access.h"
 #include "core/io/resource_saver.h"
 #include "core/object/class_db.h"
+#include "core/templates/hash_set.h"
 #include "scene/main/node.h"
 #include "scene/main/scene_tree.h"
 #include "scene/main/window.h"
@@ -514,6 +515,246 @@ TEST_CASE("[SceneTree][Node] Testing node operations with a more complex simple 
 	memdelete(node1_1);
 	memdelete(node1);
 	memdelete(node2);
+}
+
+// Group membership through repeated adds, removals and re-entering the tree
+// (each member exactly once, in tree order). docs/implementation/scene-runtime-roadmap.md, M1.
+TEST_CASE("[SceneTree][Node] A node's groups keep their order through removals and re-entering the tree") {
+	Node *node = memnew(Node);
+	const char *names[] = { "g0", "g1", "g2", "g3", "g4" };
+	for (const char *name : names) {
+		node->add_to_group(name, String(name) == "g1" || String(name) == "g3");
+	}
+	node->add_to_group("g2"); // Already in it: no change.
+
+	const auto group_names = [](Node *p_node) {
+		List<Node::GroupInfo> groups;
+		p_node->get_groups(&groups);
+		String joined;
+		for (const Node::GroupInfo &gi : groups) {
+			joined += String(gi.name) + (gi.persistent ? "*" : "") + " ";
+		}
+		return joined;
+	};
+	CHECK_EQ(group_names(node), "g0 g1* g2 g3* g4 ");
+	CHECK_EQ(node->get_persistent_group_count(), 2);
+
+	// Out of the tree, then in it: the tree finds the node in every group.
+	node->remove_from_group("g2");
+	CHECK_FALSE(node->is_in_group("g2"));
+	CHECK(node->is_in_group("g3"));
+	SceneTree::get_singleton()->get_root()->add_child(node);
+	for (const char *name : { "g0", "g1", "g3", "g4" }) {
+		CHECK_EQ(SceneTree::get_singleton()->get_first_node_in_group(name), node);
+	}
+	CHECK_FALSE(SceneTree::get_singleton()->has_group("g2"));
+
+	// Inside the tree: removals of the first and last, a re-addition at the end.
+	node->remove_from_group("g0");
+	node->remove_from_group("g4");
+	node->add_to_group("g0");
+	CHECK_EQ(group_names(node), "g1* g3* g0 ");
+	CHECK_FALSE(SceneTree::get_singleton()->has_group("g4"));
+	CHECK_EQ(SceneTree::get_singleton()->get_node_count_in_group("g0"), 1);
+
+	SceneTree::get_singleton()->get_root()->remove_child(node); // Leaves every group.
+	for (const char *name : names) {
+		CHECK_FALSE(SceneTree::get_singleton()->has_group(name));
+	}
+	CHECK_EQ(group_names(node), "g1* g3* g0 "); // The node keeps its own.
+	memdelete(node);
+	for (const char *name : names) {
+		CHECK_FALSE(SceneTree::get_singleton()->has_group(name));
+	}
+}
+
+TEST_CASE("[SceneTree][Node] Group membership through add, remove and re-entering the tree") {
+	Node *parent = memnew(Node);
+	SceneTree::get_singleton()->get_root()->add_child(parent);
+	LocalVector<Node *> children;
+	for (int i = 0; i < 64; i++) {
+		Node *child = memnew(Node);
+		if (i % 2 == 0) {
+			child->add_to_group("bench_group"); // Before entering the tree.
+		}
+		parent->add_child(child);
+		if (i % 2 == 1) {
+			child->add_to_group("bench_group"); // Inside the tree.
+		}
+		child->add_to_group("bench_group"); // Already a member: no effect.
+		children.push_back(child);
+	}
+	SceneTree *tree = SceneTree::get_singleton();
+	CHECK_EQ(tree->get_node_count_in_group("bench_group"), 64);
+
+	// Out of the tree and back: each node's groups are registered again.
+	for (int i = 0; i < 64; i += 3) {
+		parent->remove_child(children[i]);
+	}
+	CHECK_EQ(tree->get_node_count_in_group("bench_group"), 64 - 22);
+	for (int i = 0; i < 64; i += 3) {
+		parent->add_child(children[i]);
+	}
+	for (int i = 1; i < 64; i += 4) {
+		children[i]->remove_from_group("bench_group");
+	}
+	// The count before any reader compacts the removed members away (M3).
+	CHECK_EQ(tree->get_node_count_in_group("bench_group"), 64 - 16);
+	Vector<Node *> members = tree->get_nodes_in_group("bench_group");
+	CHECK_EQ(members.size(), 64 - 16);
+	HashSet<Node *> unique;
+	for (int i = 0; i < members.size(); i++) {
+		unique.insert(members[i]);
+		CHECK(members[i]->is_in_group("bench_group"));
+		if (i > 0) {
+			CHECK(members[i]->is_greater_than(members[i - 1])); // Tree order.
+		}
+	}
+	CHECK_EQ(unique.size(), uint32_t(members.size()));
+
+	// The first member removed: the next first in tree order, then removals
+	// and re-additions in a row, read once.
+	Node *first = tree->get_first_node_in_group("bench_group");
+	CHECK_EQ(first, members[0]);
+	first->remove_from_group("bench_group");
+	CHECK_EQ(tree->get_first_node_in_group("bench_group"), members[1]);
+	members[2]->remove_from_group("bench_group");
+	members[3]->remove_from_group("bench_group");
+	members[2]->add_to_group("bench_group");
+	members[5]->remove_from_group("bench_group");
+	Vector<Node *> after = tree->get_nodes_in_group("bench_group");
+	CHECK_EQ(after.size(), members.size() - 3); // Four removed, one added back.
+	for (int i = 1; i < after.size(); i++) {
+		CHECK(after[i]->is_greater_than(after[i - 1]));
+	}
+	CHECK(after.has(members[2]));
+	CHECK_FALSE(after.has(members[3]));
+	CHECK_FALSE(after.has(members[5]));
+
+	// Many removals after a sort (stale positions: searched removals, then one
+	// rewrite of all positions after 128 of them), then more, then a read.
+	{
+		Node *crowd = memnew(Node);
+		parent->add_child(crowd);
+		LocalVector<Node *> many;
+		for (int i = 0; i < 300; i++) {
+			Node *n = memnew(Node);
+			crowd->add_child(n);
+			n->add_to_group("crowd_group");
+			many.push_back(n);
+		}
+		CHECK_EQ(tree->get_nodes_in_group("crowd_group").size(), 300); // Sorted: positions stale.
+		for (int i = 0; i < 200; i++) {
+			many[(i * 7) % 300]->remove_from_group("crowd_group"); // 7 and 300 coprime: 200 distinct.
+		}
+		CHECK_EQ(tree->get_node_count_in_group("crowd_group"), 100);
+		Vector<Node *> rest = tree->get_nodes_in_group("crowd_group");
+		REQUIRE_EQ(rest.size(), 100);
+		for (int i = 1; i < rest.size(); i++) {
+			CHECK(rest[i]->is_greater_than(rest[i - 1]));
+		}
+		for (Node *n : rest) {
+			n->remove_from_group("crowd_group");
+		}
+		CHECK_FALSE(tree->has_group("crowd_group"));
+	}
+
+	// Removed while the group is being called: the call goes on with its copy.
+	tree->call_group("bench_group", "remove_from_group", "bench_group");
+	CHECK_EQ(tree->get_node_count_in_group("bench_group"), 0);
+	CHECK_FALSE(tree->has_group("bench_group"));
+
+	memdelete(parent); // Frees the children.
+	CHECK_EQ(tree->get_node_count_in_group("bench_group"), 0);
+}
+
+// Child order and indices through removals anywhere (holes in the children
+// cache), additions, moves and internal children, against an expected list
+// after every step. docs/implementation/scene-runtime-roadmap.md, M2.
+TEST_CASE("[SceneTree][Node] Child order and indices through removals, additions and moves") {
+	Node *parent = memnew(Node);
+	SceneTree::get_singleton()->get_root()->add_child(parent);
+	LocalVector<Node *> front;
+	LocalVector<Node *> external;
+	LocalVector<Node *> back;
+	auto check = [&]() {
+		const int total = int(front.size() + external.size() + back.size());
+		REQUIRE_EQ(parent->get_child_count(true), total);
+		REQUIRE_EQ(parent->get_child_count(false), int(external.size()));
+		int i = 0;
+		for (Node *child : front) {
+			CHECK_EQ(parent->get_child(i, true), child);
+			CHECK_EQ(child->get_index(true), i);
+			i++;
+		}
+		for (uint32_t e = 0; e < external.size(); e++) {
+			CHECK_EQ(parent->get_child(i, true), external[e]);
+			CHECK_EQ(parent->get_child(int(e), false), external[e]);
+			CHECK_EQ(external[e]->get_index(false), int(e));
+			CHECK_EQ(external[e]->get_index(true), i);
+			i++;
+		}
+		for (Node *child : back) {
+			CHECK_EQ(parent->get_child(i, true), child);
+			CHECK_EQ(child->get_index(true), i);
+			i++;
+		}
+	};
+	auto add = [&](Node::InternalMode p_mode) {
+		Node *child = memnew(Node);
+		parent->add_child(child, false, p_mode);
+		(p_mode == Node::INTERNAL_MODE_FRONT ? front : (p_mode == Node::INTERNAL_MODE_BACK ? back : external)).push_back(child);
+	};
+	auto remove = [&](LocalVector<Node *> &p_list, uint32_t p_at) {
+		Node *child = p_list[p_at];
+		parent->remove_child(child);
+		p_list.remove_at(p_at);
+		memdelete(child);
+	};
+
+	for (int i = 0; i < 40; i++) {
+		add(Node::INTERNAL_MODE_DISABLED);
+	}
+	check();
+	// Several removals before any read (one compaction), then reads.
+	remove(external, 3);
+	remove(external, 10);
+	remove(external, 0);
+	remove(external, external.size() - 1); // The last one: popped, not a hole.
+	check();
+	// Removal, then an addition before the next read.
+	remove(external, 7);
+	add(Node::INTERNAL_MODE_DISABLED);
+	check();
+	// Internal children on both sides, removals in each section.
+	for (int i = 0; i < 4; i++) {
+		add(Node::INTERNAL_MODE_FRONT);
+		add(Node::INTERNAL_MODE_BACK);
+	}
+	check();
+	remove(front, 1);
+	remove(back, 0);
+	remove(external, 5);
+	check();
+	// A move after removals, then removals after the move.
+	remove(external, 2);
+	parent->move_child(external[external.size() - 1], 0);
+	Node *moved = external[external.size() - 1];
+	external.remove_at(external.size() - 1);
+	external.insert(0, moved);
+	check();
+	remove(external, 4);
+	remove(external, 1);
+	check();
+	// Removed and added back before a read.
+	Node *again = external[6];
+	parent->remove_child(again);
+	external.remove_at(6);
+	parent->add_child(again);
+	external.push_back(again);
+	check();
+
+	memdelete(parent);
 }
 
 TEST_CASE("[SceneTree][Node] Duplicating node with internal children") {

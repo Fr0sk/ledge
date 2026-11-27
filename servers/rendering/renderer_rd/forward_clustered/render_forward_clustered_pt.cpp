@@ -114,7 +114,7 @@ void RenderForwardClusteredPT::_render_scene(RenderDataRD *p_render_data, const 
 
 	if (p_render_data->scene_data->calculate_motion_vectors) {
 		color_pass_flags |= COLOR_PASS_FLAG_MOTION_VECTORS;
-		scene_shader.enable_advanced_shader_group();
+		scene_shader.enable_shader_features(SceneShaderForwardClustered::SHADER_FEATURE_MOTION_VECTORS);
 		global_pipeline_data_required.use_motion_vectors = true;
 	}
 
@@ -125,7 +125,7 @@ void RenderForwardClusteredPT::_render_scene(RenderDataRD *p_render_data, const 
 
 	if (p_render_data->scene_data->view_count > 1) {
 		color_pass_flags |= COLOR_PASS_FLAG_MULTIVIEW;
-		scene_shader.shader.enable_group(SceneShaderForwardClustered::SHADER_GROUP_MULTIVIEW);
+		scene_shader.enable_multiview_shader_group();
 		global_pipeline_data_required.use_multiview = true;
 	}
 
@@ -206,7 +206,7 @@ void RenderForwardClusteredPT::_render_scene(RenderDataRD *p_render_data, const 
 	// Transparent geometry can still use lightmaps; make sure the matching shader
 	// group and pipeline requirements are live before we (re)compile pipelines.
 	if (scene_state.used_lightmap || scene_state.lightmaps_used > 0) {
-		scene_shader.enable_advanced_shader_group(p_render_data->scene_data->view_count > 1);
+		scene_shader.enable_shader_features(SceneShaderForwardClustered::SHADER_FEATURE_LIGHTMAP | (p_render_data->scene_data->view_count > 1 ? SceneShaderForwardClustered::SHADER_FEATURE_MULTIVIEW : 0));
 		global_pipeline_data_required.use_lightmaps = true;
 	}
 
@@ -271,6 +271,9 @@ void RenderForwardClusteredPT::_render_scene(RenderDataRD *p_render_data, const 
 			RD::get_singleton()->draw_command_begin_label("Setup Sky");
 
 			// Setup our sky render information for this frame/viewport
+			if (rb_data.is_valid()) {
+				_ensure_volumetric_fog(rb, p_render_data->environment);
+			}
 			sky.setup_sky(p_render_data, screen_size);
 
 			sky_brightness_multiplier *= bg_energy_multiplier;
@@ -535,25 +538,14 @@ void RenderForwardClusteredPT::_age_out_motion_vectors(const RenderDataRD *p_ren
 	}
 	const uint64_t frame = RSG::rasterizer->get_frame_number();
 
-	// Process RT-only instances
-	if (p_render_data->rt_instances) {
-		for (uint32_t i = 0; i < (uint32_t)p_render_data->rt_instances->size(); i++) {
-			GeometryInstanceForwardClustered *inst =
-					static_cast<GeometryInstanceForwardClustered *>((*p_render_data->rt_instances)[i]);
-			if (inst) {
-				inst->age_out_motion(frame);
-			}
-		}
-	}
-
-	// Process raster instances
-	if (p_render_data->instances) {
-		for (uint32_t i = 0; i < (uint32_t)p_render_data->instances->size(); i++) {
-			GeometryInstanceForwardClustered *inst =
-					static_cast<GeometryInstanceForwardClustered *>((*p_render_data->instances)[i]);
-			if (inst) {
-				inst->age_out_motion(frame);
-			}
+	// Only instances whose motion status is not NONE need aging, and every
+	// one of them is in this list (the CPU, RT and GPU paths alike). Those
+	// that age out leave it.
+	for (uint32_t i = motion_instances.size(); i > 0; i--) {
+		GeometryInstanceForwardClustered *inst = motion_instances[i - 1];
+		inst->age_out_motion(frame);
+		if (inst->transform_status == GeometryInstanceForwardClustered::TransformStatus::NONE) {
+			_motion_instance_remove(inst);
 		}
 	}
 }
@@ -570,7 +562,8 @@ bool RenderForwardClusteredPT::_ddgi_begin_frame(RenderDataRD *p_render_data) {
 		}
 		return false;
 	}
-	if (!_setup_rt() || !raytracing->get_shader()) {
+	// Baked probes only: sampling is plain compute, no ray tracing needed.
+	if (!RenderDDGI::is_baked_only(p_render_data) && (!_setup_rt() || !raytracing->get_shader())) {
 		return false;
 	}
 	if (!ddgi) {
@@ -589,13 +582,38 @@ void RenderForwardClusteredPT::_ddgi_process(RenderDataRD *p_render_data, const 
 	rt_flags &= ~uint32_t(SceneShaderRaytracing::RT_FLAG_DEBUG_VIS_ENABLED | SceneShaderRaytracing::RT_FLAG_DLSS_RR_ENABLED);
 
 	RD::get_singleton()->draw_command_begin_label("DDGI");
-	RENDER_TIMESTAMP("DDGI Build Acceleration Structures");
-	RTViewportState *rt_state = raytracing->build_tlas(p_render_data, rt_flags);
-	if (rt_state) {
-		ddgi->update_probes(p_render_data, raytracing, rt_state, rt_flags);
+	RID tlas;
+	RTViewportState *rt_state = nullptr;
+	if (p_render_data->scene_data->mirror_pass) {
+		// The view the mirror is in updates the probes; the mirror only samples them.
+	} else if (RenderDDGI::is_baked_only(p_render_data)) {
+		ddgi->update_baked(p_render_data);
+	} else {
+		RENDER_TIMESTAMP("DDGI Build Acceleration Structures");
+		rt_state = raytracing->build_tlas(p_render_data, rt_flags);
+		if (rt_state) {
+			ddgi->update_probes(p_render_data, raytracing, rt_state, rt_flags);
+			tlas = rt_state->tlas;
+		}
 	}
-	ddgi->apply(p_render_data, p_normal_roughness_slices, gi.half_resolution);
+	ddgi->apply(p_render_data, p_normal_roughness_slices, gi.half_resolution, tlas, tlas.is_valid() ? &raytracing->ddgi_emitters : nullptr, tlas.is_valid() ? raytracing : nullptr, rt_state, rt_flags);
 	RD::get_singleton()->draw_command_end_label();
+}
+
+bool RenderForwardClusteredPT::_ddgi_get_fog_resources(RenderSceneBuffersRD *p_render_buffers, RID &r_data_buffer, RID &r_probe_buffer, RID &r_irradiance_atlas, RID &r_distance_atlas) {
+	return ddgi && ddgi->get_sampling_resources(p_render_buffers, r_data_buffer, r_probe_buffer, r_irradiance_atlas, r_distance_atlas);
+}
+
+bool RenderForwardClusteredPT::_ddgi_get_capture_resources(RID &r_data_buffer, RID &r_probe_buffer, RID &r_irradiance_atlas, RID &r_distance_atlas) {
+	return ddgi && ddgi->get_capture_resources(r_data_buffer, r_probe_buffer, r_irradiance_atlas, r_distance_atlas);
+}
+
+Dictionary RenderForwardClusteredPT::ddgi_get_probe_data(const Ref<RenderSceneBuffers> &p_render_buffers) {
+	Ref<RenderSceneBuffersRD> rb = p_render_buffers;
+	if (!ddgi || rb.is_null()) {
+		return Dictionary();
+	}
+	return ddgi->get_probe_data(rb.ptr());
 }
 
 void RenderForwardClusteredPT::_ddgi_debug_draw(RenderDataRD *p_render_data) {

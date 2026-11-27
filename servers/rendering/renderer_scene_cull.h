@@ -60,6 +60,10 @@ public:
 		MAX_UPDATE_SHADOWS = 512
 	};
 
+	// Extra radius, as a share of the slice's, that a cached far directional
+	// cascade covers so the camera can move before it is rendered again.
+	static constexpr real_t DIRECTIONAL_CASCADE_CACHE_MARGIN = 0.1;
+
 	uint64_t render_pass;
 
 	static RendererSceneCull *singleton;
@@ -130,6 +134,53 @@ public:
 	virtual RID occluder_allocate();
 	virtual void occluder_initialize(RID p_occluder);
 	virtual void occluder_set_mesh(RID p_occluder, const PackedVector3Array &p_vertices, const PackedInt32Array &p_indices);
+
+	/* PLANAR REFLECTION API */
+
+	struct PlanarReflection {
+		RID self;
+		RID scenario;
+		bool visible = true;
+		RendererSceneRender::RenderPlanarReflection data;
+	};
+	mutable RID_Owner<PlanarReflection, true> planar_reflection_owner;
+	void _planar_reflection_update_scenario(PlanarReflection *p_planar_reflection);
+	LocalVector<RendererSceneRender::RenderPlanarReflection> planar_reflection_render_list; // Per render, filtered by the camera's layers.
+
+	// Mirror passes: one planar reflector per view is rendered from the camera
+	// reflected across it (rendering/global_illumination/reflections/planar_mirror_render).
+	struct MirrorView {
+		Ref<RenderSceneBuffers> render_buffers;
+		RID render_target;
+		Size2i size;
+		uint64_t last_frame = 0;
+		// Rendered part of the screen, in eighths per axis (1 to 8), grown at once
+		// and shrunk after a while, so the buffers aren't reallocated every frame.
+		Vector2i eighths = Vector2i(8, 8);
+		int shrink_frames = 0;
+		// The reflector rendered last frame (its plane normal and center), kept unless
+		// another needs the pass clearly more.
+		Vector3 last_normal;
+		Vector3 last_origin;
+	};
+	HashMap<RID, MirrorView> mirror_views; // Per viewport.
+	// The mirror pass of the view being rendered: which reflector of the scenario's
+	// planar_reflection_data (-1: none), its buffers and view-projection.
+	int mirror_reflector = -1;
+	Ref<RenderSceneBuffers> mirror_buffers;
+	Rect2 mirror_uv_rect;
+
+	virtual RID planar_reflection_allocate();
+	virtual void planar_reflection_initialize(RID p_planar_reflection);
+	virtual void planar_reflection_set_scenario(RID p_planar_reflection, RID p_scenario);
+	virtual void planar_reflection_set_transform(RID p_planar_reflection, const Transform3D &p_transform);
+	virtual void planar_reflection_set_size(RID p_planar_reflection, const Vector2 &p_size);
+	virtual void planar_reflection_set_layer_mask(RID p_planar_reflection, uint32_t p_layers);
+	virtual void planar_reflection_set_visible(RID p_planar_reflection, bool p_visible);
+	virtual void planar_reflection_set_intensity(RID p_planar_reflection, float p_intensity);
+	virtual void planar_reflection_set_thickness(RID p_planar_reflection, float p_thickness);
+	virtual void planar_reflection_set_normal_distortion(RID p_planar_reflection, float p_distortion);
+	virtual void planar_reflection_set_roughness_cutoff(RID p_planar_reflection, float p_roughness);
 
 	/* VISIBILITY NOTIFIER API */
 
@@ -356,6 +407,11 @@ public:
 
 		LocalVector<RID> dynamic_lights;
 
+		// Visible planar reflectors of this scenario (rebuilt when one changes).
+		HashSet<RID> planar_reflections;
+		LocalVector<RendererSceneRender::RenderPlanarReflection> planar_reflection_data;
+		bool planar_reflections_dirty = false;
+
 		PagedArray<InstanceBounds> instance_aabbs;
 		PagedArray<InstanceData> instance_data;
 		VisibilityArray instance_visibility;
@@ -422,6 +478,7 @@ public:
 		float lod_bias;
 
 		bool ignore_occlusion_culling;
+		bool use_cluster_lod;
 		bool ignore_all_culling;
 
 		Vector<RID> materials;
@@ -583,6 +640,7 @@ public:
 			lightmap_cull_index = 0;
 			lod_bias = 1.0;
 			ignore_occlusion_culling = false;
+			use_cluster_lod = true;
 			ignore_all_culling = false;
 
 			scenario = nullptr;
@@ -650,6 +708,9 @@ public:
 		SelfList<InstanceReflectionProbeData> update_list;
 
 		int render_step;
+		// Frame (RendererSceneCull::reflection_probe_frame) of the last finished
+		// capture, for the update priority of budgeted (time-sliced) updates.
+		uint64_t last_capture_frame = 0;
 
 		InstanceReflectionProbeData() :
 				update_list(this) {
@@ -707,6 +768,29 @@ public:
 		RSE::LightBakeMode bake_mode;
 		uint32_t max_sdfgi_cascade = 2;
 		uint32_t cull_mask = 0xFFFFFFFF;
+
+		// Far directional cascades kept in the atlas between frames
+		// (rendering/lights_and_shadows/directional_shadow/far_cascade_update_interval).
+		// Holds what the last render of the cascade wrote, from any viewport:
+		// the light-space region its casters and map cover, and the parameters
+		// shading needs to sample it.
+		struct DirectionalCascadeCache {
+			bool valid = false;
+			uint64_t key = 0;
+			uint64_t frame = 0;
+			real_t x_min = 0, x_max = 0, y_min = 0, y_max = 0;
+			real_t z_min = 0; // Casters below this were culled.
+			real_t z_max = 0; // The map's plane toward the light.
+			Projection projection;
+			Transform3D transform;
+			real_t zfar = 0;
+			real_t split = 0;
+			real_t shadow_texel_size = 0;
+			real_t bias_scale = 0;
+			real_t range_begin = 0;
+			Vector2 uv_scale;
+		};
+		DirectionalCascadeCache directional_cascade_cache[RendererSceneRender::MAX_DIRECTIONAL_LIGHT_CASCADES];
 
 	private:
 		// Instead of a single dirty flag, we maintain a count
@@ -902,8 +986,16 @@ public:
 		PagedArray<RenderGeometryInstance *> rt_geometry_instances;
 		PagedArray<RID> rt_light_instances;
 
+		// Visible instances the renderer's GPU path draws (gpu_drawn), and their
+		// gpu_cull_slot, read here where the instance is in cache anyway.
+		PagedArray<RenderGeometryInstance *> gpu_geometry_instances;
+		LocalVector<uint32_t> gpu_slots;
+
 		struct DirectionalShadow {
 			PagedArray<RenderGeometryInstance *> cascade_geometry_instances[RendererSceneRender::MAX_DIRECTIONAL_LIGHT_CASCADES];
+			// Casters the renderer's GPU path draws, and their gpu_cull_slot.
+			PagedArray<RenderGeometryInstance *> cascade_gpu_instances[RendererSceneRender::MAX_DIRECTIONAL_LIGHT_CASCADES];
+			LocalVector<uint32_t> cascade_gpu_slots[RendererSceneRender::MAX_DIRECTIONAL_LIGHT_CASCADES];
 		} directional_shadows[RendererSceneRender::MAX_DIRECTIONAL_LIGHTS];
 
 		PagedArray<RenderGeometryInstance *> sdfgi_region_geometry_instances[SDFGI_MAX_CASCADES * SDFGI_MAX_REGIONS_PER_CASCADE];
@@ -921,9 +1013,13 @@ public:
 			fog_volumes.clear();
 			rt_geometry_instances.clear();
 			rt_light_instances.clear();
+			gpu_geometry_instances.clear();
+			gpu_slots.clear();
 			for (int i = 0; i < RendererSceneRender::MAX_DIRECTIONAL_LIGHTS; i++) {
 				for (int j = 0; j < RendererSceneRender::MAX_DIRECTIONAL_LIGHT_CASCADES; j++) {
 					directional_shadows[i].cascade_geometry_instances[j].clear();
+					directional_shadows[i].cascade_gpu_instances[j].clear();
+					directional_shadows[i].cascade_gpu_slots[j].clear();
 				}
 			}
 
@@ -948,9 +1044,13 @@ public:
 			fog_volumes.reset();
 			rt_geometry_instances.reset();
 			rt_light_instances.reset();
+			gpu_geometry_instances.reset();
+			gpu_slots.reset();
 			for (int i = 0; i < RendererSceneRender::MAX_DIRECTIONAL_LIGHTS; i++) {
 				for (int j = 0; j < RendererSceneRender::MAX_DIRECTIONAL_LIGHT_CASCADES; j++) {
 					directional_shadows[i].cascade_geometry_instances[j].reset();
+					directional_shadows[i].cascade_gpu_instances[j].reset();
+					directional_shadows[i].cascade_gpu_slots[j].reset();
 				}
 			}
 
@@ -975,10 +1075,26 @@ public:
 			fog_volumes.merge_unordered(p_cull_result.fog_volumes);
 			rt_geometry_instances.merge_unordered(p_cull_result.rt_geometry_instances);
 			rt_light_instances.merge_unordered(p_cull_result.rt_light_instances);
+			gpu_geometry_instances.merge_unordered(p_cull_result.gpu_geometry_instances);
+			if (!p_cull_result.gpu_slots.is_empty()) {
+				const uint32_t from = gpu_slots.size();
+				gpu_slots.resize(from + p_cull_result.gpu_slots.size());
+				memcpy(gpu_slots.ptr() + from, p_cull_result.gpu_slots.ptr(), p_cull_result.gpu_slots.size() * sizeof(uint32_t));
+				p_cull_result.gpu_slots.clear();
+			}
 
 			for (int i = 0; i < RendererSceneRender::MAX_DIRECTIONAL_LIGHTS; i++) {
 				for (int j = 0; j < RendererSceneRender::MAX_DIRECTIONAL_LIGHT_CASCADES; j++) {
 					directional_shadows[i].cascade_geometry_instances[j].merge_unordered(p_cull_result.directional_shadows[i].cascade_geometry_instances[j]);
+					directional_shadows[i].cascade_gpu_instances[j].merge_unordered(p_cull_result.directional_shadows[i].cascade_gpu_instances[j]);
+					LocalVector<uint32_t> &slots = directional_shadows[i].cascade_gpu_slots[j];
+					LocalVector<uint32_t> &from_slots = p_cull_result.directional_shadows[i].cascade_gpu_slots[j];
+					if (!from_slots.is_empty()) {
+						const uint32_t from = slots.size();
+						slots.resize(from + from_slots.size());
+						memcpy(slots.ptr() + from, from_slots.ptr(), from_slots.size() * sizeof(uint32_t));
+						from_slots.clear();
+					}
 				}
 			}
 
@@ -1003,9 +1119,11 @@ public:
 			fog_volumes.set_page_pool(p_rid_pool);
 			rt_geometry_instances.set_page_pool(p_geometry_instance_pool);
 			rt_light_instances.set_page_pool(p_rid_pool);
+			gpu_geometry_instances.set_page_pool(p_geometry_instance_pool);
 			for (int i = 0; i < RendererSceneRender::MAX_DIRECTIONAL_LIGHTS; i++) {
 				for (int j = 0; j < RendererSceneRender::MAX_DIRECTIONAL_LIGHT_CASCADES; j++) {
 					directional_shadows[i].cascade_geometry_instances[j].set_page_pool(p_geometry_instance_pool);
+					directional_shadows[i].cascade_gpu_instances[j].set_page_pool(p_geometry_instance_pool);
 				}
 			}
 
@@ -1024,6 +1142,17 @@ public:
 
 	RendererSceneRender::RenderShadowData render_shadow_data[MAX_UPDATE_SHADOWS];
 	uint32_t max_shadows_used = 0;
+	// The camera cull of this render lists the renderer's GPU path instances
+	// apart; positional shadow culls then do the same with their casters.
+	bool gpu_split_active = false;
+	_FORCE_INLINE_ void _push_shadow_caster(RendererSceneRender::RenderShadowData &r_shadow_data, RenderGeometryInstance *p_instance) {
+		if (gpu_split_active && p_instance->gpu_drawn) {
+			r_shadow_data.gpu_instances.push_back(p_instance);
+			r_shadow_data.gpu_slots.push_back(p_instance->gpu_cull_slot);
+		} else {
+			r_shadow_data.instances.push_back(p_instance);
+		}
+	}
 
 	RendererSceneRender::RenderSDFGIData render_sdfgi_data[SDFGI_MAX_CASCADES * SDFGI_MAX_REGIONS_PER_CASCADE];
 	RendererSceneRender::RenderSDFGIUpdateData sdfgi_update_data;
@@ -1068,6 +1197,7 @@ public:
 
 	bool _update_instance_visibility_depth(Instance *p_instance);
 	void _update_instance_visibility_dependencies(Instance *p_instance) const;
+	void _update_instance_gpu_scenario(Instance *p_instance) const;
 
 	// don't use these in a game!
 	virtual Vector<ObjectID> instances_cull_aabb(const AABB &p_aabb, RID p_scenario = RID()) const;
@@ -1098,7 +1228,7 @@ public:
 	_FORCE_INLINE_ void _update_instance_lightmap_captures(Instance *p_instance) const;
 	void _unpair_instance(Instance *p_instance);
 
-	void _light_instance_setup_directional_shadow(int p_shadow_index, Instance *p_instance, const Transform3D p_cam_transform, const Projection &p_cam_projection, bool p_cam_orthogonal, bool p_cam_vaspect);
+	void _light_instance_setup_directional_shadow(int p_shadow_index, Instance *p_instance, const Transform3D p_cam_transform, const Projection &p_cam_projection, bool p_cam_orthogonal, bool p_cam_vaspect, uint32_t p_visible_layers);
 
 	_FORCE_INLINE_ bool _light_instance_update_shadow(Instance *p_instance, const Transform3D p_cam_transform, const Projection &p_cam_projection, bool p_cam_orthogonal, bool p_cam_vaspect, RID p_shadow_atlas, Scenario *p_scenario, float p_screen_mesh_lod_threshold, uint32_t p_visible_layers = 0xFFFFFF);
 
@@ -1120,6 +1250,8 @@ public:
 				real_t bias_scale;
 				real_t range_begin;
 				Vector2 uv_scale;
+				// Kept from an earlier frame: not culled, not rendered.
+				bool reused = false;
 
 			} cascades[RendererSceneRender::MAX_DIRECTIONAL_LIGHT_CASCADES]; //max 4 cascades
 			uint32_t cascade_count;
@@ -1171,6 +1303,8 @@ public:
 		const RendererSceneOcclusionCull::HZBuffer *occlusion_buffer;
 		const Projection *camera_matrix;
 		uint64_t visibility_viewport_mask;
+		bool reflection_probes_enabled = true; // rendering/global_illumination/reflections/probes_enabled
+		bool gpu_split = false; // List gpu_drawn instances apart (RendererSceneRender::gpu_instances_begin_cull()).
 	};
 
 	void _scene_cull_threaded(uint32_t p_thread, CullData *cull_data);
@@ -1180,9 +1314,26 @@ public:
 
 	bool _render_reflection_probe_step(Instance *p_instance, int p_step);
 
+	// Budgeted (time-sliced) reflection probe updates: each frame renders at
+	// most rendering/global_illumination/reflections/probe_update_faces_per_frame
+	// cubemap faces. The faces go to the atlas' shared cubemap and are converted
+	// to the probe's octahedral map after the sixth, so one probe captures at a
+	// time and the visible reflection never mixes old and new faces.
+	InstanceReflectionProbeData *reflection_probe_capturing = nullptr;
+	Vector3 reflection_probe_camera_position;
+	uint64_t reflection_probe_frame = 0;
+	// The renderer's DDGI capture generation at the last check: when it changes,
+	// all reflection probes are captured again (probe_capture_ddgi).
+	uint64_t reflection_probe_ddgi_generation = 0;
+	bool _render_reflection_probe_face(Instance *p_instance, int p_face);
+	void _render_reflection_probes_budgeted(int p_faces_per_frame);
+
 	void _render_scene(const RendererSceneRender::CameraData *p_camera_data, const Ref<RenderSceneBuffers> &p_render_buffers, RID p_environment, RID p_force_camera_attributes, RID p_compositor, uint32_t p_visible_layers, RID p_scenario, RID p_viewport, RID p_shadow_atlas, RID p_reflection_probe, int p_reflection_probe_pass, float p_screen_mesh_lod_threshold, float p_window_output_max_value, bool p_using_shadows = true, RenderingServerTypes::RenderInfo *r_render_info = nullptr);
 	void render_empty_scene(const Ref<RenderSceneBuffers> &p_render_buffers, RID p_scenario, RID p_shadow_atlas, float p_window_output_max_value);
 
+	void _update_planar_reflection_data(Scenario *p_scenario);
+	void _render_mirror(const RendererSceneRender::CameraData &p_camera_data, const Ref<RenderSceneBuffers> &p_render_buffers, RID p_environment, RID p_camera_attributes, uint32_t p_visible_layers, RID p_scenario, RID p_viewport, Size2 p_viewport_size, RID p_shadow_atlas, float p_screen_mesh_lod_threshold, float p_window_output_max_value);
+	virtual void free_mirror_views() override;
 	void render_camera(const Ref<RenderSceneBuffers> &p_render_buffers, RID p_camera, RID p_scenario, RID p_viewport, Size2 p_viewport_size, uint32_t p_jitter_phase_count, float p_screen_mesh_lod_threshold, RID p_shadow_atlas, float p_window_output_max_value, RenderingServerTypes::RenderInfo *r_render_info = nullptr);
 	void update_dirty_instances() const;
 
@@ -1394,6 +1545,11 @@ public:
 	PASS1RC(bool, environment_get_pathtracing_enabled, RID)
 	PASS13(environment_set_ddgi, RID, bool, int, float, const Vector3i &, float, float, float, float, bool, bool, bool, int)
 	PASS4(environment_set_ddgi_volume, RID, bool, const Vector3 &, const Vector3 &)
+	PASS2(environment_set_ddgi_bounce_energy, RID, float)
+	PASS2(environment_set_ddgi_realtime_updates, RID, bool)
+	PASS3(environment_set_ddgi_baked_data, RID, int, const Dictionary &)
+	PASS1R(Dictionary, ddgi_get_probe_data, const Ref<RenderSceneBuffers> &)
+	PASS1R(Dictionary, gpu_geometry_get_statistics, const Ref<RenderSceneBuffers> &)
 	PASS1RC(bool, environment_get_ddgi_enabled, RID)
 	PASS1RC(int, environment_get_pathtracing_debug_mode, RID)
 	PASS1RC(int, environment_get_pathtracing_samples_per_pixel, RID)

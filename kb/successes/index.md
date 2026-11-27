@@ -1,0 +1,22 @@
+# Successes
+
+* [Control build for code-layout effects](/successes/control-build-for-layout-effects.md) - build the same source with the change switched off; compare against that, not only the old build
+* [Actual-container A/B without checkout switches](/successes/actual-container-ab-bench.md) - isolated HEAD snapshots, correctness and allocation checks, alternating samples; caught numeric-container regressions before publication
+
+Approaches that worked in this project and are worth reusing: what was
+done, why it worked, and when to use it again. Add one whenever something
+works clearly better than what came before. Mistakes are in
+[mistakes](/mistakes/).
+
+* [Locate a crash in a production build without symbols](/successes/map-file-crash-location.md) - relink with /MAP, resolve offsets, dumpbin the faulting instruction, absolute-path checkpoint logs
+* [Inspect indirect commands before drawing](/successes/inspect-indirect-before-draw.md) - reproduce invalid GPU counts safely, then prove material pixels on real backends
+
+* [Reflection atlas layers on demand](/successes/reflection-atlas-on-demand.md) - 512 MB to 47 MB for one probe, growth copies layers
+* [Sample-driven probe scheduling](/successes/sample-driven-scheduling.md) - DDGI follows light changes about 8% faster at no measurable cost
+* [Least-squares baking](/successes/least-squares-bake.md) - baked GI error against a finer bake roughly halved, from a talk's idea in two builds
+* [Measuring the response to a change](/successes/step-response-instead-of-startup.md) - converge, step one input, trace: repeats within a few frames
+* [One editor copy per variant](/successes/editor-copy-per-variant.md) - A/B tests without rebuilding
+* [Side work in its own small pass](/successes/separate-small-pass.md) - 0.03 ms instead of 0.05 ms in the hot shader
+* [Render graph switches to narrow a GPU problem](/successes/env-switch-bisect.md) - ordering vs data in two runs
+* [A real game level in the test suite](/successes/game-level-test.md) - finds visual problems the synthetic scenes miss
+* [Near-field rays fixed the lagging bounce-light blob](/successes/near-field-rays.md) - short rays with the probe-ray shading, small filter, probes as far field

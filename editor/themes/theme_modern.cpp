@@ -42,6 +42,14 @@
 #include "scene/resources/style_box_line.h"
 
 // Helper.
+static void _set_transparent_popup_gutter(const Ref<StyleBoxFlat> &p_style) {
+	// Popup controls reserve their shadow area inside the native window. Use a
+	// fully transparent gutter so rounded AA never touches the window boundary.
+	p_style->set_shadow_size(EDSCALE_RND(2));
+	p_style->set_shadow_offset(Vector2());
+	p_style->set_shadow_color(Color(0, 0, 0, 0));
+}
+
 static Color _get_base_color(EditorThemeManager::ThemeConfiguration &p_config, float p_dimness_ofs = 0.0, float p_saturation_mult = 1.0) {
 	Color color = p_config.base_color;
 	const float final_contrast = (p_dimness_ofs < 0) ? CLAMP(p_config.contrast, -0.1, 0.5) : p_config.contrast;
@@ -112,8 +120,17 @@ void ThemeModern::populate_shared_styles(const Ref<EditorTheme> &p_theme, Editor
 #endif
 
 		// Only used when the Draw Extra Borders editor setting is enabled.
-		p_config.extra_border_color_1 = p_config.dark_theme ? Color(1, 1, 1, 0.4) : Color(0, 0, 0, 0.4);
-		p_config.extra_border_color_2 = p_config.dark_theme ? Color(1, 1, 1, 0.2) : Color(0, 0, 0, 0.2);
+		if (p_config.is_modern_compact()) {
+			// Modern dark UIs use low-contrast neutral outlines for structure and reserve
+			// the accent for focus and active states.
+			// Opaque strokes avoid alpha/color interpolation artifacts where the
+			// rounded border's inner AA ring blends into an opaque surface.
+			p_config.extra_border_color_1 = p_config.base_color.lerp(Color(1, 1, 1), 0.16);
+			p_config.extra_border_color_2 = p_config.base_color.lerp(Color(1, 1, 1), 0.11);
+		} else {
+			p_config.extra_border_color_1 = p_config.dark_theme ? Color(1, 1, 1, 0.4) : Color(0, 0, 0, 0.4);
+			p_config.extra_border_color_2 = p_config.dark_theme ? Color(1, 1, 1, 0.2) : Color(0, 0, 0, 0.2);
+		}
 
 		p_theme->set_color("extra_border_color_1", EditorStringName(Editor), p_config.extra_border_color_1);
 		p_theme->set_color("extra_border_color_2", EditorStringName(Editor), p_config.extra_border_color_2);
@@ -130,6 +147,11 @@ void ThemeModern::populate_shared_styles(const Ref<EditorTheme> &p_theme, Editor
 		p_config.font_readonly_color = Color(p_config.mono_color_font.r, p_config.mono_color_font.g, p_config.mono_color_font.b, 0.65);
 		p_config.font_placeholder_color = p_config.font_disabled_color;
 		p_config.font_outline_color = Color(1, 1, 1, 0);
+		if (p_config.is_modern_compact()) {
+			p_config.font_color = p_config.mono_color_font * Color(1, 1, 1, 0.82);
+			p_config.font_secondary_color = p_config.mono_color_font * Color(1, 1, 1, 0.65);
+			p_config.font_hover_color = p_config.mono_color_font * Color(1, 1, 1, 0.92);
+		}
 
 		// Colors designed for dark backgrounds, even when using a light theme.
 		// This is used for 3D editor overlay texts.
@@ -209,6 +231,40 @@ void ThemeModern::populate_shared_styles(const Ref<EditorTheme> &p_theme, Editor
 		p_config.flat_button_pressed_color = _get_base_color(p_config, -2.0, 0.75);
 		p_config.flat_button_hover_pressed_color = _get_base_color(p_config, -2.4, 0.75);
 
+		if (p_config.is_modern_compact()) {
+			// Avalonia-inspired opaque dark surfaces. Keep the shared control palette
+			// compact, with selection distinguished from ordinary pointer hover.
+			p_config.surface_popup_color = Color::html("282b30");
+			p_config.surface_lowest_color = Color::html("121416");
+			p_config.surface_lower_color = Color::html("17191c");
+			p_config.surface_low_color = Color::html("26292f");
+			p_config.surface_high_color = Color::html("373b42");
+			p_config.surface_higher_color = Color::html("3e4249");
+			p_config.surface_highest_color = Color::html("464a52");
+			p_config.button_normal_color = Color::html("30343a");
+			p_config.button_hover_color = Color::html("3d4249");
+			p_config.button_pressed_color = Color::html("25282d");
+			p_config.button_disabled_color = Color::html("25272b");
+			if (p_config.preset == "Modern Compact Gray") {
+				// Desaturate only surfaces; keep semantic icons and interaction accents.
+				Color *surfaces[] = {
+					&p_config.surface_popup_color, &p_config.surface_lowest_color,
+					&p_config.surface_lower_color, &p_config.surface_low_color,
+					&p_config.surface_high_color, &p_config.surface_higher_color,
+					&p_config.surface_highest_color, &p_config.button_normal_color,
+					&p_config.button_hover_color, &p_config.button_pressed_color,
+					&p_config.button_disabled_color,
+				};
+				for (Color *surface : surfaces) {
+					const float gray = surface->get_luminance();
+					*surface = Color(gray, gray, gray);
+				}
+			}
+			p_config.flat_button_hover_color = p_config.surface_high_color;
+			p_config.flat_button_pressed_color = p_config.surface_base_color.lerp(p_config.accent_color, 0.28);
+			p_config.flat_button_hover_pressed_color = p_config.surface_base_color.lerp(p_config.accent_color, 0.38);
+		}
+
 		p_config.shadow_color = Color(0, 0, 0, p_config.dark_theme ? 0.3 : 0.1);
 		p_config.selection_color = p_config.accent_color * Color(1, 1, 1, 0.4);
 		p_config.disabled_border_color = p_config.mono_color.inverted().lerp(p_config.base_color, 0.7);
@@ -268,6 +324,11 @@ void ThemeModern::populate_shared_styles(const Ref<EditorTheme> &p_theme, Editor
 	{
 		// This is the basic stylebox, used as a base for most other styleboxes (through `duplicate()`).
 		p_config.base_style = EditorThemeManager::make_flat_stylebox(p_config.base_color, p_config.increased_margin * 1.5, p_config.increased_margin * 1.5, p_config.increased_margin * 1.5, p_config.increased_margin * 1.5, p_config.corner_radius);
+		if (p_config.is_modern_compact()) {
+			p_config.base_style->set_anti_aliased(true);
+			p_config.base_style->set_aa_size(1.0);
+			p_config.base_style->set_corner_detail(12);
+		}
 
 		p_config.focus_style = p_config.base_style->duplicate();
 		p_config.focus_style->set_draw_center(false);
@@ -292,6 +353,9 @@ void ThemeModern::populate_shared_styles(const Ref<EditorTheme> &p_theme, Editor
 			p_config.button_style->set_shadow_color(p_config.dark_theme ? Color(0, 0, 0, 0.005) : Color(1, 1, 1, 0.005));
 			p_config.button_style->set_shadow_size(EDSCALE_RND(8));
 			p_config.button_style->set_shadow_offset(Vector2(0, EDSCALE_RND(4)));
+			if (p_config.is_modern_compact()) {
+				p_config.button_style->set_shadow_size(0);
+			}
 			if (p_config.draw_extra_borders) {
 				p_config.button_style->set_border_color(p_config.extra_border_color_1);
 			} else {
@@ -353,7 +417,10 @@ void ThemeModern::populate_shared_styles(const Ref<EditorTheme> &p_theme, Editor
 			p_config.popup_panel_style->set_shadow_color(Color(0, 0, 0, 0.3));
 			p_config.popup_panel_style->set_shadow_size(EDSCALE_RND(p_config.base_margin * 0.75));
 			p_config.popup_panel_style->set_content_margin_all(EDSCALE_RND(p_config.popup_margin));
-			p_config.popup_panel_style->set_corner_radius_all(0);
+			p_config.popup_panel_style->set_corner_radius_all(p_config.is_modern_compact() ? EDSCALE_RND(p_config.corner_radius) : 0);
+			if (p_config.is_modern_compact()) {
+				_set_transparent_popup_gutter(p_config.popup_panel_style);
+			}
 			if (p_config.draw_extra_borders) {
 				p_config.popup_panel_style->set_border_width_all(EDSCALE_RND(1));
 				p_config.popup_panel_style->set_border_color(p_config.extra_border_color_2);
@@ -438,7 +505,10 @@ void ThemeModern::populate_standard_styles(const Ref<EditorTheme> &p_theme, Edit
 			Ref<StyleBoxFlat> tooltip_style = p_config.base_style->duplicate();
 			tooltip_style->set_bg_color(p_config.surface_popup_color);
 			tooltip_style->set_content_margin_all(0);
-			tooltip_style->set_corner_radius_all(0);
+			tooltip_style->set_corner_radius_all(p_config.is_modern_compact() ? EDSCALE_RND(p_config.corner_radius) : 0);
+			if (p_config.is_modern_compact()) {
+				_set_transparent_popup_gutter(tooltip_style);
+			}
 			if (p_config.draw_extra_borders) {
 				tooltip_style->set_border_width_all(EDSCALE_RND(1));
 				tooltip_style->set_border_color(p_config.extra_border_color_2);
@@ -795,9 +865,19 @@ void ThemeModern::populate_standard_styles(const Ref<EditorTheme> &p_theme, Edit
 
 	// TabBar & TabContainer.
 	{
+		const int tab_padding_y = EDSCALE_RND(p_config.base_margin * 2.1 + (p_config.is_modern_compact() ? 2 : 0));
 		Ref<StyleBoxFlat> style_tab_selected = p_config.base_style->duplicate();
-		style_tab_selected->set_content_margin_individual(EDSCALE_RND(p_config.base_margin * 4), EDSCALE_RND(p_config.base_margin * 2.1), EDSCALE_RND(p_config.base_margin * 4), EDSCALE_RND(p_config.base_margin * 2.1));
+		style_tab_selected->set_content_margin_individual(EDSCALE_RND(p_config.base_margin * 4), tab_padding_y, EDSCALE_RND(p_config.base_margin * 4), tab_padding_y);
 		style_tab_selected->set_corner_radius_individual(EDSCALE_RND(p_config.corner_radius), EDSCALE_RND(p_config.corner_radius), 0, 0);
+		if (p_config.is_modern_compact()) {
+			style_tab_selected->set_bg_color(p_config.surface_high_color);
+			style_tab_selected->set_corner_radius_all(EDSCALE_RND(p_config.corner_radius));
+			// Inset only the drawing, not layout or content, so floating tabs never shift.
+			style_tab_selected->set_expand_margin(SIDE_TOP, -EDSCALE_RND(2));
+			style_tab_selected->set_expand_margin(SIDE_BOTTOM, -EDSCALE_RND(2));
+			style_tab_selected->set_border_width_all(p_config.border_width);
+			style_tab_selected->set_border_color(p_config.extra_border_color_1);
+		}
 
 		Ref<StyleBoxFlat> style_tab_focus = style_tab_selected->duplicate();
 		style_tab_focus->set_bg_color(p_config.base_color);
@@ -806,9 +886,13 @@ void ThemeModern::populate_standard_styles(const Ref<EditorTheme> &p_theme, Edit
 		Ref<StyleBoxFlat> style_tab_unselected = style_tab_selected->duplicate();
 		style_tab_unselected->set_bg_color(p_config.surface_lowest_color);
 		style_tab_unselected->set_border_width_all(0);
+		if (p_config.is_modern_compact()) {
+			// Keep inactive tabs identifiable by their surface and spacing, without an outline.
+			style_tab_unselected->set_bg_color(p_config.surface_base_color.darkened(0.08));
+		}
 
 		Ref<StyleBoxFlat> style_tab_hovered = style_tab_unselected->duplicate();
-		style_tab_hovered->set_bg_color(p_config.surface_base_color * Color(1, 1, 1, 0.6));
+		style_tab_hovered->set_bg_color(p_config.is_modern_compact() ? p_config.button_normal_color : p_config.surface_base_color * Color(1, 1, 1, 0.6));
 
 		Color drop_mark_color = p_config.dark_color_2.lerp(p_config.accent_color, 0.75);
 
@@ -855,6 +939,14 @@ void ThemeModern::populate_standard_styles(const Ref<EditorTheme> &p_theme, Edit
 		p_theme->set_color("icon_hovered_color", "TabBar", p_config.icon_hover_color);
 		p_theme->set_color("icon_unselected_color", "TabBar", p_config.icon_secondary_color);
 		p_theme->set_color("icon_disabled_color", "TabBar", p_config.icon_disabled_color * Color(1, 1, 1, 0.55));
+		if (p_config.is_modern_compact()) {
+			for (const char *type : { "TabContainer", "TabBar" }) {
+				p_theme->set_color("font_selected_color", type, p_config.font_hover_pressed_color);
+				p_theme->set_color("font_unselected_color", type, p_config.font_color);
+				p_theme->set_color("icon_unselected_color", type, p_config.icon_normal_color);
+				p_theme->set_constant("tab_separation", type, EDSCALE_RND(p_config.base_margin * 2));
+			}
+		}
 
 		p_theme->set_icon("menu", "TabContainer", p_theme->get_icon(SNAME("GuiTabMenu"), EditorStringName(EditorIcons)));
 		p_theme->set_icon("menu_highlight", "TabContainer", p_theme->get_icon(SNAME("GuiTabMenuHl"), EditorStringName(EditorIcons)));
@@ -1085,7 +1177,10 @@ void ThemeModern::populate_standard_styles(const Ref<EditorTheme> &p_theme, Edit
 			Ref<StyleBoxFlat> style_popup_menu = p_config.base_style->duplicate();
 			style_popup_menu->set_bg_color(p_config.surface_popup_color);
 			style_popup_menu->set_content_margin_all(p_config.popup_margin);
-			style_popup_menu->set_corner_radius_all(0);
+			style_popup_menu->set_corner_radius_all(p_config.is_modern_compact() ? EDSCALE_RND(p_config.corner_radius) : 0);
+			if (p_config.is_modern_compact()) {
+				_set_transparent_popup_gutter(style_popup_menu);
+			}
 			if (p_config.draw_extra_borders) {
 				style_popup_menu->set_border_width_all(EDSCALE_RND(1));
 				style_popup_menu->set_border_color(p_config.extra_border_color_2);
@@ -1747,9 +1842,30 @@ void ThemeModern::populate_editor_styles(const Ref<EditorTheme> &p_theme, Editor
 		p_theme->set_color("icon_unselected_color", "MainScreenContainer", p_config.icon_normal_color);
 		p_theme->set_constant("h_separation", "MainScreenContainer", 4);
 		p_theme->set_stylebox("tab_unselected", "MainScreenContainer", p_config.base_empty_wide_style);
-		p_theme->set_stylebox("tab_selected", "MainScreenContainer", p_config.base_empty_wide_style);
-		p_theme->set_stylebox("tab_hovered", "MainScreenContainer", p_config.base_empty_wide_style);
-		p_theme->set_constant("tab_separation", "MainScreenContainer", 8 * EDSCALE);
+		if (p_config.is_modern_compact()) {
+			// Every state must reserve identical space, including border padding.
+			// Otherwise switching editors moves the icon/text inside the same tab.
+			const int padding_x = EDSCALE_RND(MAX(p_config.base_margin * 2, 6));
+			const int padding_y = EDSCALE_RND(MAX(p_config.base_margin, 3));
+			Ref<StyleBoxEmpty> main_screen_tab_normal = p_config.base_empty_wide_style->duplicate();
+			main_screen_tab_normal->set_content_margin_individual(padding_x, padding_y, padding_x, padding_y);
+			Ref<StyleBoxFlat> main_screen_tab_selected = p_config.flat_button_pressed->duplicate();
+			main_screen_tab_selected->set_content_margin_individual(padding_x, padding_y, padding_x, padding_y);
+			main_screen_tab_selected->set_bg_color(p_config.surface_high_color);
+			main_screen_tab_selected->set_border_width_all(p_config.border_width);
+			main_screen_tab_selected->set_border_color(p_config.extra_border_color_1);
+			Ref<StyleBoxFlat> main_screen_tab_hovered = p_config.flat_button_hover->duplicate();
+			main_screen_tab_hovered->set_content_margin_individual(padding_x, padding_y, padding_x, padding_y);
+			p_theme->set_stylebox("tab_unselected", "MainScreenContainer", main_screen_tab_normal);
+			p_theme->set_stylebox("tab_disabled", "MainScreenContainer", main_screen_tab_normal);
+			p_theme->set_stylebox("tab_selected", "MainScreenContainer", main_screen_tab_selected);
+			p_theme->set_stylebox("tab_hovered", "MainScreenContainer", main_screen_tab_hovered);
+			p_theme->set_constant("h_separation", "MainScreenContainer", EDSCALE_RND(p_config.base_margin * 2));
+		} else {
+			p_theme->set_stylebox("tab_selected", "MainScreenContainer", p_config.base_empty_wide_style);
+			p_theme->set_stylebox("tab_hovered", "MainScreenContainer", p_config.base_empty_wide_style);
+		}
+		p_theme->set_constant("tab_separation", "MainScreenContainer", p_config.is_modern_compact() ? EDSCALE_RND(p_config.base_margin * 2) : 8 * EDSCALE);
 
 		// Main screen buttons.
 		const Color mb_font_color = p_config.font_color * Color(1, 1, 1, 0.95);
@@ -2110,7 +2226,8 @@ void ThemeModern::populate_editor_styles(const Ref<EditorTheme> &p_theme, Editor
 			p_theme->set_type_variation("PanelContainerTabbarInner", "PanelContainer");
 
 			Ref<StyleBoxFlat> style_tab_selected_inner = p_theme->get_stylebox(SNAME("tab_selected"), SNAME("TabContainer"))->duplicate();
-			style_tab_selected_inner->set_content_margin_individual(EDSCALE_RND(p_config.base_margin * 4), EDSCALE_RND(p_config.base_margin * 1.5), EDSCALE_RND(p_config.base_margin * 4), EDSCALE_RND(p_config.base_margin * 1.5));
+			const int inner_tab_padding_y = EDSCALE_RND(p_config.base_margin * 1.5 + (p_config.is_modern_compact() ? 2 : 0));
+			style_tab_selected_inner->set_content_margin_individual(EDSCALE_RND(p_config.base_margin * 4), inner_tab_padding_y, EDSCALE_RND(p_config.base_margin * 4), inner_tab_padding_y);
 			style_tab_selected_inner->set_corner_radius_all(EDSCALE_RND(p_config.corner_radius));
 			p_theme->set_stylebox("tab_selected", "TabContainerInner", style_tab_selected_inner);
 			p_theme->set_stylebox("tab_selected", "TabBarInner", style_tab_selected_inner);
@@ -2119,16 +2236,19 @@ void ThemeModern::populate_editor_styles(const Ref<EditorTheme> &p_theme, Editor
 
 			Ref<StyleBoxFlat> style_tab_unselected_inner = style_tab_selected_inner->duplicate();
 			style_tab_unselected_inner->set_bg_color(background_color);
+			if (p_config.is_modern_compact()) {
+				style_tab_unselected_inner->set_bg_color(p_config.surface_base_color.darkened(0.08));
+				style_tab_unselected_inner->set_border_width_all(0);
+			}
 			p_theme->set_stylebox("tab_unselected", "TabContainerInner", style_tab_unselected_inner);
 			p_theme->set_stylebox("tab_unselected", "TabBarInner", style_tab_unselected_inner);
 
-			Ref<StyleBoxFlat> style_tab_hovered_inner = style_tab_selected_inner->duplicate();
-			style_tab_hovered_inner->set_bg_color(background_color.lerp(p_config.mono_color, 0.05));
+			Ref<StyleBoxFlat> style_tab_hovered_inner = style_tab_unselected_inner->duplicate();
+			style_tab_hovered_inner->set_bg_color(p_config.is_modern_compact() ? p_config.button_normal_color : background_color.lerp(p_config.mono_color, 0.05));
 			p_theme->set_stylebox("tab_hovered", "TabContainerInner", style_tab_hovered_inner);
 			p_theme->set_stylebox("tab_hovered", "TabBarInner", style_tab_hovered_inner);
 
-			Ref<StyleBoxFlat> style_tab_disabled_inner = style_tab_selected_inner->duplicate();
-			style_tab_disabled_inner->set_bg_color(background_color);
+			Ref<StyleBoxFlat> style_tab_disabled_inner = style_tab_unselected_inner->duplicate();
 			p_theme->set_stylebox("tab_disabled", "TabContainerInner", style_tab_disabled_inner);
 			p_theme->set_stylebox("tab_disabled", "TabBarInner", style_tab_disabled_inner);
 
@@ -2139,8 +2259,9 @@ void ThemeModern::populate_editor_styles(const Ref<EditorTheme> &p_theme, Editor
 
 			p_theme->set_stylebox("tabbar_background", "TabContainerInner", style_tabbar_background_inner);
 
-			p_theme->set_constant("tab_separation", "TabContainerInner", p_config.separation_margin);
-			p_theme->set_constant("tab_separation", "TabBarInner", p_config.separation_margin);
+			const int inner_tab_separation = p_config.is_modern_compact() ? EDSCALE_RND(p_config.base_margin * 2) : p_config.separation_margin;
+			p_theme->set_constant("tab_separation", "TabContainerInner", inner_tab_separation);
+			p_theme->set_constant("tab_separation", "TabBarInner", inner_tab_separation);
 
 			p_theme->set_stylebox(SceneStringName(panel), "PanelContainerTabbarInner", style_tabbar_background_inner);
 		}

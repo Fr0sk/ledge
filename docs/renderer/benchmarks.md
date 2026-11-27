@@ -1,0 +1,437 @@
+# Renderer benchmarks
+
+Baseline and per-milestone results for the GPU-first renderer work. Method:
+[testing.md](testing.md). Earlier geometry results (valley, city, MultiMesh
+culling, CLOD, HZB) are in
+[knowledge/PERFORMANCE_BENCHMARKS.md](../../knowledge/PERFORMANCE_BENCHMARKS.md)
+and are not repeated here.
+
+## Many-instance bench (`instance_bench`)
+
+Scene: separate `MeshInstance3D` nodes on a 2 m grid, one shadowed
+directional light (4 splits, 200 m), plain colour background, linear tone
+mapping, 1280x720, VSync off. Static view: from one edge across the grid.
+Orbit: same distance, 0.4 degrees per frame. 90 warm-up + 300 timed frames
+per view, two repeats (second in reverse case order).
+
+| Case | Nodes | Meshes x materials | Moving / frame | Lights |
+| --- | --- | --- | --- | --- |
+| `small_1k` | 1,000 | 1 x 1 | 0 | sun |
+| `shared_20k` | 20,000 | 4 x 4 | 0 | sun |
+| `unique_10k` | 10,000 | 1 x one per node | 0 | sun |
+| `massive_100k` | 100,000 | 1 x 1 | 0 | sun |
+| `dynamic_20k` | 20,000 | 4 x 4 | 2,000 | sun |
+| `lights_20k` | 20,000 | 4 x 4 | 0 | sun, 128 omni, 8 shadowed spots |
+
+### Baseline (Phase 0), 2026-11-10
+
+Conditions: `dev-gpu-renderer` at `7e2aaabefb` (engine = `4bc2a22774`),
+editor production build, RTX 3060, NVIDIA driver 32.0.16.2101, 12 CPU
+threads, 1280x720, VSync off, default project settings (far directional
+cascades cached, shadow LOD scale 4). Logs: `devtools/out/instance_bench/`.
+Static view; the orbit view is within 1 ms of it in every case. p50 in ms;
+"r0 / r1" are the two repeats.
+
+| Case | Vulkan frame | Vulkan render CPU r0 / r1 | Vulkan GPU | D3D12 render CPU r0 / r1 | D3D12 GPU | Vulkan, separate render thread: frame |
+| --- | --- | --- | --- | --- | --- | --- |
+| `small_1k` | 0.64 | 0.38 / 0.34 | 0.27 | 0.41 / 0.33 | 0.27 | 0.69 |
+| `shared_20k` | 8.75 | 8.11 / 6.19 | 1.42 | 8.14 / 5.99 | 1.39 | 9.08 |
+| `unique_10k` | 11.95 | 8.05 / 7.84 | 1.35 | 8.64 / 8.54 | 0.65 | 11.83 |
+| `massive_100k` | 21.03 | 20.42 / 19.48 | 1.15 | 20.12 / 19.62 | 1.16 | 21.11 |
+| `dynamic_20k` | 9.37 | 7.24 / 7.44 | 1.41 | 7.03 / 7.80 | 1.39 | 7.87 |
+| `lights_20k` | 7.25 | 6.63 / 6.28 | 1.67 | 6.22 / 6.02 | 1.60 | 7.21 |
+
+Frame p95 is about 10 ms above p50 in `massive_100k` (30-31 ms) and 2-4 ms
+in the 20k cases on both backends.
+
+Per-stage render-thread CPU, Vulkan, static view, from `-Stages` (each
+marker until the next one; a stage holds everything until the next marker):
+
+| Stage (marker) | What it covers | `small_1k` | `shared_20k` | `unique_10k` | `massive_100k` | `dynamic_20k` |
+| --- | --- | --- | --- | --- | --- | --- |
+| Prepare Render Frame | `scene->update`: dirty instances, re-pairing, BVH | <0.02 | 0.04 | 0.05 | 0.04 | 1.03 |
+| Cull DirectionalLight, Split # | cascade setup, then the whole threaded instance cull and positional-light culling | 0.11 | 0.36 | 0.27 | 1.20 | 0.34 |
+| Render 3D Scene | scene data, light buffers, render buffers until Forward+ starts | <0.02 | 0.21 | 0.13 | 1.20 | 0.22 |
+| Setup 3D Scene | main-pass `_fill_render_list`, sort, `_fill_instance_data`, GPU geometry compute | 0.08 | 4.08 | 1.52 | 16.38 | 2.87 |
+| Render Directional/SpotLight Shadows | shadow render lists (per pass), shadow draw recording | 0.09 | 3.37 | 1.85 | 2.46 | 2.29 |
+| Render Depth Pre-Pass | depth draw recording | <0.02 | 0.07 | 0.82 | 0.05 | 0.05 |
+| Render Opaque Pass | opaque draw recording | <0.02 | 0.06 | 3.46 | 0.04 | 0.04 |
+
+### What the baseline shows
+
+1. **Every non-trivial case is CPU-bound on the render thread**: render
+   CPU is 5x (`lights_20k`) to 18x (`massive_100k`) the GPU time. The frame
+   follows render CPU; a separate render thread does not help.
+2. **Main-pass render-list preparation is the largest cost**: 16.4 of
+   20.4 ms at 84k visible objects in only 16 draws, about 195 ns per
+   visible object per frame, in a static scene where nothing changed. This
+   is the per-frame rebuild that the GPU instance table (Phase 1) and GPU
+   culling into persistent buckets (Phase 2) remove. D025 holds.
+3. **Culling is cheap**: the threaded scan plus light culling is 1.2 ms at
+   100k. Moving culling to the GPU is not a goal by itself; it is needed so
+   the CPU stops building per-visible-instance lists.
+4. **Shadow lists cost 1.9-3.4 ms** even with far cascades cached
+   (Phase 1.7 and Phase 6).
+5. **Draw recording matters only with many distinct materials**: 4.3 ms
+   for 8.8k draws in `unique_10k` (about 0.4 us per draw); 0.1 ms
+   elsewhere. Multi-draw needs shared pipeline and material state, so this
+   is a Phase 3 question (bindless material data), not Phase 1.
+6. **Moving instances**: 2,000 moved nodes cost 1.0 ms in `scene->update`
+   (about 0.5 us each: BVH, re-pairing). Phase 1.3 must not add to it.
+7. **Small scenes**: `small_1k` renders in 0.3-0.4 ms CPU; any new path must
+   keep it there (regression guard).
+
+### Render-list split (Phase 1.0), 2026-11-10
+
+New `RENDER_TIMESTAMP` markers inside the main pass and each shadow pass
+(`render_forward_clustered.cpp`; only recorded while timestamps are
+captured). Vulkan, static view, `-Stages`, ms p50:
+
+| Step | `shared_20k` | `unique_10k` | `massive_100k` | `dynamic_20k` | `lights_20k` |
+| --- | --- | --- | --- | --- | --- |
+| Main: fill render list | 1.01 | 0.47 | 5.61 | 0.79 | 0.87 |
+| Main: sort | 0.81 | 0.34 | 3.23 | 0.81 | 0.78 |
+| Main: fill instance data | 2.26 | 0.69 | 7.54 | 1.39 | 1.39 |
+| Shadows: fill render lists (all passes) | 0.63 | 0.23 | 0.96 | 0.46 | 0.52 |
+| Shadows: sort | 0.80 | 0.29 | 0.35 | 0.80 | 0.78 |
+| Shadows: fill instance data | 1.71 | 0.31 | 1.14 | 1.14 | 1.17 |
+| Shadow draw recording ("Shadow Render List Ready" until the next marker) | 0.09 | 0.98 | 0.05 | 0.06 | 0.07 |
+
+The three main steps add up to the 16.4 ms "Setup 3D Scene" of the
+baseline (100k). Per visible element: fill about 67 ns, sort about 38 ns,
+instance data about 90 ns. `_fill_instance_data` transposes two transforms,
+does three mesh-storage lookups, writes the 176-byte record into mapped
+memory and detects repeats.
+
+Expected effect, to be measured in 1.6 and 1.7: the instance table replaces
+the record build and write with a 4-byte slot ID, so most of the instance
+data step (7.5 + 1.1 ms at 100k) should go; fill and sort (about 10 ms main
+and shadows at 100k) stay until Phase 2 moves eligible instances out of the
+CPU render list.
+
+### GPU instance table, uploads only (Phase 1.2), 2026-11-10
+
+`instance_bench.ps1 -Table` against the same build without it, Vulkan,
+static view, p50 ms (render CPU / GPU). Nothing reads the table yet, so this
+is the pure cost of keeping it current.
+
+| Case | Off | On |
+| --- | --- | --- |
+| `small_1k` | 0.38 / 0.26 | 0.39 / 0.27 |
+| `shared_20k` | 8.17 / 1.42 | 8.40 / 1.42 |
+| `massive_100k` | 20.57 / 1.15 | 20.66 / 1.15 |
+| `dynamic_20k` | 7.39 / 1.41 (r1 7.87 / 1.48) | 8.37 / 4.32 (r1 9.07 / 4.39) |
+| `lights_20k` | 6.81 / 1.67 | 6.68 / 1.66 |
+
+Static scenes pay nothing (no dirty records). `dynamic_20k` moves 2,000
+nodes spread over the grid (every 10th), so each frame has about 2,000
+one-record ranges; one `buffer_update` each costs 2.9 ms of GPU time and
+about 1 ms of render CPU. Task 1.3 replaces scattered ranges with one
+packed upload and a compute scatter. Table memory: 128 bytes per slot,
+rounded up to a power of two (100k nodes: 16 MiB).
+
+### Packed upload and compute scatter (Phase 1.3), 2026-11-10
+
+Up to 16 contiguous runs of dirty records are still written with one
+`buffer_update` each; more are packed into one upload (records plus a slot
+list) and written to their slots by `gpu_instance_scatter.glsl` (one
+dispatch). Same bench, `-Table`, Vulkan, static view, p50 ms (render CPU / GPU):
+
+| Case | Table off (1.2 run) | Table on, 1.2 (ranges) | Table on, 1.3 (scatter) |
+| --- | --- | --- | --- |
+| `small_1k` | 0.38 / 0.26 | 0.39 / 0.27 | 0.45 / 0.27 (r1 0.36 / 0.26) |
+| `shared_20k` | 8.17 / 1.42 | 8.40 / 1.42 | 9.56 / 1.40 (r1 6.65 / 1.39) |
+| `massive_100k` | 20.57 / 1.15 | 20.66 / 1.15 | 21.16 / 1.15 (r1 20.06 / 1.15) |
+| `dynamic_20k` | 7.39 / 1.41 (r1 7.87 / 1.48) | 8.37 / 4.32 (r1 9.07 / 4.39) | 8.15 / 1.44 (r1 8.35 / 1.42) |
+| `lights_20k` | 6.81 / 1.67 | 6.68 / 1.66 | 7.03 / 1.65 (r1 6.76 / 1.64) |
+
+The GPU cost of keeping 2,000 scattered moved records current is gone
+(1.43 vs 1.41 ms). About 0.5-0.8 ms of render CPU remains in
+`dynamic_20k` with the table on, in both repeats (likely building and
+packing the dirty records); other differences are within the repeat
+spread (`shared_20k` and `small_1k` first repeats).
+
+### Where `_fill_instance_data` spends its time (before 1.5), 2026-11-10
+
+Temporary build switch (not committed) that removes parts of the
+per-element work; images are wrong in modes 1-3, only CPU time counts.
+`-Stages`, Vulkan, static view, "Fill Instance Data" (main pass / all
+shadow passes), ms p50:
+
+| Mode | Removed | `shared_20k` | `massive_100k` |
+| --- | --- | --- | --- |
+| 0 | nothing | 3.30 / 2.12 | 7.80 / 1.29 |
+| 1 | the two transform transposes | 1.43 / 1.10 | 5.95 / 0.94 |
+| 2 | plus the mesh-storage lookups | 1.80 / 1.37 | 5.93 / 0.97 |
+| 3 | plus the 176-byte write (a 4-byte slot instead) | 1.32 / 1.10 | 5.32 / 0.84 |
+
+At 100k the record write costs about 0.6 ms and the transposes about
+1.9 ms; about 5.3 ms (63 ns per element) is the walk itself: each render
+element points to its surface cache and its instance object, scattered in
+memory. `shared_20k` varies by about 0.4 ms between runs (mode 2 above
+mode 1). Conclusion (D027): replacing the record with a slot ID saves at
+most about 2.5 of 20 ms; the CPU has to stop visiting eligible instances.
+
+### GPU path for eligible instances (Phase 2.1-2.4), 2026-11-10
+
+`instance_bench.ps1` with and without `-GpuInstances`, Vulkan, safe render
+thread, same session, ms p50 (static / orbit view, two repeats where they
+differ by more than 1 ms):
+
+| Case | Render CPU, CPU path | Render CPU, GPU path | GPU, CPU path | GPU, GPU path | Draws |
+| --- | --- | --- | --- | --- | --- |
+| `small_1k` | 0.36-0.41 | 0.34-0.40 | 0.26 | 0.27-0.34 | 3 / 2 |
+| `shared_20k` | 7.0-10.1 | 3.5-6.1 | 1.36-1.40 | 1.27-1.39 | 113 / 17 |
+| `unique_10k` | 8.4-9.3 | 8.1-8.7 | 1.28-1.36 | 1.12-1.15 | 8,800 / 10,001 |
+| `massive_100k` | 21.6-22.5 | 5.3-5.6 | 1.15 | 1.26-1.45 | 16 / 2 |
+| `dynamic_20k` | 8.0-10.6 | 4.8-5.9 | 1.37-1.42 | 1.36-1.44 | 113 / 17 |
+| `lights_20k` | 7.6-7.7 | 3.4-4.5 | 1.62-1.65 | 1.55-1.60 | 113 / 17 |
+
+Wall frame time follows render CPU (`massive_100k` 22.6 to 6.1 ms). The
+remaining render CPU at 100k is mostly the shadow passes, which still use
+the CPU lists (Phase 6). `unique_10k` gains nothing: 10,000 materials make
+10,000 buckets, one indirect draw each, and their per-view bucket data. GPU
+cost at 100k is the cull and 176-byte writes of 100k instance surfaces
+(+0.1-0.3 ms). Viewport render info counted no objects or primitives for
+GPU-drawn instances then (now it does, a few frames late). Buffer memory grows by about 64 MiB at 100k (table,
+members and per-view instance data at power-of-two capacity).
+
+After index LODs (D029, visible-ID indirection for every GPU path draw),
+same bench with `-GpuInstances`, Vulkan: `massive_100k` render CPU
+4.9-5.1 ms, GPU 1.26-1.30 ms; `shared_20k` 3.2-4.4 ms; `small_1k`
+0.31-0.38 ms. No regression (the bench meshes have no LODs).
+
+`churn_100k` (new, 100,000 nodes, 100 change material every frame), render
+CPU p50, Vulkan, 2026-11-10: CPU path 30.5-32.3 ms; GPU path with buckets
+updated in place (D031) 6.1-6.8 ms (`massive_100k` 4.8-5.2 ms in the same
+run). Before D031 each frame also paid a full bucket rebuild, measured at
+7.6 ms for 100k members.
+
+With the scene cull's visibility bits (D032), same bench, Vulkan, render CPU
+p50: `massive_100k` 5.2-5.4 ms (5.0-5.2 before), `churn_100k` 6.6-6.8 ms,
+`small_1k` 0.31-0.34 ms. Built on the render thread from the pointer list
+instead, the bits cost +2.7 ms at 100k.
+
+### Directional shadow casters on the GPU path (Phase 6.1), 2026-11-10
+
+`instance_bench.ps1 -GpuInstances`, Vulkan, safe render thread, render CPU
+p50 static view, two repeats (before / after D033): `small_1k` 0.31-0.34 /
+0.25-0.26 ms, `shared_20k` 4.3-5.5 / 0.69-0.79 ms, `unique_10k` 8.1-8.4 /
+7.1-7.7 ms (draws 10,001 to 8,776, shadow draws as on the CPU path),
+`massive_100k` 5.2-5.4 / 2.75-2.85 ms, `dynamic_20k` 4.4-5.4 / 2.1-2.2 ms,
+`lights_20k` 3.3-4.2 / 0.75 ms, `churn_100k` 6.6-6.8 / 3.6-3.8 ms. GPU time
+unchanged (1.26 ms at 100k). Before the used-bucket filter `unique_10k` had
+30,003 shadow draws and a 17-18 ms frame.
+
+Motion age-out over moving instances only (2026-11-10): before, every
+render visited each instance the camera listed for the GPU path (84k
+pointer chases at 100k, about 1.1 ms). Now a list holds the instances
+whose motion status is not NONE. Render CPU p50, Vulkan, GPU path:
+`massive_100k` 2.8-3.2 to 1.68 ms (frame 2.1 ms, GPU 1.30 ms),
+`shared_20k` 0.63 ms, `churn_100k` 2.28 ms, `dynamic_20k` 1.88 ms.
+The CPU and RT list walks went too (every status change adds to the list):
+GPU path `massive_100k` 1.51-1.59 ms, `shared_20k` 0.57 ms, `small_1k`
+0.23-0.24 ms; CPU path `massive_100k` 19.3-19.7 ms (baseline 20.4-21),
+`shared_20k` 6.3-7.0 ms.
+
+D3D12, same protocol, render CPU p50 (CPU path / GPU path): `small_1k`
+0.40-0.54 / 0.29-0.40, `shared_20k` 7.7-10.1 / 3.2-6.2, `unique_10k`
+8.2-9.2 / 7.9-8.9, `massive_100k` 20.7-22.3 / 5.5-5.9, `dynamic_20k`
+7.9-9.5 / 4.8-7.3, `lights_20k` 7.0-8.2 / 4.0-5.0. GPU p50 changes by
++0.13 ms at 100k and +0.07 ms in `unique_10k`, less elsewhere.
+
+### Material parameter tables (D036), 2026-11-15
+
+Vulkan, RTX 3060, `instance_bench.ps1 -GpuInstances`, p50 of both views and
+repeats, baseline the same commit without the change:
+
+| Case | Render CPU | Frame | GPU | Draws (shadow) |
+| --- | --- | --- | --- | --- |
+| `unique_10k` before | 7.5-8.1 ms | 12.8-13.7 ms | 1.05 ms | 8,776-8,829 (10.1k-10.5k) |
+| `unique_10k` after | 0.42-0.47 ms | 0.84-0.86 ms | 0.49-0.50 ms | 11 (12-23) |
+| `shared_20k` before / after | 0.58-0.63 / 0.58-0.62 ms | 1.7 ms | 1.33-1.39 ms | 17 / 5 |
+
+`unique_10k` video memory 241.6 to 124.0 MiB (first repeat). D3D12 after:
+render CPU 0.38-0.41 ms, 130.7 MiB (before about 750 MiB, from the
+baseline below). The frame gap of `unique_10k` (frame 3.6-5.5 ms above
+render CPU) is gone with it. Other cases unchanged within spread.
+
+### Where render CPU goes after D036, 2026-11-15
+
+Stage profile (`instance_bench.ps1 -Stages -GpuInstances`, static view,
+Vulkan): the scene cull marker (`Cull DirectionalLight, Split #`: cascade
+setup plus the threaded instance cull) is now the largest stage: 1.36 ms
+at `massive_100k`, 0.39-0.40 ms at 20k. `dynamic_20k` adds 1.12 ms of
+`Prepare Render Frame` for its 2,000 moved nodes. Draw submission no
+longer shows. Probes (temporary builds, not committed), same stage:
+
+| Probe | `massive_100k` | `shared_20k` | `dynamic_20k` |
+| --- | --- | --- | --- |
+| As committed (D036) | 1.356 | 0.388 | 0.400 |
+| GPU path instances skip the whole CPU cull | 0.226 | 0.094 | 0.123 |
+| They skip only the cascade tests | 0.663 | 0.204 | 0.223 |
+| Cascade frustum tested before the light culler (kept) | 1.171 | 0.357 | 0.440 |
+
+So a GPU-side cull of the GPU path's members could save up to about
+1.1 ms at 100k (half of it in the cascades), but the CPU lists are also
+the fallback of views and shadow passes that do not take the GPU path, and
+D032 relies on them for exact occluder results. The kept reorder (exact,
+also helps the CPU path): timing bench render CPU `massive_100k` 1.30-1.60
+ms (1.43-1.90 before), `churn_100k` 2.16-2.37 (2.37-2.48), `shared_20k`
+0.54-0.60 (0.58-0.62), within spread for the rest. GPU A/B of D036 on the
+forest (`gpu_intervals.ps1`, whole-frame GPU): Vulkan 4.88-4.99 ms against
+4.97-5.06 ms before, D3D12 5.36-5.38 against 5.34-5.71: storage-buffer
+material reads cost nothing measurable there.
+
+### Moved instances, 2026-11-15
+
+`dynamic_20k` moves 2,000 nodes per frame. Temporary timers in
+`RendererSceneCull::update()` (Vulkan, 120-frame means): the dirty instance
+loop took 1.005-1.051 ms per frame, about 510 ns per moved instance. Inside
+`_update_instance()` (timers on, so inflated): about 245 ns before the
+renderer call (AABB transform 27 ns, the rest memory access), renderer
+`set_transform()` 100 ns, BVH bounds quantizing (two double logs and a
+pow) 122 ns, BVH update 55 ns, re-pairing 53 ns. Pairing tests the exact
+AABB, so it must run on every move; the BVH update already returns early
+when the quantized bounds did not change.
+Kept: the quantizing step from the float exponent (`frexp`), and no
+local AABB update for a transform-only change (the dependency callbacks
+still queue one when the mesh, skeleton or AABB changes). Dirty loop
+0.921-0.946 ms (-9%); timing bench render CPU `dynamic_20k` 1.73-1.82 ms
+(1.87-2.09 before, partly inside spread). The rest is memory-bound pointer
+chasing per instance (Instance, geometry data, renderer instance, BVH
+leaf). The main thread spends more on the same moves (frame 3.4-3.5 ms
+against 1.7-1.8 ms render CPU). Measured apart (temporary timers, 120-frame
+means, 2,000 moves): the bench's script loop 905 us with the `position`
+assignment and 340 us without, so setting `position` costs about 285 ns per
+node (script dispatch, `Node3D::set_position()`, dirty bits, the
+transform-notification list, the physics interpolation hook);
+`SceneTree::flush_transform_notifications()` 330 us, about 165 ns per node
+(`get_global_transform()`, `RenderingServer::instance_set_transform()`).
+Engine cost per moved node: about 450 ns on the main thread and 470 ns in
+the scene update, all upstream paths without a single large cost. Bigger
+gains need fewer calls per moved object (MultiMesh, or physics writing
+render transforms in bulk), not faster ones.
+
+### A game level: many meshes, few copies (D038), 2026-11-15
+
+The public Overgrown Subway demo (1,555 mesh instances, 354 meshes, 35
+materials, imported with index LODs and shadow meshes; 1080p, MSAA 2x,
+DDGI; RTX 3060, Vulkan) was 0.27-0.30 ms slower on the GPU path than on the
+CPU path, with 873 against 413 draws. Measured in one process, the setting
+flipped every 30 frames (20 measured), 40 blocks per view, so that slow
+drift (clocks, the scene's flickering lights) falls on both sides; an A/A
+run of a setting that does nothing gives up to 0.06 ms. Separate runs were
+useless at this size: the second run of a pair was 0.2-0.3 ms slower
+whichever came first.
+
+Where the 0.3 ms went (whole-frame GPU timestamps, safe render thread):
+the shadow passes. Without the two omni lights' shadows the paths were
+within noise; with them, about 12 small cube-face passes each paid the GPU
+path's fixed cost per pass (an 80 KB command upload, the visible bits, a
+cull over every member, a readback, the barriers between them). The empty
+LOD draws doubled the draw count but cost little GPU time: with them gone
+(main draws 413, as the CPU path) the loss was still 0.25-0.3 ms.
+
+| GPU path minus CPU path, GPU p50 (5 runs, median) | start | middle | far end |
+| --- | --- | --- | --- |
+| Before | +0.29 ms | +0.27 ms | +0.30 ms |
+| Commands only where a member can land, per-pass stats, passes under 256 casters on the CPU list | +0.05 ms | +0.12 ms | +0.08 ms |
+| Same, every shadow pass on the CPU list (1 run) | +0.06 ms | +0.05 ms | +0.00 ms |
+| All shadow passes of a render culled in one dispatch (3 runs, median) | +0.04 ms | +0.08 ms | +0.04 ms |
+| Same, every shadow pass on the GPU path (`shadow_min_casters` 0; 3 runs) | +0.14 ms | +0.15 ms | +0.22 ms |
+
+With one dispatch per render the level is within the A/A floor (0.06 ms).
+Small passes still do not pay for themselves on the GPU path (about +0.25
+ms with every pass on it before the batch, +0.15-0.22 after), so the
+cutoff stays at 256 casters. The batch gained a little in the bench too:
+`lights_20k` (8 shadowed spots) GPU 1.60-1.67 to 1.57-1.62 ms,
+`unique_lod_2k` 0.46-0.48 to 0.44-0.46 ms.
+
+`unique_lod_2k` (new bench case: 2,000 nodes, 500 distinct spheres with
+generated index LODs, 4 copies each; Vulkan, p50): GPU path render CPU
+1.07-1.34 ms against 1.40-1.68 ms on the CPU path, frame 2.12-2.66 against
+2.25-2.89 ms, GPU 0.45-0.48 ms on both, draws 974-1,075 against 1,172-1,378.
+The other cases are within their spread of the D036 numbers (`unique_10k`
+render CPU 0.41-0.42 ms, `massive_100k` 1.34-1.67 ms).
+
+### A game level: where the GPU path's cost is (D039), 2026-11-15
+
+Same level and setup as above. D039 replaced the per-view command uploads
+(about 80 KB per camera view and per shadow pass) with GPU clears, and the
+per-frame bucket data upload with uploads of changed buckets. GPU path
+minus CPU path, in-process A/B (40 blocks per view), 3 runs per build
+alternating with the build before, median:
+
+| Build | start | middle | far end |
+| --- | --- | --- | --- |
+| Before, default cutoff (256) | +0.06 ms | +0.03 ms | +0.09 ms |
+| D039, default cutoff | +0.05 ms | +0.11 ms | +0.06 ms |
+| Before, every shadow pass on the GPU path | +0.13 ms | +0.16 ms | +0.19 ms |
+| D039, every shadow pass on the GPU path | +0.10 ms | +0.11 ms | +0.19 ms |
+
+Within the spread (single runs vary by about 0.1 ms). Instance bench
+(Vulkan, `-GpuInstances`, 2 rounds alternating with the build before):
+`unique_lod_2k` GPU 0.44-0.46 to 0.41-0.43 ms, the other cases within
+spread. `gpu_instances/occlusion` does not run on this level: it uses
+MSAA 2x, which turns HZB occlusion off (`_hzb_possible()`), so its on/off
+A/B (-0.001 to +0.012 ms, 3 runs) is an A/A run.
+
+Stage intervals (`--gpu-profile`, safe render thread, 300 frames per view,
+mean of 2 runs; new timestamps `GPU Instances Cull End` and `GPU Instances
+Shadow Cull End` split each cull from what follows it). Difference to the
+CPU path:
+
+| Stage | Default cutoff | Every shadow pass on the GPU path |
+| --- | --- | --- |
+| Shadow culls (3 batches: 2 omni lights, the directional cascades) | - | +0.020-0.021 ms |
+| Shadow draws (after the cull, against the CPU path's) | +0.002-0.015 ms | +0.029-0.048 ms |
+| Camera cull dispatch | below 0.01 ms | below 0.01 ms |
+| Depth pre-pass | +0.007-0.033 ms | +0.005-0.037 ms |
+| Whole frame (sum of stages) | +0.016-0.048 ms | +0.08-0.21 ms |
+
+The culls are cheap; the GPU path's draws cost more than the CPU path's
+although there are fewer of them in the shadow passes (723-833 against
+862-929): about 50-60 ns more per draw in depth-only passes. The rest of
+the frame differences (DDGI, opaque pass) move with the level's
+flickering lights.
+
+Not the indirect draw itself: a temporary build drew the GPU path's
+elements as direct draws with the instance counts read back from earlier
+frames (static views; about 1,400 direct draws per frame, none fell back),
+in-process A/B against the indirect draws: direct minus indirect -0.03 /
+-0.00 / -0.00 ms with every shadow pass on the GPU path (3 runs, median),
+-0.00 / -0.02 / -0.01 ms with the default cutoff (2 runs), within the A/A
+floor. Left as suspects: the vertex shader's visible-ID load before the
+instance data (D029; D3D12 has no base instance), and anything per draw
+that only a GPU profiler capture of a cube face would show.
+
+### Open items found by the baseline
+
+- `unique_10k` frame time is 3.6-4 ms above render CPU on both backends
+  (other cases about 0.6 ms). Gone with D036 (2026-11-15); its cause was
+  not isolated.
+- D3D12 reported 734-822 MiB video memory in `unique_10k` against 104 MiB on
+  Vulkan (10k materials). 130.7 MiB with D036, so most of it was the
+  per-material UBOs and uniform sets.
+- Repeat spread: `shared_20k` render CPU 8.1 vs 6.2 ms between repeats on both
+  backends (the first repeat runs right after `small_1k`). Treat
+  differences under about 2 ms in the 20k cases as noise until the bench
+  pins the cause.
+- Video memory reported by the bench only grows within one run (buffers
+  grow and are kept), so per-case memory is an upper bound.
+
+GPU path HZB occlusion (D034, 2026-11-10), instance bench without
+occluders (the cost only), Vulkan, p50 GPU path / with occlusion: GPU
+`small_1k` 0.29 / 0.37 ms, `shared_20k` 1.32-1.37 / 1.42-1.49 ms,
+`massive_100k` 1.27-1.33 / 1.39-1.45 ms, `lights_20k` 1.61-1.66 /
+1.69-1.74 ms; render CPU +0.03-0.07 ms. Same run, render CPU p50 GPU path:
+`massive_100k` 1.43-1.83 ms, `shared_20k` 0.57-0.61 ms, `small_1k`
+0.24-0.27 ms.
+
+Defaults on (D035, 2026-11-10), valley bench (`forest_bench.ps1`,
+Vulkan, one run each, same build; old defaults through a temporary
+`override.cfg`), render CPU p50 old / new: view 0 0.51-0.62 / 0.53-0.69 ms,
+view 1 0.72-1.04 / 0.76-1.23 ms, view 2 0.51-0.73 / 0.56-0.80 ms; GPU p50
++0.04 to +0.12 ms (view 2 source -0.08). Few occluders: the HZB and
+occlusion tests cost without saving.

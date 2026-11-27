@@ -1360,7 +1360,9 @@ void RendererSceneRenderRD::_update_vrs(Ref<RenderSceneBuffersRD> p_render_buffe
 		RendererRD::TextureStorage *texture_storage = RendererRD::TextureStorage::get_singleton();
 
 		RSE::ViewportVRSMode vrs_mode = texture_storage->render_target_get_vrs_mode(render_target);
-		if (vrs_mode != RSE::VIEWPORT_VRS_DISABLED) {
+		if (vrs_mode == RSE::VIEWPORT_VRS_ADAPTIVE) {
+			vrs->update_vrs_texture_adaptive(p_render_buffers.ptr());
+		} else if (vrs_mode != RSE::VIEWPORT_VRS_DISABLED) {
 			RID vrs_texture = p_render_buffers->get_texture(RB_SCOPE_VRS, RB_TEXTURE);
 
 			// We use get_cache_multipass instead of get_cache_multiview because the default behavior is for
@@ -1402,7 +1404,7 @@ void RendererSceneRenderRD::_post_prepass_render(RenderDataRD *p_render_data, bo
 	}
 }
 
-void RendererSceneRenderRD::render_scene(const Ref<RenderSceneBuffers> &p_render_buffers, const CameraData *p_camera_data, const CameraData *p_prev_camera_data, const PagedArray<RenderGeometryInstance *> &p_instances, const PagedArray<RID> &p_lights, const PagedArray<RID> &p_reflection_probes, const PagedArray<RID> &p_voxel_gi_instances, const PagedArray<RID> &p_decals, const PagedArray<RID> &p_lightmaps, const PagedArray<RID> &p_fog_volumes, RID p_environment, RID p_camera_attributes, RID p_compositor, RID p_shadow_atlas, RID p_occluder_debug_tex, RID p_reflection_atlas, RID p_reflection_probe, int p_reflection_probe_pass, float p_screen_mesh_lod_threshold, const RenderShadowData *p_render_shadows, int p_render_shadow_count, const RenderSDFGIData *p_render_sdfgi_regions, int p_render_sdfgi_region_count, float p_window_output_max_value, const RenderSDFGIUpdateData *p_sdfgi_update_data, RenderingServerTypes::RenderInfo *r_render_info, const PagedArray<RenderGeometryInstance *> *p_rt_instances, const PagedArray<RID> *p_rt_lights) {
+void RendererSceneRenderRD::render_scene(const Ref<RenderSceneBuffers> &p_render_buffers, const CameraData *p_camera_data, const CameraData *p_prev_camera_data, const PagedArray<RenderGeometryInstance *> &p_instances, const PagedArray<RID> &p_lights, const PagedArray<RID> &p_reflection_probes, const PagedArray<RID> &p_voxel_gi_instances, const PagedArray<RID> &p_decals, const PagedArray<RID> &p_lightmaps, const PagedArray<RID> &p_fog_volumes, RID p_environment, RID p_camera_attributes, RID p_compositor, RID p_shadow_atlas, RID p_occluder_debug_tex, RID p_reflection_atlas, RID p_reflection_probe, int p_reflection_probe_pass, float p_screen_mesh_lod_threshold, const RenderShadowData *p_render_shadows, int p_render_shadow_count, const RenderSDFGIData *p_render_sdfgi_regions, int p_render_sdfgi_region_count, float p_window_output_max_value, const RenderSDFGIUpdateData *p_sdfgi_update_data, RenderingServerTypes::RenderInfo *r_render_info, const PagedArray<RenderGeometryInstance *> *p_rt_instances, const PagedArray<RID> *p_rt_lights, const LocalVector<RenderPlanarReflection> *p_planar_reflections) {
 	RendererRD::LightStorage *light_storage = RendererRD::LightStorage::get_singleton();
 	RendererRD::TextureStorage *texture_storage = RendererRD::TextureStorage::get_singleton();
 
@@ -1426,6 +1428,8 @@ void RendererSceneRenderRD::render_scene(const Ref<RenderSceneBuffers> &p_render
 		scene_data.taa_frame_count = p_camera_data->taa_frame_count;
 		scene_data.main_cam_transform = p_camera_data->main_transform;
 		scene_data.flip_y = !p_reflection_probe.is_valid();
+		scene_data.mirror_pass = p_camera_data->mirror_pass;
+		scene_data.clip_plane = p_camera_data->clip_plane;
 
 		scene_data.view_count = p_camera_data->view_count;
 		for (uint32_t v = 0; v < p_camera_data->view_count; v++) {
@@ -1445,12 +1449,19 @@ void RendererSceneRenderRD::render_scene(const Ref<RenderSceneBuffers> &p_render
 		scene_data.z_far = p_camera_data->main_projection.get_z_far();
 
 		// this should be the same for all cameras..
-		const float lod_distance_multiplier = p_camera_data->main_projection.get_lod_multiplier();
+		// A mirror pass's projection is cropped to the mirror (zoomed in): it would pick
+		// finer LODs than the view itself. Use the view's whole projection.
+		const float lod_distance_multiplier = (p_camera_data->mirror_pass ? p_camera_data->cull_projection : p_camera_data->main_projection).get_lod_multiplier();
 
 		// Also, take into account resolution scaling for the multiplier, since we have more leeway with quality
 		// degradation visibility. Conversely, allow upwards scaling, too, for increased mesh detail at high res.
-		const float scaling_3d_scale = GLOBAL_GET_CACHED(float, "rendering/scaling_3d/scale");
+		float scaling_3d_scale = GLOBAL_GET_CACHED(float, "rendering/scaling_3d/scale");
+		if (p_camera_data->mirror_pass) {
+			// Same for the mirror pass's own resolution (RendererSceneCull::_render_mirror()).
+			scaling_3d_scale *= CLAMP(GLOBAL_GET_CACHED(float, "rendering/global_illumination/reflections/planar_mirror_scale"), 0.25f, 1.0f);
+		}
 		scene_data.lod_distance_multiplier = lod_distance_multiplier * (1.0 / scaling_3d_scale);
+		scene_data.shadow_lod_distance_multiplier = lod_distance_multiplier;
 
 		if (get_debug_draw_mode() == RSE::VIEWPORT_DEBUG_DRAW_DISABLE_LOD) {
 			scene_data.screen_mesh_lod_threshold = 0.0;
@@ -1521,6 +1532,11 @@ void RendererSceneRenderRD::render_scene(const Ref<RenderSceneBuffers> &p_render
 		render_data.render_info = r_render_info;
 		render_data.rt_instances = p_rt_instances;
 		render_data.rt_lights = p_rt_lights;
+		render_data.planar_reflections = p_planar_reflections;
+		render_data.gpu_instances = gpu_view_instances;
+		render_data.gpu_slots = gpu_view_slots;
+		render_data.gpu_scenario = gpu_view_scenario;
+		render_data.gpu_visible_layers = gpu_view_visible_layers;
 
 		if (p_render_buffers.is_valid() && p_reflection_probe.is_null()) {
 			render_data.transparent_bg = texture_storage->render_target_get_transparent(rb->get_render_target());
@@ -1622,6 +1638,11 @@ void RendererSceneRenderRD::screen_space_roughness_limiter_set_active(bool p_ena
 
 bool RendererSceneRenderRD::screen_space_roughness_limiter_is_active() const {
 	return screen_space_roughness_limiter;
+}
+
+uint64_t RendererSceneRenderRD::directional_shadow_cache_generation() const {
+	// Directional passes clear only their own atlas region (Forward+ and Mobile).
+	return 1 + RendererRD::LightStorage::get_singleton()->directional_shadow_get_generation();
 }
 
 float RendererSceneRenderRD::screen_space_roughness_limiter_get_amount() const {

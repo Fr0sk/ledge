@@ -420,6 +420,7 @@ public:
 	FUNC1RC(String, mesh_get_path, RID)
 
 	FUNC2(mesh_set_shadow_mesh, RID, RID)
+	FUNC2(mesh_set_cluster_data, RID, const Array &)
 
 	FUNC2(mesh_surface_remove, RID, int)
 	FUNC1(mesh_clear, RID)
@@ -467,6 +468,7 @@ public:
 	FUNC1(multimesh_instances_reset_physics_interpolation, RID)
 
 	FUNC2(multimesh_set_visible_instances, RID, int)
+	FUNC3(multimesh_set_distance_thinning, RID, float, float)
 	FUNC1RC(int, multimesh_get_visible_instances, RID)
 
 	/* SKELETON API */
@@ -735,6 +737,18 @@ public:
 	FUNCRIDSPLIT(occluder)
 	FUNC3(occluder_set_mesh, RID, const PackedVector3Array &, const PackedInt32Array &)
 
+	/* PLANAR REFLECTION */
+	FUNCRIDSPLIT(planar_reflection)
+	FUNC2(planar_reflection_set_scenario, RID, RID)
+	FUNC2(planar_reflection_set_transform, RID, const Transform3D &)
+	FUNC2(planar_reflection_set_size, RID, const Vector2 &)
+	FUNC2(planar_reflection_set_layer_mask, RID, uint32_t)
+	FUNC2(planar_reflection_set_visible, RID, bool)
+	FUNC2(planar_reflection_set_intensity, RID, float)
+	FUNC2(planar_reflection_set_thickness, RID, float)
+	FUNC2(planar_reflection_set_normal_distortion, RID, float)
+	FUNC2(planar_reflection_set_roughness_cutoff, RID, float)
+
 #undef server_name
 #undef ServerName
 //from now on, calls forwarded to this singleton
@@ -815,6 +829,8 @@ public:
 	FUNC2(viewport_set_measure_render_time, RID, bool)
 	FUNC1RC(double, viewport_get_measured_render_time_cpu, RID)
 	FUNC1RC(double, viewport_get_measured_render_time_gpu, RID)
+	FUNC1R(Dictionary, viewport_get_ddgi_probe_data, RID)
+	FUNC1R(Dictionary, viewport_get_gpu_geometry_statistics, RID)
 	FUNC1RC(RID, viewport_find_from_screen_attachment, DisplayServerEnums::WindowID)
 
 	FUNC2(call_set_vsync_mode, DisplayServerEnums::VSyncMode, DisplayServerEnums::WindowID)
@@ -902,6 +918,9 @@ public:
 	FUNC6(environment_set_pathtracing, RID, bool, int, int, int, RSE::PathtracingDenoiser)
 	FUNC13(environment_set_ddgi, RID, bool, int, float, const Vector3i &, float, float, float, float, bool, bool, bool, int)
 	FUNC4(environment_set_ddgi_volume, RID, bool, const Vector3 &, const Vector3 &)
+	FUNC2(environment_set_ddgi_bounce_energy, RID, float)
+	FUNC2(environment_set_ddgi_realtime_updates, RID, bool)
+	FUNC3(environment_set_ddgi_baked_data, RID, int, const Dictionary &)
 
 	FUNC3R(Ref<Image>, environment_bake_panorama, RID, bool, const Size2i &)
 
@@ -947,6 +966,7 @@ public:
 	FUNC2(scenario_set_camera_attributes, RID, RID)
 	FUNC2(scenario_set_fallback_environment, RID, RID)
 	FUNC2(scenario_set_compositor, RID, RID)
+	FUNC3(scenario_set_reflection_atlas_size, RID, int, int)
 
 	/* INSTANCING API */
 	FUNCRIDSPLIT(instance)

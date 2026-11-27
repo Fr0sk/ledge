@@ -36,8 +36,29 @@
 #include "servers/rendering/renderer_rd/shaders/raytracing/ddgi_update.glsl.gen.h"
 #include "servers/rendering/renderer_rd/storage_rd/render_buffer_custom_data_rd.h"
 #include "servers/rendering/rendering_device.h"
+#include "servers/rendering/storage/environment_storage.h"
 
 #define RB_SCOPE_DDGI SNAME("ddgi")
+// Low resolution apply data (rendering/global_illumination/ddgi/apply_resolution).
+#define RB_SCOPE_DDGI_LOW SNAME("ddgi_low")
+#define RB_TEX_DDGI_LOW0 SNAME("data0")
+#define RB_TEX_DDGI_LOW1 SNAME("data1")
+#define RB_TEX_DDGI_LOW2 SNAME("data2")
+#define RB_TEX_DDGI_LOW3 SNAME("data3")
+// Near-field rays (rendering/global_illumination/ddgi/near_field_rays), one
+// texel per low resolution block.
+#define RB_TEX_DDGI_NF_PROBE SNAME("nf_probe")
+#define RB_TEX_DDGI_NF_RAY SNAME("nf_ray")
+#define RB_TEX_DDGI_NF_RAW SNAME("nf_raw")
+#define RB_TEX_DDGI_NF_HISTORY0 SNAME("nf_history0")
+#define RB_TEX_DDGI_NF_HISTORY1 SNAME("nf_history1")
+#define RB_TEX_DDGI_NF_GEOMETRY0 SNAME("nf_geometry0")
+#define RB_TEX_DDGI_NF_GEOMETRY1 SNAME("nf_geometry1")
+#define RB_TEX_DDGI_NF_OBJECT SNAME("nf_object")
+#define RB_TEX_DDGI_NF_OBJECT_WEIGHT SNAME("nf_object_weight")
+#define RB_TEX_DDGI_NF_NOISE SNAME("nf_noise")
+#define RB_TEX_DDGI_NF_MOMENTS0 SNAME("nf_moments0")
+#define RB_TEX_DDGI_NF_MOMENTS1 SNAME("nf_moments1")
 
 class RenderDataRD;
 class RenderSceneBuffersRD;
@@ -70,23 +91,29 @@ struct DDGIDataGPU {
 	uint32_t counts[4]; // Volumes, rays per probe, fixed rays per probe, update capacity.
 	uint32_t atlas[4]; // Irradiance texels, distance texels, probes per row, frame.
 	float atlas_inv_size[4];
-	float schedule[4]; // Base update rate, total probes, max radiance per ray, unused.
+	float schedule[4]; // Base update rate, total probes, max radiance per ray, bounce energy.
 	float miss_color[4];
+	float smoothing[4]; // x: blend of the display irradiance toward the probes' per frame, y: 1 keeps the update budget full (adaptive budget), zw: unused.
 };
-static_assert(sizeof(DDGIDataGPU) == 1616, "DDGIDataGPU must match the std140 layout of DDGIDataBlock");
+static_assert(sizeof(DDGIDataGPU) == 1632, "DDGIDataGPU must match the std140 layout of DDGIDataBlock");
 
-// std430, 32 bytes.
+// std430, 80 bytes.
 struct DDGIProbeGPU {
 	float offset[3];
 	uint32_t state;
 	float urgency;
 	float variability;
 	uint32_t last_update_frame;
-	float luminance;
+	float pending_change;
+	uint32_t updates;
+	uint32_t history_rays;
+	uint32_t pad[2];
+	float guide[4];
+	float guide_next[4];
 };
-static_assert(sizeof(DDGIProbeGPU) == 32, "DDGIProbeGPU must match DDGIProbe");
+static_assert(sizeof(DDGIProbeGPU) == 80, "DDGIProbeGPU must match DDGIProbe");
 
-/// Resources the ray tracing scene set binds at 34-39 (raytracing_ddgi_inc.glsl).
+/// Resources the ray tracing scene set binds at 34-40 (raytracing_ddgi_inc.glsl).
 struct RTDDGIBindings {
 	RID uniform_buffer;
 	RID irradiance_atlas;
@@ -94,8 +121,15 @@ struct RTDDGIBindings {
 	RID probe_buffer;
 	RID ray_data;
 	RID update_list;
+	RID ray_bounce;
 	/// True when the dispatch traces probe rays instead of camera paths.
 	bool trace = false;
+	/// Emissive lights mode: the apply pass lights surfaces from emitters
+	/// directly, so probe rays sample emitters as lights instead of seeing them.
+	bool emitters_as_lights = false;
+	/// Near-field rays: one ray per low resolution block (update_list holds
+	/// the rays, ray_data is per block) instead of probe rays.
+	bool near_field = false;
 };
 
 /// Dynamic diffuse global illumination: ray traced irradiance probes for the
@@ -110,6 +144,7 @@ public:
 	enum {
 		MAX_VOLUMES = 8,
 		MAX_CASCADES = 4,
+		MAX_FIXED_RAYS = 32, // DDGI_MAX_FIXED_RAYS in ddgi_inc.glsl.
 	};
 
 	enum DebugMode {
@@ -129,6 +164,9 @@ public:
 		uint32_t irradiance_texels = 6;
 		uint32_t distance_texels = 14;
 		float gpu_time_budget_ms = 0.0;
+		// Pixels per side of a block of the low resolution apply; 1: full
+		// resolution (rendering/global_illumination/ddgi/apply_resolution).
+		uint32_t apply_block = 1;
 	};
 	static Quality get_quality();
 
@@ -152,9 +190,44 @@ public:
 		RID probe_buffer;
 		RID update_list;
 		RID stats_buffer;
+		RID fixed_history; // Luminance and hit distance (two halfs) of each fixed ray at the previous update, MAX_FIXED_RAYS per probe.
+		// The frame (DDGIDataGPU atlas.w) each probe was last sampled by a
+		// surface in the apply pass; 0: never. The scheduler favors them.
+		RID sampled_frame;
+		// Emissive lights (center, radius, radiance) for the apply pass.
+		RID emitter_buffer;
+		uint32_t emitter_capacity = 0;
 		RID ray_data;
-		RID irradiance_atlas;
+		// Per probe ray, where its hit needs the probes' light (one uvec4 per ray,
+		// see MODE_BOUNCE in ddgi_update.glsl): looked up in a compute pass after
+		// the trace, which is much cheaper than inside the ray tracing pipeline.
+		RID ray_bounce;
+		RID irradiance_atlas; // What the probe updates write.
+		// What surfaces sample: eases toward irradiance_atlas every frame, so a
+		// probe's update never shows as a jump (see DDGI.md, "Smooth light changes").
+		RID irradiance_display;
 		RID distance_atlas;
+
+		// Near-field rays: the rays (header + one uvec4 per block), their
+		// bounce data, and the passes' parameters.
+		RID nf_rays;
+		RID nf_bounce;
+		RID nf_params;
+		RID nf_moving; // Shapes of moving objects (RenderRaytracing::ddgi_moving).
+		RID nf_bins[2]; // Light leaving the moving objects' sides, last frame's and this frame's.
+		uint32_t nf_bins_parity = 0;
+		uint32_t nf_blocks = 0;
+		uint32_t nf_parity = 0; // Which history texture is this frame's.
+		bool nf_history_valid = false;
+
+		// The GI reflection buffer holds DDGI's constant (alpha -1) when it
+		// is this texture and DDGI wrote it the frame before.
+		RID reflection_written;
+		uint64_t reflection_frame = 0;
+
+		bool node_volume = false; // The volumes were set up for a DDGIVolume node (fixed), not the camera.
+		uint32_t realtime_offset = 0; // Realtime updates: first probe of the next frame's chunk.
+		uint64_t baked_version = 0; // Baked data uploaded into the atlases, 0 for none.
 
 		struct VolumeState {
 			Vector3i origin; // World probe index of logical probe (0,0,0).
@@ -167,6 +240,20 @@ public:
 
 		uint32_t frame = 0;
 		uint32_t update_capacity_used = 0; // Probes the trace dispatch covers (budget control).
+		// Probe updates since the probes were last reset, and how many of the
+		// reflection probe recapture points (1, 4, 16 updates of every probe)
+		// they passed (see get_capture_generation()). The adaptive budget
+		// (rendering/global_illumination/ddgi/adaptive_budget) stays full for the
+		// first four.
+		uint64_t updates_since_reset = 0;
+		int capture_milestone = 0;
+		// The light state (directional lights, the background's energy) last
+		// seen and the frame it changed: reflection probes are captured again
+		// once DDGI has caught up, and the adaptive budget stays full meanwhile.
+		uint32_t light_hash = 0;
+		uint32_t light_changed_frame = 0;
+		uint32_t light_recapture_frame = 0;
+		bool light_recapture_pending = false;
 		RandomPCG rng;
 
 		virtual void configure(RenderSceneBuffersRD *p_render_buffers) override {}
@@ -179,29 +266,49 @@ private:
 		UPDATE_BLEND_IRRADIANCE,
 		UPDATE_BLEND_DISTANCE,
 		UPDATE_RELOCATE_CLASSIFY,
+		UPDATE_SMOOTH,
+		UPDATE_BOUNCE,
 		UPDATE_MODE_MAX,
 	};
 
 	enum ApplyMode {
 		APPLY_GI,
 		APPLY_DEBUG_PROBES,
+		APPLY_MARK,
+		APPLY_LOW,
+		APPLY_UPSAMPLE,
+		APPLY_GI_EMITTERS,
+		APPLY_LOW_EMITTERS,
+		APPLY_NF_RESOLVE,
+		APPLY_NF_TEMPORAL,
+		APPLY_NF_FILTER,
 		APPLY_MODE_MAX,
 	};
 
 	struct UpdatePushConstant {
 		uint32_t total_probes;
 		uint32_t schedule_new_only;
-		uint32_t pad[2];
+		uint32_t realtime; // Every probe in turn, in chunks of the update capacity.
+		uint32_t realtime_offset;
 	};
 
 	struct ApplyPushConstant {
 		float inv_projection[16];
 		float cam_rotation[12];
 		int32_t screen_size[2];
-		uint32_t flags; // 1: half resolution GI buffer.
+		uint32_t flags; // 1: half resolution GI buffer. Bits 8-15: low resolution block size.
 		uint32_t debug_mode;
 	};
 	static_assert(sizeof(ApplyPushConstant) == 128, "Push constants are limited to 128 bytes");
+
+	// std140, ddgi_apply.glsl DDGINearFieldParams.
+	struct NFParams {
+		float prev_view_projection[16];
+		float params[4]; // Max ray distance, frame, minimum history blend, history valid.
+		int32_t size[4]; // Low resolution size, block size, moving objects.
+	};
+	static constexpr uint32_t NF_PARAMS_SIZE = 96;
+	static_assert(sizeof(NFParams) == NF_PARAMS_SIZE, "NFParams must match DDGINearFieldParams");
 
 	DdgiUpdateShaderRD update_shader;
 	RID update_shader_version;
@@ -212,17 +319,68 @@ private:
 	RID apply_pipelines[APPLY_MODE_MAX];
 
 	bool initialized = false;
+	// The probes of the last view that applied DDGI (weak: views come and go).
+	// Reflection probe captures have no view of their own and sample these.
+	ObjectID capture_source;
+	uint64_t capture_generation = 0;
+	// The apply variants with emissive lights need ray queries.
+	bool emitters_supported = false;
+	/// rendering/global_illumination/ddgi/emissive_lights, if the GPU can do it.
+	bool _emissive_lights() const;
+	/// Always false: near-field rays are disabled (see render_ddgi.cpp).
+	static bool _near_field_rays();
 
 	Ref<ViewportData> _get_viewport_data(RenderSceneBuffersRD *p_render_buffers);
+	/// The probe data these buffers sample (their GI source's for a mirror pass), null if none.
+	static Ref<ViewportData> _get_existing_data(RenderSceneBuffersRD *p_render_buffers);
 	void _allocate(ViewportData *p_data, int p_cascades, const Vector3i &p_grid, const Quality &p_quality);
+	/// The buffers that depend on rays per probe and probes per frame only:
+	/// changing those (realtime updates on or off) keeps the probes' light.
+	void _allocate_rays(ViewportData *p_data, const Quality &p_quality);
 	uint32_t _setup_volumes(ViewportData *p_data, const RenderDataRD *p_render_data, DDGIDataGPU &r_gpu);
+	/// Allocates (or reallocates) the viewport's resources for the current
+	/// settings and uploads baked probes when needed. Null on failure.
+	Ref<ViewportData> _prepare_viewport(RenderDataRD *p_render_data, Quality &r_quality);
+	/// Fills the frame's uniform data (volumes, atlas layout, schedule).
+	void _write_frame_data(ViewportData *p_data, const RenderDataRD *p_render_data, const Quality &p_quality, uint32_t p_capacity, DDGIDataGPU &r_gpu);
+	bool _upload_baked(ViewportData *p_data, const RendererEnvironmentStorage::DDGISettings &p_settings);
 
 public:
 	void initialize();
 
-	/// True when DDGI should run for this view (enabled, Forward+ RT available,
-	/// not a reflection probe, path tracing off).
+	/// True when DDGI should run for this view (enabled, Forward+ RT available
+	/// or baked probes only, not a reflection probe, path tracing off).
 	static bool is_enabled_for(const RenderDataRD *p_render_data);
+
+	/// Baked probe data (DDGIProbeData) that fits the environment's volume.
+	static bool baked_data_matches(const RendererEnvironmentStorage::DDGISettings &p_settings);
+	/// True when the view only samples baked probes: no ray tracing at all.
+	static bool is_baked_only(const RenderDataRD *p_render_data);
+
+	/// Uploads baked probes if needed and fills the frame data, without
+	/// tracing (baked only mode).
+	void update_baked(RenderDataRD *p_render_data);
+
+	/// The probes of a viewport (atlases, offsets, states and the volume they
+	/// belong to) for DDGIProbeData, or an empty dictionary.
+	Dictionary get_probe_data(RenderSceneBuffersRD *p_render_buffers);
+
+	/// The sampling resources (as get_sampling_resources()) of the last view
+	/// that applied DDGI, for reflection probe captures, which have no view of
+	/// their own. False when no view has probes.
+	bool get_capture_resources(RID &r_data_buffer, RID &r_probe_buffer, RID &r_irradiance_atlas, RID &r_distance_atlas);
+	/// Changes when reflection probes should be captured again because the
+	/// probes they sample have converged further: after 1, 4 and 16 updates of
+	/// every probe since a reset, and when baked probes are uploaded. "Once"
+	/// probes are otherwise captured in the first frames, while most DDGI probes
+	/// are still untraced (dark bands, blotches). Also after the light changes
+	/// (directional lights, the sky's energy), once the probes followed it.
+	uint64_t get_capture_generation() const { return capture_generation; }
+
+	/// What sampling the probes needs (as ddgi_sample_inc.glsl does), for
+	/// other passes such as volumetric fog. False when the viewport has no
+	/// probes yet.
+	bool get_sampling_resources(RenderSceneBuffersRD *p_render_buffers, RID &r_data_buffer, RID &r_probe_buffer, RID &r_irradiance_atlas, RID &r_distance_atlas);
 
 	/// Updates the probes: schedule, trace (with the given RT scene uniform
 	/// set setup callback), blend, relocate and classify. Called after the TLAS
@@ -231,7 +389,11 @@ public:
 
 	/// Writes the diffuse indirect light into the GI ambient buffer, at half
 	/// the internal resolution if p_half_resolution.
-	void apply(RenderDataRD *p_render_data, const RID *p_normal_roughness_slices, bool p_half_resolution);
+	/// p_tlas and p_emitters (RenderRaytracing::ddgi_emitters) when the probes
+	/// were traced this frame: emissive surfaces then light the GI directly.
+	/// p_raytracing, p_rt_state and p_rt_flags: for the near-field rays
+	/// (null when the probes weren't traced this frame).
+	void apply(RenderDataRD *p_render_data, const RID *p_normal_roughness_slices, bool p_half_resolution, RID p_tlas = RID(), const LocalVector<float> *p_emitters = nullptr, RenderRaytracing *p_raytracing = nullptr, RTViewportState *p_rt_state = nullptr, uint32_t p_rt_flags = 0);
 
 	/// Debug view of the probes over the internal color buffer (before tonemapping).
 	void debug_draw(RenderDataRD *p_render_data);

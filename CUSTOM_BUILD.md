@@ -22,6 +22,13 @@ the published branch always works. After publishing, fast-forward `dev` to
 `nvidia-pt-dlss` and push both:
 `git push fork nvidia-pt-dlss:nvidia-dlss-physx dev:dev`.
 
+New path tracer features are tried on `dev-pt` first (branched from `dev`,
+also pushed to the fork). Merge `dev-pt` into `dev` only when the step is
+finished: build, smoke tests, and the test scene screenshots checked against
+raster (see [PATHTRACER_TESTING.md](PATHTRACER_TESTING.md)). Keep `dev-pt`
+current by merging `dev` into it after every sync. Release flow:
+`dev-pt` -> `dev` -> `nvidia-pt-dlss`.
+
 If a remote is missing:
 
 ```
@@ -41,9 +48,12 @@ git remote add fork https://github.com/Diginaat/godot.git
   a master-based tree. Only `modules/godot_physx/` is taken from it. Its commits touch no
   other engine file that matters for PhysX.
 - `modules/godot_physx/` carries local changes on top of the vendored copy:
-  adaptations to upstream master API changes, plus the `generator="ninja"` line in
-  `misc/physx_presets/vc17win64-godot-gpu.xml`. Never overwrite the directory
-  wholesale; merge 3-way (see below).
+  adaptations to upstream master API changes, the `generator="ninja"` line in
+  `misc/physx_presets/vc17win64-godot-gpu.xml`, SCons options for
+  `physx_sdk`, `physx_gpu`, `blast_sdk` and `flow_sdk` in `config.py`
+  (`get_opts()`, so `custom.py` can set them), and
+  `PhysXCloth3D.use_global_wind` (the weather module's world wind). Never
+  overwrite the directory wholesale; merge 3-way (see below).
 
 ### Sync state log
 
@@ -51,8 +61,41 @@ Update this table after every sync.
 
 | Date | upstream/master | origin (NVIDIA) | physx module commit | Merge commit |
 | --- | --- | --- | --- | --- |
-| 2026-10-07 | `e7b12e7492` | `135dff3887` | `2de7ea521f` (Flow builds pipelines on first use) | `2424aa594a` |
+| 2026-10-07 | `e7b12e7492` | `135dff3887` | `2de7ea521f` (Flow builds pipelines on first use) | `4624c40df5` |
 | 2026-10-08 | `e7b12e7492` (no change) | `135dff3887` (no change) | `5681d7519a` (Flow on Linux, MIT license) | on `dev`, see log |
+| 2026-10-08 | `65e8d16951` | `135dff3887` (no change) | `5681d7519a` (no change) | `4495b586dd` |
+| 2026-10-31 | `95c0fa5fe8` (Godot 4.8-beta) | `135dff3887` (no change) | `97bd583c28` (separate render thread, PXTGI reflections, VS 2026 SDK build) | `7c12c34bed` (on `dev`) |
+| 2026-11-07 | `b47a795aa5` | `135dff3887` (kept; NVIDIA force-pushed `49a825dc52`, not taken) | `92da57bda8` (cloth wind, ragdoll drives, vehicle engine drives, water and PXTGI fixes) | `09fbb8dbfa` (on `dev`) |
+| 2026-11-16 | `b47a795aa5` (no change) | `135dff3887` (kept; NVIDIA still `49a825dc52`, not taken) | `847b2ca459` (groom hair simulation, optional Alembic import with `alembic_sdk`, Blast fracture in the background, XR lens effects, PXTGI fixes, editor icons) | `ed6cd4a3e2` (on `dev`) |
+| 2026-11-24 | `94fc09c62d` | `135dff3887` (kept; NVIDIA `49a825dc52` half merged on `dev-nvidia`, not taken) | `aaafe7ed42` | `50e5f5c491` (on `dev`) |
+| 2026-11-27 | `94fc09c62d` (fork base; the local line has newer upstream merges) | `135dff3887` (kept) | `aaafe7ed42` | merged published `nvidia-dlss-physx` (0.10.3) into the local line, see log |
+
+### History layout
+
+The history was rebuilt on 2026-10-09 so that each source stays visible
+(`git log --first-parent` reads top to bottom as):
+
+| Commits | Source |
+| --- | --- |
+| Upstream Godot `master` | Official history, never rewritten; joined by merges `Merge upstream Godot master (<sha>)` |
+| `NVIDIA: Miscellaneous`, `NVIDIA: Dependencies`, `NVIDIA: Pathtracer + DLSS` | NVIDIA-RTX/godot, original commits and hashes |
+| `Merge upstream Godot master (b6a3291ea8) into NVIDIA RTX nvidia-pt-dlss` | Only the conflict resolutions between NVIDIA and upstream |
+| `godot_physx: import the PhysX 5 module by Wild Ox Studios` | uno1982/godot `feature/physx5-module` at `2de7ea521f`, verbatim, authored by uno1982 |
+| `godot_physx: adapt the module to Godot 4.8 master` | The local module changes |
+| Everything after | This fork's own commits, in one line, with upstream merges where they were synced |
+
+Before the rebuild, the first merge (`4f6baae206`) also carried the whole
+PhysX module and its adaptations, and four internal merges between `dev`
+and the published branch added nothing. Every rebuilt commit has the same
+files as the commit it replaces; the old history is in the release tags
+(v0.1.0 to v0.5.1 point to it) and in the `backup/history-clean-2026-10-09/*`
+branches of the maintainer's machine.
+
+Keep it this way: sync upstream and NVIDIA with merges (step 5 and 6
+below), take PhysX module updates as their own commit
+(`godot_physx: update to physx module <sha>`), and merge `dev` into the
+published branch with `--ff-only` (no merge commit) so the line stays
+straight.
 
 ## Update procedure
 
@@ -87,6 +130,12 @@ Update this table after every sync.
 - After any merge, verify the resolutions with
   `git merge-tree --write-tree --name-only HEAD^1 HEAD^2`, which lists the files that
   conflicted.
+- **Merging the published branch back:** every `modules/godot_physx/` file is an
+  add/add conflict, because the published history was rebuilt and shares no module
+  history with the local line. Do not resolve those with an empty base: merge each
+  file 3-way against the last **shared upstream module commit** (`git show
+  <commit>:<path>`; `1302f909ca` as of 2026-11-27), then resolve only the remaining
+  overlaps. An empty-base resolution drops local module work or fork module fixes.
 - **Look for silent duplicates:** when both sides added the same code in different
   places, git auto-merges both copies. This happened with Vulkan `ray_query_features`;
   linking it twice into the `pNext` chain creates a loop.
@@ -103,23 +152,97 @@ Update this table after every sync.
   - `ShaderPreprocessor::add_define()` custom defines are applied in `_prepare_state()`.
   - Streamline/Aftermath setup, markers and cleanup in `main/main.cpp`, plus the
     `--gpu-markers`, `--debug-shaders` and `--raytracing-validation` flags.
+  - The engine name "Godot Diginaat" (`GODOT_VERSION_NAME`), set in
+    `methods.get_version_info()` so `version.py` stays as upstream has it.
   - New projects default to the Vulkan driver (`EditorNode::get_initial_settings()`),
     because path tracing needs Vulkan.
+  - The project manager warns that a project can break the first time this
+    build opens it (`_fork_warning_*` in
+    `editor/project_manager/project_manager.cpp`, marker
+    `.godot/nvidia_dlss_physx_backup.cfg`). No backup is required.
   - CI `static_checks.yml` runs `prek` via pip instead of the third-party action.
+  - The split workspace (`DOCK_SLOT_MAIN_SCREEN_SPLIT`, `EditorMainScreenSplit`,
+    `DockSplitWorkspace` in `EditorNode`) and the Live Runtime view
+    (`scene/debugger/runtime_state_observer.cpp`,
+    `editor/run/live_runtime_plugin.cpp`). See
+    [SPLIT_WORKSPACE.md](SPLIT_WORKSPACE.md).
+  - Forward+ shader variant feature groups and per-shader skipped variants
+    (`SceneShaderForwardClustered::ShaderFeature`, `enable_shader_features()`,
+    `ShaderRD::version_set_skipped_variants()`, the mask in
+    `ShaderData::set_code()`), and full-key `PipelineHashMapRD`. When
+    upstream adds a scene shader variant or changes which passes draw which
+    surfaces, give the variant its feature group and keep the skip rules in
+    step with the pass routing. See
+    [docs/shader-permutations/memory.md](docs/shader-permutations/memory.md).
+  - The GPU geometry paths are on by default (`rendering/geometry/gpu_instances/*`,
+    `gpu_instance_table`, `multimesh_gpu_culling/*`, `cluster_lod/*` and its
+    streaming; `GLOBAL_DEF`s in `render_forward_clustered.cpp` and
+    `mesh_storage.cpp`, defaults in `ProjectSettings.xml`). See D035 in
+    [knowledge/TECHNICAL_DECISIONS.md](knowledge/TECHNICAL_DECISIONS.md).
+  - Far directional cascades kept between frames
+    (`directional_shadow/far_cascade_update_interval`): the cache in
+    `RendererSceneCull::_light_instance_setup_directional_shadow()`,
+    `RendererSceneRender::directional_shadow_cache_generation()`, and
+    directional shadow passes that clear only their own atlas region in
+    Forward+ and Mobile (no whole-atlas clear). See
+    [kb/project/directional-cascade-cache.md](kb/project/directional-cascade-cache.md).
+  - Forward+ material parameter tables (D036 in
+    [knowledge/TECHNICAL_DECISIONS.md](knowledge/TECHNICAL_DECISIONS.md)):
+    `MaterialUniforms` as a storage-buffer struct array in
+    `scene_forward_clustered.glsl`, `SceneShaderForwardClustered::MaterialTable`
+    and its `MaterialData::update_parameters()`, the group id in the sort
+    key, the slot in `compressed_aabb_position_pad.w`. Upstream changes to
+    the material UBO path must be ported there.
+  - Shadow passes multiply the mesh LOD threshold
+    (`mesh_lod/lod_change/shadow_threshold_scale`, in `_render_shadow_append()`
+    of Forward+ and Mobile). See
+    [kb/project/shadow-lod-scale.md](kb/project/shadow-lod-scale.md).
+  - Thread-safe `RID_Alloc::owns()` in `core/templates/rid_owner.h` is
+    lock-free on x86-64 (D012 in
+    [docs/core-modernization/decisions.md](docs/core-modernization/decisions.md)),
+    with the release store of `max_alloc` in `_allocate_rid()`. Upstream
+    reverted its own version (godotengine/godot#114900); if upstream lands
+    a fixed lock-free `owns()`, take theirs and drop this.
+  - `HashSet` (`core/templates/hash_set.h`) allocates one block per table
+    (`_allocate_block()`, `_free_block()`; D013). Upstream changes to its
+    allocation, resize or copy code must be ported to the block layout.
+  - `DynamicBVH::Volume` (`core/math/dynamic_bvh.h`) has an SSE layout and
+    kernels on x86-64 single precision (`DYNAMIC_BVH_SSE`; D014). Upstream
+    changes to `Volume` must be made in both the SSE and the scalar code.
+  - `RenderingServerDefault::finish()` makes the main RenderingDevice
+    current on the main thread again after the separate render thread
+    ends, so its `finalize()` runs at exit (without it the guard skipped
+    the shutdown and objects leaked). Drop it if upstream fixes the same.
+  - The level streaming module (`modules/level_streaming/`:
+    `LevelStreamer3D`, `LevelStreamCell3D`) and its export hook,
+    `EditorExportPlugin::get_runtime_dependencies()`, called from
+    `_export_find_dependencies()` in `editor_export_platform.cpp` so
+    exports of selected scenes include the cells' scenes. If upstream
+    changes how exports gather dependencies, keep the hook in the new
+    code. See [docs/level-streaming.md](docs/level-streaming.md).
+  - The weather module (`modules/weather/`: wind, `Weather`, profiles, effects),
+    the wind in `GrassField3D`'s default material and
+    `PhysXCloth3D.use_global_wind`. See [WEATHER.md](WEATHER.md).
 
 ## Build (Windows)
 
-`scons` is not on PATH; use `python -m SCons`.
-
-PhysX SDK: built once with `modules/godot_physx/misc/build_physx.py --gpu --blast --flow`, pinned to
-`ovphysx-0.5.11`. It's installed at
-`C:\REPO\Godot\physx-sdk\physx\install\vc17win64-godot-gpu\PhysX`. Blast and Flow
-come from the same checkout (`blast/` and `flow/`). Rebuild them only when the
-module's `build_physx.py` pin, patches or presets change.
+A new PC is set up with `devtools\setup\setup_dev_windows.ps1` (see
+[devtools/README.md](devtools/README.md)): it checks the tools, installs SCons
+and the D3D12 dependencies, sets the remotes, builds the PhysX, Blast and
+Flow SDKs once (`modules/godot_physx/misc/build_physx.py --gpu --blast --flow`,
+pinned to `ovphysx-0.5.11`, in a `physx-sdk` folder next to the repository)
+and writes their paths into `custom.py` (not tracked). SCons reads
+`custom.py` on every run, so a build needs no SDK arguments:
 
 ```
-python -m SCons -k platform=windows target=editor physx_sdk="C:\REPO\Godot\physx-sdk\physx\install\vc17win64-godot-gpu\PhysX" physx_gpu=yes blast_sdk="C:\REPO\Godot\physx-sdk\blast\_build\windows-x86_64\release\blast-sdk" flow_sdk="C:\REPO\Godot\physx-sdk\flow"
+devtools\build\build.ps1 -KeepGoing
+:: or directly
+python -m SCons -k platform=windows target=editor production=yes
 ```
+
+`scons` is not on PATH; use `python -m SCons`. Rebuild the SDKs (delete
+`physx-sdk` and run the setup again) only when the module's `build_physx.py`
+pin, patches or presets change.
 
 - Output: `bin\godot.windows.editor.x86_64.exe` and `.console.exe`. `PhysXGpu_64.dll`,
   the four `NvBlast*.dll` and `nvflow.dll`/`nvflowext.dll` are copied next to it
@@ -146,13 +269,15 @@ This build has its own version, separate from Godot's. It lives in
 Bump `CUSTOM_VERSION` in the commit that prepares a release, not before. A
 version number is never reused.
 
-Releases on GitHub name the Godot base and the own version:
+Releases on GitHub name the Godot base and the own version (before 0.9.0 the
+name part was `nvidia-rt-dlss-physx`, title "Godot NVIDIA + PhysX"):
 
 | What | Format | Example |
 | --- | --- | --- |
-| Git tag | `godot<major>.<minor>-<status>-nvidia-rt-dlss-physx-v<own>` | `godot4.8-dev-nvidia-rt-dlss-physx-v0.2.0` |
-| Release title | `Godot NVIDIA + PhysX (Godot <major>.<minor>-<status>) v<own>` | `Godot NVIDIA + PhysX (Godot 4.8-dev) v0.2.0` |
-| Zip | `godot_<major>.<minor>-nvidia-rt-dlss-physx_v<own>-editor_windows_amd64[_mono].zip` | `godot_4.8-nvidia-rt-dlss-physx_v0.2.0-editor_windows_amd64.zip` (.NET: `..._amd64_mono.zip`) |
+| Git tag | `godot<major>.<minor>-<status>-diginaat-physx-v<own>` | `godot4.8-beta-diginaat-physx-v0.9.0` |
+| Release title | `Godot Diginaat + PhysX (Godot <major>.<minor>-<status>) v<own>` | `Godot Diginaat + PhysX (Godot 4.8-beta) v0.9.0` |
+| Zip | `godot_<major>.<minor>-diginaat-physx_v<own>-editor_windows_amd64[_mono].zip` | `godot_4.8-diginaat-physx_v0.9.0-editor_windows_amd64.zip` (.NET: `..._amd64_mono.zip`) |
+| Export templates | `godot_<major>.<minor>-diginaat-physx_v<own>-export_templates_windows_amd64[_mono].tpz` | `godot_4.8-diginaat-physx_v0.9.0-export_templates_windows_amd64.tpz` |
 
 `package_editor_win64.ps1` builds the zip name from `CUSTOM_VERSION` and
 `version.py`, and prints the tag and title to use.
@@ -163,23 +288,35 @@ Releases on GitHub name the Godot base and the own version:
 | 0.2.0 | 4.8-dev | `godot4.8-dev-nvidia-rt-dlss-physx-v0.2.0` | In-editor DLSS installer |
 | 0.3.0 | 4.8-dev | `godot4.8-dev-nvidia-rt-dlss-physx-v0.3.0` | Blast and Flow in releases; path tracer: volumetric fog, glass |
 | 0.4.0 | 4.8-dev | `godot4.8-dev-nvidia-rt-dlss-physx-v0.4.0` | DDGI Forward+ global illumination and `DDGIVolume` node |
+| 0.5.0 | 4.8-dev | `godot4.8-dev-nvidia-rt-dlss-physx-v0.5.0` | DDGI baking, realtime updates, smooth light changes, bounce energy, probe count |
+| 0.5.1 | 4.8-dev | `godot4.8-dev-nvidia-rt-dlss-physx-v0.5.1` | Windows export templates (standard and .NET); exported games get the PhysX, Blast, Flow and DLSS DLLs |
+| 0.5.2 | 4.8-dev | `godot4.8-dev-nvidia-rt-dlss-physx-v0.5.2` | Fixes: exported games with an embedded PCK crashed at startup; viewport jitter when DLSS is selected but not installed |
+| 0.5.3 | 4.8-dev | `godot4.8-dev-nvidia-rt-dlss-physx-v0.5.3` | Same build as 0.5.2; the editor zips no longer put the files in a `.` folder |
+| 0.6.0 | 4.8-dev | `godot4.8-dev-nvidia-rt-dlss-physx-v0.6.0` | DDGI: dark caves and tunnels (no sky light or sky reflections), DDGI-lit volumetric fog, guided probe rays, faster response to moving objects, up to 30% faster; screen reader support (AccessKit) |
+| 0.7.0 | 4.8-dev | `godot4.8-dev-nvidia-rt-dlss-physx-v0.7.0` | DDGI: near-field rays (bounce light from nearby objects in place, following them), moving objects lit without smears or noise, emissive surfaces as direct lights, low resolution apply (faster), least-squares baking, visible probes updated first |
+| 0.7.1 | 4.8-dev | `godot4.8-dev-nvidia-rt-dlss-physx-v0.7.1` | DDGI: moving objects of any shape (boxes, poles, planks, capsules), not only spheres; fix: ray tracing output binding format in DDGI dispatches |
+| 0.7.3 | 4.8-dev | `godot4.8-dev-nvidia-rt-dlss-physx-v0.7.3` | DDGI fixes: no flicker or blotches in dark places, no white dots near bright openings, near-field rays shorter (0.5 spacings); tunnel test view |
+| 0.8.0 | 4.8-beta | `godot4.8-beta-nvidia-rt-dlss-physx-v0.8.0` | Godot 4.8-beta base, PhysX module `97bd583c28`; DDGI: near-field rays removed (dark spots that moved with the camera), DDGI rays through glass fixed |
+| 0.8.1 | 4.8-beta | `godot4.8-beta-nvidia-rt-dlss-physx-v0.8.1` | Reflections: `PlanarReflector3D` with a mirror pass, automatic reflections from `DDGIVolume`, budgeted DDGI-normalized reflection probes; DDGI adaptive update budget; fix: sky flicker in mirrors with volumetric fog |
+| 0.9.0 | 4.8-beta | `godot4.8-beta-diginaat-physx-v0.9.0` | New release names (`diginaat-physx`); Modern Compact editor theme with Atkinson Hyperlegible Next; split workspace and Live Runtime view; large-world geometry (GPU culling, cluster LOD, far-field voxels, HZB occlusion); project backup before first open; Godot master `b47a795aa5`, PhysX module `92da57bda8` |
+| 0.9.1 | 4.8-beta | `godot4.8-beta-diginaat-physx-v0.9.1` | The engine calls itself "Godot Diginaat"; native weather and wind (`modules/weather`: `WindServer`, `WindZone3D`, `Weather` with profiles, sky, rain and wet surfaces, haze, lightning, sound); shadow speed-ups (far directional cascades kept between frames, coarser shadow LODs); no per-field GPU timestamps in `VoxelField3D` and `GrassField3D`; fixes: RenderingDevice shutdown with the render thread, transparent popup corners |
+| 0.10.1 | 4.8-beta | `godot4.8-beta-diginaat-physx-v0.10.1` | GPU-driven instances on by default (persistent instance table, GPU culling into indirect draws, shadow casters, HZB occlusion, material parameter tables); scene runtime (groups, children cache, transform propagation, process loop: scene instancing 10.7x and node churn 11.4x at 100k nodes); core containers (lock-free RID ownership checks, one-allocation HashSet, String-key byte hash, SSE DynamicBVH); PhysX module `847b2ca459` (groom hair, Blast background fracture, XR lens effects); new export templates required |
+| 0.10.2 | 4.8-beta | `godot4.8-beta-diginaat-physx-v0.10.2` | Fewer shader and pipeline permutations (Forward+): scene shader variants compiled per feature group when the feature is first used, each material skips the variants it can't draw with, no precompiled transparent pipelines that no pass draws, pipeline maps keyed by the whole key; compiled shader bytes and the loaded Vulkan pipeline cache freed after use (120 materials: variants 3,556 to 472, cold stall 146 to 95 s on Vulkan and 239 to 96 s on D3D12, warm 2.4 to 0.65 s, memory 353 to 84 MB); fix: SDFGI pass bindings for GPU instances |
+| 0.10.3 | 4.8-beta | `godot4.8-beta-diginaat-physx-v0.10.3` | The project manager no longer forces a backup before this build first opens a project; it warns that the project can break, with "Open Anyway" and "Cancel" |
 
 ## Release packages (Windows)
 
-Both editors use `production=yes`. With MSVC that means the static CRT and no
+All builds use `production=yes`. With MSVC that means the static CRT and no
 debug symbols; LTO stays off on purpose (the platform script says it doesn't
-help with MSVC), so an incremental build is quick.
+help with MSVC), so an incremental build is quick. The release steps are in
+[devtools/README.md](devtools/README.md#release):
 
 ```
-# Standard editor
-python -m SCons platform=windows target=editor production=yes physx_sdk="C:\REPO\Godot\physx-sdk\physx\install\vc17win64-godot-gpu\PhysX" physx_gpu=yes blast_sdk="C:\REPO\Godot\physx-sdk\blast\_build\windows-x86_64\release\blast-sdk" flow_sdk="C:\REPO\Godot\physx-sdk\flow"
-powershell -File misc/scripts/package_editor_win64.ps1
-
-# .NET (mono) editor; needs the .NET SDK
-python -m SCons platform=windows target=editor production=yes module_mono_enabled=yes physx_sdk="C:\REPO\Godot\physx-sdk\physx\install\vc17win64-godot-gpu\PhysX" physx_gpu=yes blast_sdk="C:\REPO\Godot\physx-sdk\blast\_build\windows-x86_64\release\blast-sdk" flow_sdk="C:\REPO\Godot\physx-sdk\flow"
-bin\godot.windows.editor.x86_64.mono.console.exe --headless --generate-mono-glue modules\mono\glue
-python modules/mono/build_scripts/build_assemblies.py --godot-output-dir=./bin --godot-platform=windows
-powershell -File misc/scripts/package_editor_win64.ps1 -Mono
+devtools\build\build.ps1 -Target release      # both editors, all four templates, C# assemblies
+devtools\test\smoke.ps1
+devtools\test\smoke.ps1 -Mono
+powershell -File devtools/package/package_editor_win64.ps1
+powershell -File devtools/package/package_editor_win64.ps1 -Mono
 ```
 
 The zips land in `dist/` (gitignored). The script bundles the editor exes,
@@ -191,14 +328,40 @@ the script fails if any of their DLLs is missing from `bin/`. NVIDIA
 Streamline DLLs are bundled only with `-WithNvidiaRuntime` (private use; never
 `bin/development/`, which holds the debug variants).
 
+### Export templates
+
+Four builds (`devtools\build\build.ps1 -Target templates`, and again with
+`-Mono`), packaged as `.tpz` in `dist/` and installed with Editor > Manage
+Export Templates > Install from File:
+
+```
+powershell -File devtools/package/package_templates_win64.ps1
+powershell -File devtools/package/package_templates_win64.ps1 -Mono
+```
+
+The `.tpz` holds the templates (release, debug and their console wrappers),
+the D3D12 Agility SDK DLLs (`D3D12Core.x86_64.dll`, as the Windows export
+expects) and the licenses; `version.txt` comes from the template binary
+(`4.8.dev`, `4.8.dev.mono`). PhysX GPU, Blast and Flow DLLs are not in the
+templates: `NativeRuntimeExportPlugin`
+(`editor/export/native_runtime_export_plugin.cpp`) copies them from the
+editor's folder next to every exported Windows game, and the NVIDIA
+Streamline / DLSS files too when they are installed there (the editor's
+DLSS installer). Export options: `native_runtime/include_physx_libraries`,
+`native_runtime/include_nvidia_dlss`. So games made with this editor ship
+DLSS, but the public editor and template downloads never contain it.
+
 ## Test
 
-Use the console exe. A pass means exit code 0, no `ERROR:` lines, and the expected log line.
+`devtools\test\smoke.ps1` (and `-Mono` for the .NET editor) runs all of them
+with the console exe. A pass means exit code 0, no `ERROR:` lines, and the
+expected log line.
 
 | Check | Command | Expect |
 | --- | --- | --- |
-| PhysX GPU, D3D12 | `--verbose --path C:\REPO\Godot\godot-physx-example --quit-after 600` (and again with `--editor`) | `PhysX 5.10.0 initialized [GPU]` |
-| Path tracer, Vulkan | A Forward+ 3D scene with `Environment.pathtracing_enabled = true`, run with `--rendering-driver vulkan` | Noisy path-traced image; no "Raytracing not supported" warning |
+| PhysX GPU, D3D12 | `--verbose --path <godot-physx-example> --quit-after 600` (and again with `--editor`) | `PhysX 5.10.0 initialized [GPU]` |
+| Path tracer, Vulkan | The DDGI test project's room with `--pt=1`, `--rendering-driver vulkan` | Noisy path-traced image; no "Raytracing not supported" warning |
+| DDGI | The DDGI test project's interior with `--measure` | Renders and measures without errors |
 
 ## Known limitations
 

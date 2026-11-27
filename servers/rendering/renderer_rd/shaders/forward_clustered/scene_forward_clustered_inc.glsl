@@ -28,6 +28,8 @@ layout(push_constant, std430) uniform DrawCall {
 	uint uv_offset;
 	uint multimesh_motion_vectors_current_offset;
 	uint multimesh_motion_vectors_previous_offset;
+	uint multimesh_visible_ids_offset;
+	uint cluster_lod_group; // Cluster LOD debug draw only: the drawn group, 0xffffffff otherwise.
 #ifdef UBERSHADER
 	uint sc_packed_0;
 	uint sc_packed_1;
@@ -150,6 +152,20 @@ bool sc_use_lightmap_specular() {
 	return ((sc_packed_1() >> 6) & 1U) != 0;
 }
 
+bool sc_ddgi_probe_capture() {
+	return ((sc_packed_1() >> 8) & 1U) != 0;
+}
+
+bool sc_multimesh_gpu_culling() {
+	return ((sc_packed_1() >> 9) & 1U) != 0;
+}
+
+// Draws of the GPU path for eligible instances (docs/renderer, Phase 2) read
+// the instance data a compute pass wrote (binding 47) instead of the CPU's.
+bool sc_gpu_instances() {
+	return ((sc_packed_1() >> 10) & 1U) != 0;
+}
+
 bool sc_material_feedback() {
 	return ((sc_packed_1() >> 7) & 1U) != 0;
 }
@@ -164,14 +180,18 @@ layout(constant_id = 2) const bool sc_emulate_point_size = false;
 #ifdef POINT_SIZE_USED
 
 #define VERTEX_INDEX (sc_emulate_point_size ? gl_InstanceIndex : gl_VertexIndex)
-#define INSTANCE_INDEX (sc_emulate_point_size ? (gl_VertexIndex / 6) : gl_InstanceIndex)
+#define RAW_INSTANCE_INDEX (sc_emulate_point_size ? (gl_VertexIndex / 6) : gl_InstanceIndex)
 
 #else
 
 #define VERTEX_INDEX gl_VertexIndex
-#define INSTANCE_INDEX gl_InstanceIndex
+#define RAW_INSTANCE_INDEX gl_InstanceIndex
 
 #endif
+
+// Both built-in INSTANCE_ID and transform/custom-data/motion lookups retain
+// source identity, regardless of the order of atomic visibility appends.
+#define INSTANCE_INDEX int(sc_multimesh_gpu_culling() ? multimesh_visible_ids.data[draw_call.multimesh_visible_ids_offset + uint(RAW_INSTANCE_INDEX)] : uint(RAW_INSTANCE_INDEX))
 
 #define REFLECTION_MULTIPLIER 1.0
 
@@ -202,6 +222,11 @@ layout(set = 0, binding = 2) uniform sampler shadow_sampler;
 #define SCREEN_SPACE_EFFECTS_FLAGS_USE_SSR (1 << 2)
 #define SCREEN_SPACE_EFFECTS_FLAGS_RESOLVE_SSR (1 << 3)
 #define SCREEN_SPACE_EFFECTS_FLAGS_USE_SSCS (1 << 4)
+#define SCREEN_SPACE_EFFECTS_FLAGS_USE_PLANAR_REFLECTIONS (1 << 5)
+
+#define REFLECTION_FLAGS_DDGI_OVERRIDES_PROBE_AMBIENT (1 << 0)
+#define REFLECTION_FLAGS_DDGI_IN_PROBE_CAPTURE (1 << 1)
+#define REFLECTION_FLAGS_PROBES_CAPTURED_WITH_DDGI (1 << 2)
 
 layout(set = 0, binding = 3, std430) restrict readonly buffer OmniLights {
 	LightData data[];
@@ -349,6 +374,12 @@ struct ImplementationData {
 	float volumetric_fog_inv_length;
 	float volumetric_fog_detail_spread;
 	uint volumetric_fog_pad;
+
+	// Reflection probes under DDGI (rendering/global_illumination/reflections/).
+	float reflection_normalization; // Strength 0..1 of the DDGI normalization of probe reflections.
+	float reflection_normalization_max; // Upper clamp of the normalization factor.
+	uint reflection_flags;
+	uint reflection_pad;
 };
 
 layout(set = 1, binding = 1, std140) uniform ImplementationDataBlock {
@@ -360,7 +391,7 @@ implementation_data_block;
 
 struct InstanceData {
 	mat3x4 transform;
-	vec4 compressed_aabb_position_pad; // Only .xyz is used. .w is padding.
+	vec4 compressed_aabb_position_pad; // .xyz: compressed AABB position. .w: material table slot (uint bits).
 	vec3 compressed_aabb_size_pad; // Only .xyz is used. .w is padding.
 	uint material_feedback_index; // Index into the material feedback buffer.
 	vec4 uv_scale;
@@ -380,6 +411,25 @@ layout(set = 1, binding = 2, std430) buffer restrict readonly InstanceDataBuffer
 	InstanceData data[];
 }
 instances;
+
+layout(set = 1, binding = 46, std430) readonly buffer MultiMeshVisibleIDs {
+	uint data[];
+}
+multimesh_visible_ids;
+
+layout(set = 1, binding = 47, std430) buffer restrict readonly GPUInstanceDataBuffer {
+	InstanceData data[];
+}
+gpu_instances;
+
+// Per GPU path draw, the instances it draws (indices into gpu_instances).
+layout(set = 1, binding = 48, std430) buffer restrict readonly GPUInstanceIDs {
+	uint data[];
+}
+gpu_instance_ids;
+
+// One field of the drawn instance's data, from whichever buffer holds it.
+#define SCENE_INSTANCE(m_field) (sc_gpu_instances() ? gpu_instances.data[instance_index].m_field : instances.data[instance_index].m_field)
 
 #ifdef USE_RADIANCE_OCTMAP_ARRAY
 
@@ -491,6 +541,31 @@ layout(set = 1, binding = 35) uniform texture2D ssr_buffer;
 layout(set = 1, binding = 36) uniform texture2D ssr_mip_level_buffer;
 layout(set = 1, binding = 37) uniform texture2DArray sscs_buffer;
 #endif // USE_MULTIVIEW
+
+// Planar reflections (pixel-projected, see planar_reflections.glsl); single view only.
+// Color: reflected radiance, alpha = weight. Params: view depth of the reflector
+// plane (0 = no reflector), its thickness, normal distortion, roughness cutoff.
+layout(set = 1, binding = 40) uniform texture2D planar_reflection_color;
+layout(set = 1, binding = 41) uniform texture2D planar_reflection_params;
+
+// DDGI probes, for reflection probe captures (REFLECTION_FLAGS_DDGI_IN_PROBE_CAPTURE):
+// a capture has no view and so no GI buffer. Zeros (no volumes) in other passes.
+#include "../raytracing/ddgi_inc.glsl"
+
+layout(set = 1, binding = 42, std140) uniform DDGIUniforms {
+	DDGIDataBlock ddgi;
+};
+
+layout(set = 1, binding = 43, std430) restrict readonly buffer DDGIProbes {
+	DDGIProbe ddgi_probes[];
+};
+
+layout(set = 1, binding = 44) uniform texture2D ddgi_irradiance_atlas;
+layout(set = 1, binding = 45) uniform texture2D ddgi_distance_atlas;
+
+#define DDGI_SAMPLER SAMPLER_LINEAR_CLAMP
+#define DDGI_SAMPLING
+#include "../raytracing/ddgi_sample_inc.glsl"
 
 #endif
 

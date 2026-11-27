@@ -73,6 +73,10 @@ STATIC_ASSERT_INCOMPLETE_TYPE(class, RenderingServer);
 #include "servers/physics_3d/physics_server_3d.h"
 #endif // PHYSICS_3D_DISABLED
 
+#if defined(_MSC_VER) && !defined(__clang__) && (defined(_M_X64) || defined(_M_IX86))
+#include <xmmintrin.h>
+#endif
+
 void SceneTreeTimer::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_time_left", "time"), &SceneTreeTimer::set_time_left);
 	ClassDB::bind_method(D_METHOD("get_time_left"), &SceneTreeTimer::get_time_left);
@@ -178,9 +182,17 @@ SceneTreeGroup *SceneTree::add_to_group(const StringName &p_group, Node *p_node)
 	HashMap<StringName, SceneTreeGroup>::Iterator E = group_map.find(p_group);
 	if (!E) {
 		E = group_map.insert(p_group, SceneTreeGroup());
+		E->value.name = p_group;
 	}
 
+	// Both callers add a node that is not a member yet: Node::add_to_group()
+	// returns early for its own groups, and Node::_propagate_enter_tree()
+	// registers them after _propagate_exit_tree() removed them. The search is
+	// linear in the group's size, for every group of every node entering the
+	// tree, so only development builds check it (docs/implementation/scene-runtime-roadmap.md, M1).
+#ifdef DEV_ENABLED
 	ERR_FAIL_COND_V_MSG(E->value.nodes.has(p_node), &E->value, "Already in group: " + p_group + ".");
+#endif
 	E->value.nodes.push_back(p_node);
 	E->value.changed = true;
 	return &E->value;
@@ -192,16 +204,69 @@ void SceneTree::remove_from_group(const StringName &p_group, Node *p_node) {
 	HashMap<StringName, SceneTreeGroup>::Iterator E = group_map.find(p_group);
 	ERR_FAIL_COND(!E);
 
-	E->value.nodes.erase(p_node);
-	if (E->value.nodes.is_empty()) {
+	SceneTreeGroup &g = E->value;
+	// The member's recorded position: a hole there, no search and shift
+	// (docs/implementation/scene-runtime-roadmap.md, M3). A slot that holds
+	// the member is its slot, so a stale position is only slower.
+	const uint32_t entry = p_node->_find_group(p_group);
+	const uint32_t position = entry != UINT32_MAX ? p_node->data.grouped[entry].data.position : UINT32_MAX;
+	if (position < uint32_t(g.nodes.size()) && g.nodes[position] == p_node) {
+		g.nodes.write[position] = nullptr;
+		g.holes++;
+	} else {
+		// Moved by a sort or compaction: the old search (holes never match),
+		// still no shift.
+		const int found = g.nodes.find(p_node);
+		if (found >= 0) {
+			g.nodes.write[found] = nullptr;
+			g.holes++;
+			if (++g.stale_removals >= SceneTreeGroup::STALE_REMOVALS_BEFORE_REWRITE) {
+				_update_group_positions(g);
+			}
+		}
+	}
+	if (uint32_t(g.nodes.size()) == g.holes) {
 		group_map.remove(E);
 	}
+}
+
+void SceneTree::_compact_group(SceneTreeGroup &g) {
+	if (g.holes == 0) {
+		return;
+	}
+	Node **nodes = g.nodes.ptrw();
+	const int count = g.nodes.size();
+	int write = 0;
+	for (int read = 0; read < count; read++) {
+		if (nodes[read]) {
+			nodes[write++] = nodes[read];
+		}
+	}
+	g.nodes.resize(write);
+	g.holes = 0;
+}
+
+void SceneTree::_update_group_positions(SceneTreeGroup &g) {
+	Node *const *nodes = g.nodes.ptr();
+	for (int i = 0; i < g.nodes.size(); i++) {
+		if (!nodes[i]) {
+			continue; // A hole.
+		}
+		const uint32_t entry = nodes[i]->_find_group(g.name);
+		if (entry != UINT32_MAX) {
+			nodes[i]->data.grouped[entry].data.position = i;
+		}
+	}
+	g.stale_removals = 0;
 }
 
 void SceneTree::flush_transform_notifications() {
 	_THREAD_SAFE_METHOD_
 
 	SelfList<Node> *n = xform_change_list.first();
+	if (!n) {
+		return;
+	}
 	while (n) {
 		Node *node = n->self();
 		SelfList<Node> *nx = n->next();
@@ -209,6 +274,9 @@ void SceneTree::flush_transform_notifications() {
 		n = nx;
 		node->notification(NOTIFICATION_TRANSFORM_CHANGED);
 	}
+	// After the loop: handlers may move nodes, which queues them again in this
+	// flush.
+	_xform_change_epoch_bump();
 }
 
 bool SceneTree::is_accessibility_enabled() const {
@@ -339,6 +407,7 @@ void SceneTree::_flush_ugc() {
 }
 
 void SceneTree::_update_group_order(SceneTreeGroup &g) {
+	_compact_group(g);
 	if (!g.changed) {
 		return;
 	}
@@ -1190,6 +1259,18 @@ bool SceneTree::is_suspended() const {
 	return suspended;
 }
 
+// A hint to load the cache line at p_address; never faults, a no-op where
+// unsupported.
+static _FORCE_INLINE_ void _prefetch(const void *p_address) {
+#if defined(__GNUC__) || defined(__clang__)
+	__builtin_prefetch(p_address);
+#elif defined(_MSC_VER) && (defined(_M_X64) || defined(_M_IX86))
+	_mm_prefetch(static_cast<const char *>(p_address), _MM_HINT_T0);
+#else
+	(void)p_address;
+#endif
+}
+
 void SceneTree::_process_group(ProcessGroup *p_group, bool p_physics) {
 	// When reading this function, keep in mind that this code must work in a way where
 	// if any node is removed, this needs to continue working.
@@ -1219,7 +1300,22 @@ void SceneTree::_process_group(ProcessGroup *p_group, bool p_physics) {
 	uint32_t node_count = nodes_copy.size();
 	Node **nodes_ptr = (Node **)nodes_copy.ptr(); // Force cast, pointer will not change.
 
+	// In a large list every node is a cache miss on each of the lines the
+	// checks and the dispatch below read (the object's start, the tree, the
+	// process owner, the process mode and flags): asking for those of a node
+	// some places ahead overlaps the misses (docs/implementation/scene-runtime-roadmap.md, M6).
+	// Only addresses are computed; a node freed by an earlier callback is not
+	// read.
+	constexpr uint32_t PREFETCH_AHEAD = 8;
+
 	for (uint32_t i = 0; i < node_count; i++) {
+		if (i + PREFETCH_AHEAD < node_count) {
+			const Node *ahead = nodes_ptr[i + PREFETCH_AHEAD];
+			_prefetch(ahead);
+			_prefetch(&ahead->data.tree);
+			_prefetch(&ahead->data.process_owner);
+			_prefetch(&ahead->data.process_priority); // Next to the process mode and flags (bit-fields).
+		}
 		Node *n = nodes_ptr[i];
 		if (nodes_removed_on_group_call.has(n)) {
 			// Node may have been removed during process, skip it.
@@ -1608,7 +1704,7 @@ int SceneTree::get_node_count_in_group(const StringName &p_group) const {
 		return 0;
 	}
 
-	return E->value.nodes.size();
+	return E->value.nodes.size() - E->value.holes;
 }
 
 Node *SceneTree::get_first_node_in_group(const StringName &p_group) {
@@ -2174,7 +2270,7 @@ SceneTree::SceneTree() {
 	root->set_snap_2d_vertices_to_pixel(snap_2d_vertices);
 
 	// We setup VRS for the main viewport here, in the editor this will have little effect.
-	const int vrs_mode = GLOBAL_DEF(PropertyInfo(Variant::INT, "rendering/vrs/mode", PROPERTY_HINT_ENUM, String::utf8("Disabled,Texture,XR")), 0);
+	const int vrs_mode = GLOBAL_DEF(PropertyInfo(Variant::INT, "rendering/vrs/mode", PROPERTY_HINT_ENUM, String::utf8("Disabled,Texture,XR,Adaptive")), 3);
 	root->set_vrs_mode(Viewport::VRSMode(vrs_mode));
 	const String vrs_texture_path = String(GLOBAL_DEF(PropertyInfo(Variant::STRING, "rendering/vrs/texture", PROPERTY_HINT_FILE, "*.bmp,*.png,*.tga,*.webp"), String())).strip_edges();
 	if (vrs_mode == 1 && !vrs_texture_path.is_empty()) {

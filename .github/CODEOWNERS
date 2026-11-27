@@ -37,9 +37,10 @@
 /drivers/egl/                                 @godotengine/rendering
 /drivers/gles3/                               @godotengine/rendering
 /drivers/metal/                               @godotengine/rendering
-/drivers/spirv-reflect/                       @godotengine/rendering
+/drivers/metal/**/SCsub                       @godotengine/rendering @godotengine/buildsystem
 /drivers/streamline/                          @godotengine/rendering
 /drivers/vulkan/                              @godotengine/rendering
+/drivers/vulkan/**/SCsub                      @godotengine/rendering @godotengine/buildsystem
 
 ## OS
 /drivers/apple/                               @godotengine/macos @godotengine/ios

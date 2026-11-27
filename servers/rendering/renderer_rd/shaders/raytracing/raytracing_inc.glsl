@@ -156,6 +156,21 @@ bool is_ddgi_probe_ray(uint packed) {
 	return (packed & DDGI_PROBE_RAY_FLAG) != 0u;
 }
 
+// Set by the closest hit of a DDGI probe ray (bit 29) when the hit needs the
+// probes' light (bounce light): the hit leaves the diffuse reflectance in the
+// throughput and the normal in the offset normal, and a compute pass after
+// the trace looks the probes up (MODE_BOUNCE in ddgi_update.glsl).
+const uint DDGI_BOUNCE_FLAG = (1u << 29);
+
+// Set by the closest hit of a DDGI ray (bit 30) when the hit object keeps
+// moving (FLAG_MOVING): near-field rays then let go of their history faster.
+const uint DDGI_MOVING_HIT_FLAG = (1u << 30);
+
+// Ray segments a DDGI ray may trace: each glass interface it passes takes
+// one, the surface behind takes the last. A double glazed window has four
+// interfaces.
+#define DDGI_MAX_GLASS_SEGMENTS 6u
+
 // Bounce limits
 #define MAX_DIFFUSE_BOUNCES 2u
 #define MAX_DENOISER_SPECULAR_HIT_THRESHOLD 0.25
@@ -174,6 +189,8 @@ const uint FLAG_EMISSIVE_LIGHT = 8u;
 const uint FLAG_VERTEX_DISPLACED = 16u;
 // Face culling is disabled: back faces are real surfaces, not the inside of a mesh.
 const uint FLAG_DOUBLE_SIDED = 32u;
+// The instance keeps moving (TLAS instance mask 0x80, see rt_cull_mask()).
+const uint FLAG_MOVING = 64u;
 
 // ============================================================================
 // RANDOM NUMBER GENERATION - PCG (Permuted Congruential Generator)

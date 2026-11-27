@@ -1,4 +1,13 @@
-# Godot Engine with NVIDIA DLSS, path tracing and PhysX 5
+# Feel free to take this fork and do what ever you want with it its open source <3
+# Vibe Coded with Claude and OpenCode
+# Godot Engine with DDGI, NVIDIA DLSS, path tracing and PhysX 5
+
+![The editor with the Modern Compact theme: the game runs in the split panel and the 3D editor follows it with the Live Runtime view](docs/images/editor/split_live_subway.jpg)
+
+<sub>The editor in this build: the Modern Compact theme, the game running in
+the split workspace, and the 3D editor following it with the Live Runtime
+view. Scene: the Godot 4 Overgrown Subway demo (ivy assets by Jaanus Jaggo,
+CC BY-NC).</sub>
 
 <p align="center">
   <a href="https://godotengine.org">
@@ -7,7 +16,7 @@
 </p>
 
 This is a fork of [Godot Engine](https://github.com/godotengine/godot) (`master`,
-4.8-dev) that combines three things in one source tree:
+4.8-beta) that combines three things in one source tree:
 
 | Part | Source | What it adds |
 | --- | --- | --- |
@@ -19,6 +28,13 @@ All credit for those features goes to their authors: the Godot contributors,
 NVIDIA's RTX team, and the PhysX module's author. This fork merges them,
 fixes the conflicts between them, and keeps them building against the latest
 Godot `master`.
+
+## Godot Diginaat fork vs Stock Godot. benchmark
+
+<p align="center">
+  <img src="docs/benchmarks/stock-compare.png" width="100%">
+</p>
+
 
 ## PhysX module by Wild Ox Studios
 
@@ -40,13 +56,41 @@ adapts it; all the PhysX work is theirs.
 
 <br clear="left">
 
+## DDGI global illumination: before and after
+
+The same frames rendered four ways with this build's ray traced DDGI
+(Forward+, Vulkan, quality High, 1280x720, RTX 3060). Rows: an outdoor street
+in sun and sky, a closed house lit only through one window (exposure 6, DDGI
+bounce energy 1.5), and the classic color bleeding test room. Without GI the
+sky ambient lights every surface the same, even inside the closed house;
+DDGI lights it from the window and the sunlit floor, and carries the red and
+green walls onto the floor and ceiling.
+
+| No GI | DDGI | DDGI + SSAO, SSIL, SSR | + DLSS Quality |
+| --- | --- | --- | --- |
+| ![Outdoor street, no GI](docs/images/ddgi/outdoor_off.jpg) | ![Outdoor street, DDGI](docs/images/ddgi/outdoor_ddgi.jpg) | ![Outdoor street, DDGI, SSAO, SSIL and SSR](docs/images/ddgi/outdoor_ddgi_fx.jpg) | ![Outdoor street, DDGI, screen-space effects and DLSS Quality](docs/images/ddgi/outdoor_ddgi_fx_dlss.jpg) |
+| ![Interior lit through one window, no GI](docs/images/ddgi/interior_off.jpg) | ![Interior lit through one window, DDGI](docs/images/ddgi/interior_ddgi.jpg) | ![Interior lit through one window, DDGI, SSAO, SSIL and SSR](docs/images/ddgi/interior_ddgi_fx.jpg) | ![Interior lit through one window, DDGI, screen-space effects and DLSS Quality](docs/images/ddgi/interior_ddgi_fx_dlss.jpg) |
+| ![Test room, no GI](docs/images/ddgi/room_off.jpg) | ![Test room, DDGI](docs/images/ddgi/room_ddgi.jpg) | ![Test room, DDGI, SSAO, SSIL and SSR](docs/images/ddgi/room_ddgi_fx.jpg) | ![Test room, DDGI, screen-space effects and DLSS Quality](docs/images/ddgi/room_ddgi_fx_dlss.jpg) |
+
+The scenes come from [`misc/ddgi_test_project`](misc/ddgi_test_project);
+each row shares one exposure. Details and benchmarks: [DDGI.md](DDGI.md).
+
+The same comparison in a game scene, an overgrown train station under an open
+roof. Without GI the sky ambient lights the covered platforms as brightly as
+the tracks in the sun; with DDGI they fall into shade, and the light that
+reaches them bounces off the sunlit tracks, grass and vines.
+
+| No GI | DDGI |
+| --- | --- |
+| ![Overgrown train station, no GI](docs/images/ddgi/station_off.jpg) | ![Overgrown train station, DDGI](docs/images/ddgi/station_ddgi.jpg) |
+
 ## Downloads
 
-Prebuilt Windows editors (standard and .NET) are on the
+Prebuilt Windows editors and export templates (standard and .NET) are on the
 [**Releases page**](https://github.com/Diginaat/godot/releases).
 Each release names the Godot version it's based on and this build's own
-version: `godot4.8-dev-nvidia-rt-dlss-physx-v0.4.0` is build 0.4.0, on Godot
-4.8-dev.
+version: `godot4.8-beta-diginaat-physx-v0.10.3` is build 0.10.3, on Godot
+4.8-beta. Releases before 0.9.0 are tagged `...-nvidia-rt-dlss-physx-v...`.
 
 > [!IMPORTANT]
 > **The downloads work out of the box. You only need the NVIDIA Streamline SDK
@@ -114,6 +158,117 @@ CPU, rendering without DLSS).
   energy `1.0`, normal bias `0.1`, view bias `0.3`, hysteresis `0.95`, probe
   relocation/classification off.
 
+### Reflections (Forward+)
+
+- **`PlanarReflector3D` node**: exact mirror and floor reflections by pixel
+  projection, plus a mirror pass that renders the reflected camera's view for
+  the mirror that covers most of the screen, so a mirror shows the room
+  behind the player, live.
+- **Automatic reflections with `DDGIVolume`**: planar reflectors on glossy
+  floors, water and mirrors, and a box-projected reflection probe for the
+  volume, with no scene setup.
+- Reflection probes are captured within a per-frame face budget, scaled by
+  DDGI's lighting, and the reflection atlas grows on demand.
+- Distance limits for reflectors and the mirror pass
+  (`rendering/global_illumination/reflections/planar_max_distance`,
+  `planar_mirror_max_distance`). Details: [REFLECTIONS.md](REFLECTIONS.md).
+
+### Editor
+
+- **Modern Compact theme** (the default for new editor settings): neutral
+  charcoal surfaces, blue for interactive states, one-pixel outlines, six-pixel
+  corners, and rounded popups. A gray variant, Modern Compact Gray, is in
+  Editor Settings > Interface > Theme. The UI font is
+  [Atkinson Hyperlegible Next](https://www.brailleinstitute.org/freefont/),
+  with Inter as the fallback for other scripts.
+- **Split workspace**: a second main screen panel next to the main screen.
+  Drag a main screen tab (for example Game) into it to see the game and the 3D
+  editor at the same time. Side by side or stacked, swappable, and saved with
+  the editor layout. Details: [SPLIT_WORKSPACE.md](SPLIT_WORKSPACE.md).
+- **Live Runtime view**: the **Live** toggle in the 2D and 3D toolbars makes
+  the editor viewport show the running game (moving, spawned and removed
+  objects) while the editor camera stays free. The edited scene is never
+  changed. Both are also proposed upstream in
+  [godotengine/godot#125218](https://github.com/godotengine/godot/pull/125218).
+- **Compatibility warning**: the first time this build opens a project, the
+  project manager warns that the project can break (it may no longer work in
+  official Godot). Back up the project yourself if you want a working copy.
+
+### Large-world geometry (Forward+)
+
+For open worlds with many meshes and instances. Since 0.10.1 the GPU
+instance path, MultiMesh GPU culling and cluster LOD are on by default
+(`rendering/geometry/*` project settings); the far-field and grass nodes are
+used by adding them.
+
+- **GPU-driven instances**: ordinary `MeshInstance3D` nodes are drawn from a
+  persistent GPU instance table, culled on the GPU into indirect draws,
+  shadow casters included, with HZB occlusion and per-material parameter
+  tables. In the 100k-instance benchmark the render thread's CPU time went
+  from 22 to 1.5 ms; with 10k distinct materials, 8,776 draws became 11.
+
+- **GPU culling for MultiMeshes**: frustum and instance culling, per-instance
+  index LOD, distance thinning and optional HZB occlusion.
+- **Cluster LOD** (`MeshClusterData`): a cluster hierarchy cooked at import,
+  selected on the GPU by projected error, with HZB occlusion and a two-pass
+  depth pre-pass. Import writes `.clodpages` page files that stream within a
+  memory budget.
+- **Far field**: `VoxelProxyBuilder` splat proxies and `VoxelField3D` GPU
+  voxel levels.
+- **`GrassField3D`**: GPU-generated grass with level of detail rings.
+
+### Weather and wind
+
+Native C++ weather (`modules/weather`). Details: [WEATHER.md](WEATHER.md).
+
+- **One world wind** (`WindServer`) with gusts that travel with the wind,
+  direction swing and turbulence. Grass (`GrassField3D`'s default material),
+  trees through the built-in `res://.builtin/wind.gdshaderinc`, PhysX cloth
+  (`PhysXCloth3D.use_global_wind`) and rigid bodies (`WindReceiver3D`) all
+  follow it.
+- **`WindZone3D`**: local wind in a sphere or a box: fans, downdrafts,
+  downwash, blasts, vortices, and calm shelters.
+- **`Weather` node**: picks a weather type by name and blends between them.
+  Types are `WeatherProfile` resources in a `WeatherLibrary` (11 built in), so
+  a new type needs no code.
+- **Effects** (`WeatherEffect` resources, also scriptable): sun, sky light
+  and fog; sky and clouds (`WeatherSkyMaterial`); GPU rain with occlusion and
+  wet surfaces (puddles, ripples, water running down walls, dry under cover);
+  ground haze and mist motes; lightning; and rain, wind and thunder sound
+  synthesized once per run.
+
+### Performance
+
+- **Fewer shader and pipeline permutations** (Forward+): scene shader
+  variants compile per feature group (motion vectors, lightmaps, VoxelGI,
+  SDFGI, separate specular, dual-paraboloid shadows, baking, multiview)
+  when a feature is first used, not all at once; each material skips the
+  variants it can never draw with; transparent pipelines no pass draws
+  are no longer precompiled. With 120 new materials in one frame (RTX
+  3060), compiled variants went from 3,556 to 472, the first-load stall
+  from 146 to 95 s (Vulkan) and 239 to 96 s (D3D12), the cached stall from
+  2.4 to 0.65 s, and memory from 353 to 84 MB. Images are unchanged.
+- **Scene tree and nodes**: groups, the children cache, Node3D transform
+  propagation and the process loop were reworked inside the existing node
+  structures, with the same API. At 100k nodes, scene instancing is 10.7x
+  faster, freeing and adding nodes in groups 11.4x, moving every node of a
+  tree 41% faster and 100k processing nodes 44% faster.
+- **Core containers**: lock-free RID ownership checks, one allocation per
+  `HashSet`, a byte hash for String keys and SSE `DynamicBVH` volumes.
+- **Far directional cascades kept between frames**: the far shadow cascades
+  of a directional light render every few frames, staggered
+  (`rendering/lights_and_shadows/directional_shadow/far_cascade_update_interval`,
+  default 4). In a large valley test scene (RTX 3060, Vulkan) shadows went from
+  3.53 to 2.03 ms.
+- **Coarser mesh LODs for shadow casters**
+  (`rendering/mesh_lod/lod_change/shadow_threshold_scale`, default 4): near
+  casters keep their detailed LOD, distant ones cast with coarser LODs.
+  Shadows 2.02 to 1.62 ms in the same scene.
+- `VoxelField3D` and `GrassField3D` no longer capture a GPU timestamp per
+  field, which made their GPU work run one field after another (valley frame
+  10.4 to 7.5 ms). The rain's collision height field no longer re-renders
+  every frame.
+
 ### PhysX 5 (from the godot_physx module)
 
 Select it in Project Settings > Physics > 3D > Physics Engine = `PhysX`. Every
@@ -128,8 +283,16 @@ standard 3D physics node keeps working. On top of that:
   **Fracture with Blast...**).
 - `PhysXFlow3D` and `PhysXFlowEmitter3D`: NVIDIA Flow sparse-grid smoke, fire
   and dust.
-- Vehicles (`PhysXVehicle3D`, `PhysXMotorcycle3D`, `PhysXTank3D`), water
-  (`PhysXWaterSurface3D`, FFT ocean, caustics) and boats.
+- `PhysXSkinnedCloth3D`: cloth on animated characters, with wind and
+  collision inputs.
+- Active ragdolls: joint drives (through the `PhysX` singleton) that pull a
+  ragdoll's joints toward an animated pose.
+- Vehicles (`PhysXVehicle3D`, `PhysXMotorcycle3D`, `PhysXTank3D`) with engine
+  drives, water (`PhysXWaterSurface3D`, FFT ocean, caustics) and boats
+  (`PhysXBuoyancy3D`, `PhysXBoat3D`, wakes and spray).
+- `PXTGI3D` (experimental): global illumination from the module, with
+  emissive surfaces as lights. Plus camera effects: `PhysXLensDirt3D`,
+  `PhysXLensFlare3D` and `PhysXLightShafts3D`.
 
 The module's full documentation is in
 [`modules/godot_physx/README.md`](modules/godot_physx/README.md).
@@ -156,17 +319,58 @@ It only works with an editor that includes the PhysX module, such as this one.
 
 The log shows `PhysX 5.10.0 initialized [GPU]` when GPU dynamics are active.
 
+#### Try the GameKit demo projects
+
+GameKit is a set of modular first-person game systems built on this engine: a
+Source-style FPS controller (stairs, slide, mantle, ladders, swimming),
+interaction, moving platforms, PhysX water with caustics and reflections, a
+camera lens look and dynamic weather. The demo project is a playable map that
+shows every module, and it comes in two versions:
+
+| Project | Language | Editor |
+| --- | --- | --- |
+| **[Diginaat/GameKitDemoCSharp](https://github.com/Diginaat/GameKitDemoCSharp)** | C# | .NET (mono) editor; press **Build**, then **F5** |
+| **[Diginaat/GameKitDemoGDScript](https://github.com/Diginaat/GameKitDemoGDScript)** | GDScript | Any editor from the releases; press **F5** |
+
+Both have the same scenes. The main scene is
+`addons/gamekit_demo/scenes/gamekit_demo.tscn`, and each feature has its own
+station scene in `addons/gamekit_demo/stations/` that you can drag into your
+own map:
+
+| Scene | Shows |
+| --- | --- |
+| `surfaces.tscn` | Footstep sounds and friction per surface (concrete, metal, wood, grass, ice, mud) |
+| `stairs.tscn` | Stairs and a 25° slope |
+| `interaction.tscn` | A button that opens a sliding door, and crates to pick up and throw |
+| `ladder.tscn` | A ladder tower |
+| `platforms.tscn` | An elevator and a turntable |
+| `abilities.tscn` | Mantle blocks and slide beams |
+| `weather.tscn` | A shelter that stays dry in the rain (F7 cycles the weather) |
+| `pool.tscn` | A swimmable PhysX water pool with caustics |
+
+They need this engine: the water uses `PhysXWaterSurface3D`, so stock Godot
+won't run them.
+
 ### Changes in this fork
 
-- Merged with the latest Godot `master`, with every conflict resolved by hand
-  (both sides kept).
-- Shader container format bumped to version 5, so shader caches from older
+- Merged with Godot `master` (currently `b47a795aa5`, 4.8-beta), with every
+  conflict resolved by hand (both sides kept). The PhysX module is at
+  `92da57bda8`. The NVIDIA path tracer and DLSS code stays at NVIDIA's
+  `135dff3887`; NVIDIA's November 2026 rewrite of that branch is not merged
+  yet. The current state of each source is in the sync log in
+  [`CUSTOM_BUILD.md`](CUSTOM_BUILD.md).
+- Shader container format bumped to version 6, so shader caches from older
   builds are rejected instead of crashing D3D12 startup.
 - New projects default to the Vulkan driver on Windows, because the path
   tracer needs it. Requesting path tracing on D3D12 prints an explanatory
   warning.
-- `misc/scripts/package_editor_win64.ps1` packages a release editor with all
-  runtime DLLs.
+- Windows export templates (standard and .NET). Exported games get the
+  PhysX, Blast and Flow DLLs, and the DLSS files when the editor has them
+  installed (export options `native_runtime/include_physx_libraries` and
+  `native_runtime/include_nvidia_dlss`).
+- `devtools/package/package_editor_win64.ps1` and
+  `devtools/package/package_templates_win64.ps1` package the release editors
+  and export templates with all runtime DLLs.
 - [`CUSTOM_BUILD.md`](CUSTOM_BUILD.md) is the maintenance runbook for keeping
   the three sources in sync.
 
@@ -187,17 +391,24 @@ The log shows `PhysX 5.10.0 initialized [GPU]` when GPU dynamics are active.
   python misc/scripts/install_d3d12_sdk_windows.py
   ```
 
-### 2. Get the source
+### 2. Get the source and set up
 
 ```
 git clone -b nvidia-dlss-physx https://github.com/Diginaat/godot.git godot-rtx
 cd godot-rtx
+powershell -ExecutionPolicy Bypass -File devtools\setup\setup_dev_windows.ps1 -Build
 ```
 
-### 3. Build the PhysX SDK
+The setup script checks the tools from step 1, installs SCons and the D3D12
+dependencies, sets the git remotes, builds the PhysX SDK (with Blast and
+Flow, and GPU dynamics when the CUDA Toolkit is installed) in a `physx-sdk`
+folder next to the repository, writes the SDK paths into `custom.py` and
+builds the editor into `bin\godot.windows.editor.x86_64.exe`. Running it again
+skips what is already done. All developer scripts (build, smoke tests, DDGI
+tests, release packaging) are described in
+[`devtools/README.md`](devtools/README.md).
 
-The PhysX SDK is not included. A script clones NVIDIA's PhysX repository at a
-pinned version, applies the Godot build preset and patches, and builds it:
+### 3. Build the PhysX SDK by hand (what the setup does)
 
 ```
 python modules/godot_physx/misc/build_physx.py --gpu --blast --flow
@@ -205,21 +416,20 @@ python modules/godot_physx/misc/build_physx.py --gpu --blast --flow
 
 Leave out `--gpu` for a CPU-only build. `--blast` also builds the NVIDIA Blast
 SDK (destruction) and `--flow` NVIDIA Flow (smoke and fire); the release
-editors include both. The script prints the full SCons command for the next
-step, with the `physx_sdk=`, `blast_sdk=` and `flow_sdk=` paths. It clones
-into a `physx-sdk` folder next to this repository.
+editors include both. The script prints the `physx_sdk=`, `blast_sdk=` and
+`flow_sdk=` paths; put them into `custom.py` (or pass them to SCons).
 
 ### 4. Build the editor
 
 ```
-python -m SCons platform=windows target=editor production=yes physx_sdk=<path from step 3> physx_gpu=yes blast_sdk=<path> flow_sdk=<path>
+devtools\build\build.ps1
+:: or directly
+python -m SCons platform=windows target=editor production=yes
 ```
 
 - Run it from PowerShell or cmd, not Git Bash (SCons can't find the D3D12
   dependencies there).
-- Leave out `blast_sdk` or `flow_sdk` to build without Blast or Flow.
-- Leave out `physx_gpu=yes` for a CPU-only PhysX build. Leave out `physx_sdk`
-  completely to build without PhysX.
+- Without `custom.py` (or the SDK arguments) the editor builds without PhysX.
 - The editor lands in `bin\godot.windows.editor.x86_64.exe`.
   `PhysXGpu_64.dll` and the Blast and Flow DLLs are copied next to it
   automatically.
@@ -258,9 +468,7 @@ unavailable.
 ### 6. Optional: C# (.NET) editor
 
 ```
-python -m SCons platform=windows target=editor production=yes module_mono_enabled=yes physx_sdk=<path> physx_gpu=yes blast_sdk=<path> flow_sdk=<path>
-bin\godot.windows.editor.x86_64.mono.console.exe --headless --generate-mono-glue modules\mono\glue
-python modules/mono/build_scripts/build_assemblies.py --godot-output-dir=./bin --godot-platform=windows
+devtools\build\build.ps1 -Mono
 ```
 
 This produces `bin\godot.windows.editor.x86_64.mono.exe` and the
@@ -269,8 +477,8 @@ This produces `bin\godot.windows.editor.x86_64.mono.exe` and the
 ### 7. Optional: package a distributable zip
 
 ```
-powershell -File misc/scripts/package_editor_win64.ps1          # standard editor
-powershell -File misc/scripts/package_editor_win64.ps1 -Mono    # .NET editor
+powershell -File devtools/package/package_editor_win64.ps1          # standard editor
+powershell -File devtools/package/package_editor_win64.ps1 -Mono    # .NET editor
 ```
 
 The zip goes to `dist\`. It contains the editor, `PhysXGpu_64.dll`, the Blast
@@ -280,6 +488,12 @@ DLSS and, for .NET, the `GodotSharp` folder. It does **not** include NVIDIA's
 Streamline/DLSS runtime files, so it's safe to share. `-WithNvidiaRuntime`
 adds them for your own machines only; don't publish that zip (see
 [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md)).
+
+Export templates: build them with `devtools\build\build.ps1 -Target templates`
+(add `-Mono` for .NET), then package them into a `.tpz` with
+`devtools/package/package_templates_win64.ps1` (`-Mono` for .NET). Install
+the `.tpz` in the editor with Editor > Manage Export Templates > Install from
+File.
 
 ## Using the features
 
@@ -296,6 +510,10 @@ adds them for your own machines only; don't publish that zip (see
   env.pathtracing_max_bounces = 2
   env.pathtracing_denoiser = 1  # DLSS Ray Reconstruction (needs step 5); 0 = none
   ```
+- **Split workspace:** right-click a main screen tab (for example Game) and,
+  in the Dock Position grid, click the right cell of the top centre. Or drag
+  the tab onto an edge of the main screen. To see the running game in the 3D
+  editor, press **Live** in the 3D toolbar.
 - **PhysX:** Project Settings > Physics > 3D > Physics Engine = PhysX. GPU
   dynamics start automatically on a CUDA-capable GPU; the log shows
   `PhysX ... initialized [GPU]`. For ready-made scenes, open the
@@ -306,6 +524,17 @@ adds them for your own machines only; don't publish that zip (see
 The fork tracks three upstreams. The update procedure, conflict rules and smoke
 tests are in [`CUSTOM_BUILD.md`](CUSTOM_BUILD.md). Its tables and examples use
 the maintainer's own local paths; replace them with yours.
+
+## Credits
+
+- **[Snesmocha](https://github.com/Snesmocha)** (mocha), for helping with
+  this build's optimizations, and with the GPU and core engine improvements
+  of 0.10.1.
+- **[Wild Ox Studios](https://www.youtube.com/@WildOxStudios)**
+  ([uno1982](https://github.com/uno1982)), for the PhysX 5 module (see
+  [above](#physx-module-by-wild-ox-studios)).
+- The Godot contributors and NVIDIA's RTX team, for the engine and the DLSS
+  and path tracer branch this build is made from.
 
 ## Licenses
 

@@ -117,11 +117,19 @@ layout(location = 8) out vec4 prev_screen_position;
 #endif
 
 #ifdef MATERIAL_UNIFORMS_USED
+// The parameters of all materials of this shader, one std140 block per
+// material slot (D036). The draw's instance data holds the slot.
 /* clang-format off */
-layout(set = MATERIAL_UNIFORM_SET, binding = 0, std140) uniform MaterialUniforms {
+struct MaterialUniforms {
 #MATERIAL_UNIFORMS
-} material;
+};
 /* clang-format on */
+layout(set = MATERIAL_UNIFORM_SET, binding = 0, std140) restrict readonly buffer MaterialTable {
+	MaterialUniforms data[];
+}
+material_table;
+uint material_slot;
+#define material material_table.data[material_slot]
 #endif
 
 float global_time;
@@ -253,7 +261,7 @@ void vertex_shader(vec3 vertex_input,
 #endif
 
 	mat3 model_normal_matrix;
-	if (bool(instances.data[instance_index].flags & INSTANCE_FLAGS_NON_UNIFORM_SCALE)) {
+	if (bool(SCENE_INSTANCE(flags) & INSTANCE_FLAGS_NON_UNIFORM_SCALE)) {
 		model_normal_matrix = transpose(inverse(mat3(model_matrix)));
 	} else {
 		model_normal_matrix = mat3(model_matrix);
@@ -266,7 +274,7 @@ void vertex_shader(vec3 vertex_input,
 		//multimesh, instances are for it
 
 #ifdef USE_PARTICLE_TRAILS
-		uint trail_size = (instances.data[instance_index].flags >> INSTANCE_FLAGS_PARTICLE_TRAIL_SHIFT) & INSTANCE_FLAGS_PARTICLE_TRAIL_MASK;
+		uint trail_size = (SCENE_INSTANCE(flags) >> INSTANCE_FLAGS_PARTICLE_TRAIL_SHIFT) & INSTANCE_FLAGS_PARTICLE_TRAIL_MASK;
 		uint stride = 3 + 1 + 1; //particles always uses this format
 
 		uint offset = trail_size * stride * INSTANCE_INDEX;
@@ -364,7 +372,7 @@ void vertex_shader(vec3 vertex_input,
 	uv2_interp = uv2_attrib;
 #endif
 
-	vec4 uv_scale = instances.data[instance_index].uv_scale;
+	vec4 uv_scale = SCENE_INSTANCE(uv_scale);
 
 	if (uv_scale != vec4(0.0)) { // Compression enabled
 #ifdef UV_USED
@@ -526,6 +534,9 @@ void vertex_shader(vec3 vertex_input,
 	gl_Position = projection_matrix * vec4(vertex_interp, 1.0);
 #endif
 
+	// Mirror passes don't draw what lies behind the mirror (the wall it hangs on).
+	gl_ClipDistance[0] = dot(scene_data.clip_plane.xyz, vertex) + scene_data.clip_plane.w;
+
 #ifdef USE_MULTIVIEW
 	combined_projected = combined_projection * vec4(vertex_interp, 1.0);
 #endif
@@ -573,11 +584,11 @@ void vertex_shader(vec3 vertex_input,
 				merged_mask &= ~(1u << bit);
 				uint light_index = 32 * i + bit;
 
-				if (!bool(omni_lights.data[light_index].mask & instances.data[instance_index].layer_mask)) {
+				if (!bool(omni_lights.data[light_index].mask & SCENE_INSTANCE(layer_mask))) {
 					continue; //not masked
 				}
 
-				if (omni_lights.data[light_index].bake_mode == LIGHT_BAKE_STATIC && bool(instances.data[instance_index].flags & INSTANCE_FLAGS_USE_LIGHTMAP)) {
+				if (omni_lights.data[light_index].bake_mode == LIGHT_BAKE_STATIC && bool(SCENE_INSTANCE(flags) & INSTANCE_FLAGS_USE_LIGHTMAP)) {
 					continue; // Statically baked light and object uses lightmap, skip
 				}
 
@@ -608,11 +619,11 @@ void vertex_shader(vec3 vertex_input,
 
 				uint light_index = 32 * i + bit;
 
-				if (!bool(spot_lights.data[light_index].mask & instances.data[instance_index].layer_mask)) {
+				if (!bool(spot_lights.data[light_index].mask & SCENE_INSTANCE(layer_mask))) {
 					continue; //not masked
 				}
 
-				if (spot_lights.data[light_index].bake_mode == LIGHT_BAKE_STATIC && bool(instances.data[instance_index].flags & INSTANCE_FLAGS_USE_LIGHTMAP)) {
+				if (spot_lights.data[light_index].bake_mode == LIGHT_BAKE_STATIC && bool(SCENE_INSTANCE(flags) & INSTANCE_FLAGS_USE_LIGHTMAP)) {
 					continue; // Statically baked light and object uses lightmap, skip
 				}
 
@@ -629,11 +640,11 @@ void vertex_shader(vec3 vertex_input,
 		vec3 directional_specular = vec3(0.0);
 
 		for (uint i = 0; i < scene_data.directional_light_count; i++) {
-			if (!bool(directional_lights.data[i].mask & instances.data[instance_index].layer_mask)) {
+			if (!bool(directional_lights.data[i].mask & SCENE_INSTANCE(layer_mask))) {
 				continue; // Not masked, skip.
 			}
 
-			if (directional_lights.data[i].bake_mode == LIGHT_BAKE_STATIC && bool(instances.data[instance_index].flags & INSTANCE_FLAGS_USE_LIGHTMAP)) {
+			if (directional_lights.data[i].bake_mode == LIGHT_BAKE_STATIC && bool(SCENE_INSTANCE(flags) & INSTANCE_FLAGS_USE_LIGHTMAP)) {
 				continue; // Statically baked light and object uses lightmap, skip.
 			}
 			if (i == 0) {
@@ -771,8 +782,14 @@ void main() {
 	if (!sc_multimesh()) {
 		instance_index += INSTANCE_INDEX;
 	}
+	if (sc_gpu_instances()) {
+		instance_index = gpu_instance_ids.data[instance_index];
+	}
 
 	instance_index_interp = instance_index;
+#ifdef MATERIAL_UNIFORMS_USED
+	material_slot = floatBitsToUint(SCENE_INSTANCE(compressed_aabb_position_pad).w);
+#endif
 
 #ifdef MOTION_VECTORS
 	// Previous vertex.
@@ -787,8 +804,8 @@ void main() {
 
 	_unpack_vertex_attributes(
 			previous_vertex_attrib,
-			instances.data[instance_index].compressed_aabb_position_pad.xyz,
-			instances.data[instance_index].compressed_aabb_size_pad.xyz,
+			SCENE_INSTANCE(compressed_aabb_position_pad).xyz,
+			SCENE_INSTANCE(compressed_aabb_size_pad).xyz,
 
 #if defined(NORMAL_USED) || defined(TANGENT_USED)
 			previous_normal_attrib,
@@ -809,9 +826,9 @@ void main() {
 			prev_tangent,
 			prev_binormal,
 #endif
-			instance_index, draw_call.multimesh_motion_vectors_previous_offset, scene_data_block.prev_data, instances.data[instance_index].prev_transform,
+			instance_index, draw_call.multimesh_motion_vectors_previous_offset, scene_data_block.prev_data, SCENE_INSTANCE(prev_transform),
 #ifdef USE_DOUBLE_PRECISION
-			instances.data[instance_index].prev_model_precision.xyz,
+			SCENE_INSTANCE(prev_model_precision).xyz,
 #endif
 			prev_screen_position);
 #else
@@ -830,8 +847,8 @@ void main() {
 
 	_unpack_vertex_attributes(
 			vertex_angle_attrib,
-			instances.data[instance_index].compressed_aabb_position_pad.xyz,
-			instances.data[instance_index].compressed_aabb_size_pad.xyz,
+			SCENE_INSTANCE(compressed_aabb_position_pad).xyz,
+			SCENE_INSTANCE(compressed_aabb_size_pad).xyz,
 #if defined(NORMAL_USED) || defined(TANGENT_USED)
 			axis_tangent_attrib,
 #ifdef NORMAL_USED
@@ -853,9 +870,9 @@ void main() {
 			tangent,
 			binormal,
 #endif
-			instance_index, draw_call.multimesh_motion_vectors_current_offset, scene_data_block.data, instances.data[instance_index].transform,
+			instance_index, draw_call.multimesh_motion_vectors_current_offset, scene_data_block.data, SCENE_INSTANCE(transform),
 #ifdef USE_DOUBLE_PRECISION
-			instances.data[instance_index].model_precision.xyz,
+			SCENE_INSTANCE(model_precision).xyz,
 #endif
 
 			screen_position);
@@ -994,11 +1011,19 @@ layout(location = 14) in vec2 point_coord_interp;
 #endif
 
 #ifdef MATERIAL_UNIFORMS_USED
+// The parameters of all materials of this shader, one std140 block per
+// material slot (D036). The draw's instance data holds the slot.
 /* clang-format off */
-layout(set = MATERIAL_UNIFORM_SET, binding = 0, std140) uniform MaterialUniforms {
+struct MaterialUniforms {
 #MATERIAL_UNIFORMS
-} material;
+};
 /* clang-format on */
+layout(set = MATERIAL_UNIFORM_SET, binding = 0, std140) restrict readonly buffer MaterialTable {
+	MaterialUniforms data[];
+}
+material_table;
+uint material_slot;
+#define material material_table.data[material_slot]
 #endif
 
 #GLOBALS
@@ -1138,6 +1163,9 @@ vec3 encode24(vec3 v) {
 
 void fragment_shader(in SceneData scene_data) {
 	uint instance_index = instance_index_interp;
+#ifdef MATERIAL_UNIFORMS_USED
+	material_slot = floatBitsToUint(SCENE_INSTANCE(compressed_aabb_position_pad).w);
+#endif
 
 #ifdef PREMUL_ALPHA_USED
 	float premul_alpha = 1.0;
@@ -1182,7 +1210,7 @@ void fragment_shader(in SceneData scene_data) {
 	float ao = 1.0;
 	float ao_light_affect = 0.0;
 
-	float alpha_highp = float(instances.data[instance_index].flags >> INSTANCE_FLAGS_FADE_SHIFT) / float(255.0);
+	float alpha_highp = float(SCENE_INSTANCE(flags) >> INSTANCE_FLAGS_FADE_SHIFT) / float(255.0);
 
 #ifdef TANGENT_USED
 	vec3 binormal = binormal_interp;
@@ -1246,9 +1274,9 @@ void fragment_shader(in SceneData scene_data) {
 			scene_data.inv_view_matrix[1],
 			scene_data.inv_view_matrix[2],
 			vec4(0.0, 0.0, 0.0, 1.0)));
-	mat4 read_model_matrix = transpose(mat4(instances.data[instance_index].transform[0],
-			instances.data[instance_index].transform[1],
-			instances.data[instance_index].transform[2],
+	mat4 read_model_matrix = transpose(mat4(SCENE_INSTANCE(transform)[0],
+			SCENE_INSTANCE(transform)[1],
+			SCENE_INSTANCE(transform)[2],
 			vec4(0.0, 0.0, 0.0, 1.0)));
 
 #ifdef LIGHT_VERTEX_USED
@@ -1256,7 +1284,7 @@ void fragment_shader(in SceneData scene_data) {
 #endif //LIGHT_VERTEX_USED
 
 	mat3 model_normal_matrix;
-	if (bool(instances.data[instance_index].flags & INSTANCE_FLAGS_NON_UNIFORM_SCALE)) {
+	if (bool(SCENE_INSTANCE(flags) & INSTANCE_FLAGS_NON_UNIFORM_SCALE)) {
 		model_normal_matrix = transpose(inverse(mat3(read_model_matrix)));
 	} else {
 		model_normal_matrix = mat3(read_model_matrix);
@@ -1284,6 +1312,21 @@ void fragment_shader(in SceneData scene_data) {
 	{
 #CODE : FRAGMENT
 	}
+
+#if defined(DEBUG_DRAW_CLUSTER_LOD) && defined(NORMAL_USED)
+	{
+		// One color per cluster group and instance; gray without cluster LOD.
+		vec3 cluster_color = vec3(0.35);
+		if (draw_call.cluster_lod_group != 0xffffffffu) {
+			uint h = draw_call.cluster_lod_group * 0x9e3779b1u ^ instance_index * 0x85ebca6bu;
+			h ^= h >> 16u;
+			h *= 0x7feb352du;
+			h ^= h >> 15u;
+			cluster_color = vec3(uvec3(h, h >> 8u, h >> 16u) & 0xffu) / 255.0 * 0.8 + 0.2;
+		}
+		albedo_highp = cluster_color * (0.3 + 0.7 * abs(dot(normalize(normal_highp), view_highp)));
+	}
+#endif
 
 	float roughness = roughness_highp;
 	float metallic = metallic_highp;
@@ -1358,7 +1401,7 @@ void fragment_shader(in SceneData scene_data) {
 			// If that is not true then probably need a subgroupAllEqual check first + fallback.
 			uint subgroup_max_mip = subgroupMax(required_mip);
 			if (subgroupElect()) {
-				const uint material_feedback_index = instances.data[instance_index].material_feedback_index;
+				const uint material_feedback_index = SCENE_INSTANCE(material_feedback_index);
 				atomicMax(material_feedback.data[material_feedback_index], subgroup_max_mip);
 			}
 		}
@@ -1551,7 +1594,7 @@ void fragment_shader(in SceneData scene_data) {
 
 				uint decal_index = 32 * i + bit;
 
-				if (!bool(decals.data[decal_index].mask & instances.data[instance_index].layer_mask)) {
+				if (!bool(decals.data[decal_index].mask & SCENE_INSTANCE(layer_mask))) {
 					continue; //not masked
 				}
 
@@ -1775,11 +1818,15 @@ void fragment_shader(in SceneData scene_data) {
 /// GI ///
 #if !defined(MODE_RENDER_DEPTH) && !defined(MODE_UNSHADED)
 #ifndef AMBIENT_LIGHT_DISABLED
+	// How much DDGI covers this pixel (the GI buffer weight) and its irradiance,
+	// for the reflection probes below.
+	float ddgi_coverage = 0.0;
+	vec3 ddgi_irradiance = vec3(0.0);
 #ifdef USE_LIGHTMAP
 
 	//lightmap
-	if (bool(instances.data[instance_index].flags & INSTANCE_FLAGS_USE_LIGHTMAP_CAPTURE)) { //has lightmap capture
-		uint index = instances.data[instance_index].gi_offset;
+	if (bool(SCENE_INSTANCE(flags) & INSTANCE_FLAGS_USE_LIGHTMAP_CAPTURE)) { //has lightmap capture
+		uint index = SCENE_INSTANCE(gi_offset);
 
 		// The world normal.
 		vec3 wnormal = mat3(inv_view_matrix) * indirect_normal;
@@ -1804,12 +1851,12 @@ void fragment_shader(in SceneData scene_data) {
 								 c[4] * lightmap_captures.data[index].sh[8].rgb * (wnormal.x * wnormal.x - wnormal.y * wnormal.y)) *
 				scene_data.IBL_exposure_normalization;
 
-	} else if (bool(instances.data[instance_index].flags & INSTANCE_FLAGS_USE_LIGHTMAP)) { // has actual lightmap
-		bool uses_sh = bool(instances.data[instance_index].flags & INSTANCE_FLAGS_USE_SH_LIGHTMAP);
-		uint ofs = instances.data[instance_index].gi_offset & 0xFFFF;
-		uint slice = instances.data[instance_index].gi_offset >> 16;
+	} else if (bool(SCENE_INSTANCE(flags) & INSTANCE_FLAGS_USE_LIGHTMAP)) { // has actual lightmap
+		bool uses_sh = bool(SCENE_INSTANCE(flags) & INSTANCE_FLAGS_USE_SH_LIGHTMAP);
+		uint ofs = SCENE_INSTANCE(gi_offset) & 0xFFFF;
+		uint slice = SCENE_INSTANCE(gi_offset) >> 16;
 		vec3 uvw;
-		uvw.xy = uv2 * instances.data[instance_index].lightmap_uv_scale.zw + instances.data[instance_index].lightmap_uv_scale.xy;
+		uvw.xy = uv2 * SCENE_INSTANCE(lightmap_uv_scale).zw + SCENE_INSTANCE(lightmap_uv_scale).xy;
 		uvw.z = float(slice);
 
 		if (uses_sh) {
@@ -1909,7 +1956,7 @@ void fragment_shader(in SceneData scene_data) {
 	}
 #else
 
-	if (sc_use_forward_gi() && bool(instances.data[instance_index].flags & INSTANCE_FLAGS_USE_SDFGI)) { //has lightmap capture
+	if (sc_use_forward_gi() && bool(SCENE_INSTANCE(flags) & INSTANCE_FLAGS_USE_SDFGI)) { //has lightmap capture
 
 		//make vertex orientation the world one, but still align to camera
 		vec3 cam_pos = mat3(inv_view_matrix) * vertex;
@@ -1981,8 +2028,8 @@ void fragment_shader(in SceneData scene_data) {
 		}
 	}
 
-	if (sc_use_forward_gi() && bool(instances.data[instance_index].flags & INSTANCE_FLAGS_USE_VOXEL_GI)) { // process voxel_gi_instances
-		uint index1 = instances.data[instance_index].gi_offset & 0xFFFF;
+	if (sc_use_forward_gi() && bool(SCENE_INSTANCE(flags) & INSTANCE_FLAGS_USE_VOXEL_GI)) { // process voxel_gi_instances
+		uint index1 = SCENE_INSTANCE(gi_offset) & 0xFFFF;
 		// Make vertex orientation the world one, but still align to camera.
 		vec3 cam_pos = mat3(inv_view_matrix) * vertex;
 		vec3 cam_normal = mat3(inv_view_matrix) * indirect_normal;
@@ -1998,7 +2045,7 @@ void fragment_shader(in SceneData scene_data) {
 		vec4 spec_accum = vec4(0.0);
 		voxel_gi_compute(index1, cam_pos, cam_normal, ref_vec, normal_mat, roughness * roughness, ambient_light, indirect_specular_light, spec_accum, amb_accum);
 
-		uint index2 = instances.data[instance_index].gi_offset >> 16;
+		uint index2 = SCENE_INSTANCE(gi_offset) >> 16;
 
 		if (index2 != 0xFFFF) {
 			voxel_gi_compute(index2, cam_pos, cam_normal, ref_vec, normal_mat, roughness * roughness, ambient_light, indirect_specular_light, spec_accum, amb_accum);
@@ -2016,7 +2063,7 @@ void fragment_shader(in SceneData scene_data) {
 		ambient_light = amb_accum.rgb;
 	}
 
-	if (!sc_use_forward_gi() && bool(instances.data[instance_index].flags & INSTANCE_FLAGS_USE_GI_BUFFERS)) { //use GI buffers
+	if (!sc_use_forward_gi() && bool(SCENE_INSTANCE(flags) & INSTANCE_FLAGS_USE_GI_BUFFERS)) { //use GI buffers
 
 		vec2 coord;
 
@@ -2057,8 +2104,46 @@ void fragment_shader(in SceneData scene_data) {
 		vec4 buffer_reflection = textureLod(sampler2D(reflection_buffer, SAMPLER_LINEAR_CLAMP), coord, 0.0);
 #endif // USE_MULTIVIEW
 
-		ambient_light = mix(ambient_light, buffer_ambient.rgb, buffer_ambient.a);
-		indirect_specular_light = mix(indirect_specular_light, buffer_reflection.rgb, buffer_reflection.a);
+		if (buffer_reflection.a < 0.0) {
+			// DDGI (diffuse only) marks its pixels with reflection alpha -1.
+			// Sky and reflection probe light is occluded by how much of the
+			// environment's ambient light actually reaches the surface: the
+			// DDGI irradiance over the unoccluded ambient light. About 1 in the
+			// open (bounce light can only raise it), near 0 in caves, tunnels
+			// and closed rooms, which otherwise reflect the open sky.
+			float open_ambient = dot(ambient_light, vec3(0.2126, 0.7152, 0.0722));
+			float ddgi_ambient = dot(buffer_ambient.rgb, vec3(0.2126, 0.7152, 0.0722));
+			float specular_visibility = open_ambient > 1e-5 ? clamp(ddgi_ambient / open_ambient, 0.0, 1.0) : 1.0;
+			indirect_specular_light *= mix(1.0, specular_visibility, buffer_ambient.a);
+			ambient_light = mix(ambient_light, buffer_ambient.rgb, buffer_ambient.a);
+			ddgi_coverage = buffer_ambient.a;
+			ddgi_irradiance = buffer_ambient.rgb;
+		} else {
+			ambient_light = mix(ambient_light, buffer_ambient.rgb, buffer_ambient.a);
+			indirect_specular_light = mix(indirect_specular_light, buffer_reflection.rgb, buffer_reflection.a);
+		}
+	}
+
+	if (sc_ddgi_probe_capture() && bool(implementation_data.reflection_flags & REFLECTION_FLAGS_DDGI_IN_PROBE_CAPTURE)) {
+		// Reflection probe capture: it has no GI buffer, so it was lit by the sky's
+		// ambient light (a cold, bright room in the probe's reflections). Sample the
+		// DDGI probes here instead, as DDGI's apply pass does for the view, with the
+		// same occlusion of the sky's specular light.
+		vec3 ddgi_pos = (inv_view_matrix * vec4(vertex, 1.0)).xyz;
+		vec3 ddgi_normal = normalize(mat3(inv_view_matrix) * indirect_normal);
+		vec3 ddgi_to_eye = normalize(inv_view_matrix[3].xyz - ddgi_pos);
+		vec4 capture_ddgi = ddgi_sample_irradiance(ddgi_pos, ddgi_normal, ddgi_to_eye);
+		capture_ddgi.rgb *= ddgi.volumes[0].params.x; // Energy.
+		if (capture_ddgi.a > 0.0 && !any(isnan(capture_ddgi)) && !any(isinf(capture_ddgi))) {
+			float open_ambient = dot(ambient_light, vec3(0.2126, 0.7152, 0.0722));
+			float ddgi_ambient = dot(capture_ddgi.rgb, vec3(0.2126, 0.7152, 0.0722));
+			float specular_visibility = open_ambient > 1e-5 ? clamp(ddgi_ambient / open_ambient, 0.0, 1.0) : 1.0;
+			indirect_specular_light *= mix(1.0, specular_visibility, capture_ddgi.a);
+			ambient_light = mix(ambient_light, capture_ddgi.rgb, capture_ddgi.a);
+			// As for the GI buffer: other probes keep DDGI's diffuse light and are normalized by it.
+			ddgi_coverage = capture_ddgi.a;
+			ddgi_irradiance = capture_ddgi.rgb;
+		}
 	}
 #endif // !USE_LIGHTMAP
 
@@ -2105,6 +2190,17 @@ void fragment_shader(in SceneData scene_data) {
 		// Interpolate between mirror and rough reflection by using linear_roughness * linear_roughness.
 		ref_vec = mix(ref_vec, bent_normal, roughness * roughness * roughness * roughness);
 
+		// Under DDGI, probe reflections are normalized by the DDGI irradiance (see reflection_process()).
+		float normalization_strength = ddgi_coverage * implementation_data.reflection_normalization;
+		if (bool(implementation_data.reflection_flags & REFLECTION_FLAGS_PROBES_CAPTURED_WITH_DDGI)) {
+			// The probes were captured with DDGI's light, and again after light changes:
+			// normalization is left for rough reflections (darker in corners and under
+			// objects). A sharp reflection shows distant light, which the irradiance here
+			// over the probe's at its center says nothing about (a mirror was 1.6x too dark).
+			normalization_strength *= smoothstep(0.2, 0.5, float(roughness));
+		}
+		vec4 probe_normalization = vec4(ddgi_irradiance, normalization_strength);
+
 		for (uint i = item_from; i < item_to; i++) {
 			uint mask = cluster_buffer.data[cluster_reflection_offset + i];
 			mask &= cluster_get_range_clip_mask(i, item_min, item_max);
@@ -2120,7 +2216,7 @@ void fragment_shader(in SceneData scene_data) {
 
 				uint reflection_index = 32 * i + bit;
 
-				if (!bool(reflections.data[reflection_index].mask & instances.data[instance_index].layer_mask)) {
+				if (!bool(reflections.data[reflection_index].mask & SCENE_INSTANCE(layer_mask))) {
 					continue; //not masked
 				}
 
@@ -2138,7 +2234,7 @@ void fragment_shader(in SceneData scene_data) {
 #ifdef LIGHT_CLEARCOAT_USED
 						cc_ref_vec, mix(0.001, 0.1, clearcoat_roughness), cc_reflection_accum,
 #endif
-						ambient_accum, reflection_accum);
+						probe_normalization, implementation_data.reflection_normalization_max, ambient_accum, reflection_accum);
 			}
 		}
 
@@ -2168,7 +2264,10 @@ void fragment_shader(in SceneData scene_data) {
 
 #if !defined(USE_LIGHTMAP)
 		if (ambient_accum.a > 0.0) {
-			ambient_light = ambient_accum.rgb;
+			// DDGI is the better diffuse source where it covers the pixel (dynamic,
+			// occluded per probe): keep it instead of the probe's blurred cubemap.
+			float ddgi_keep = bool(implementation_data.reflection_flags & REFLECTION_FLAGS_DDGI_OVERRIDES_PROBE_AMBIENT) ? ddgi_coverage : 0.0;
+			ambient_light = mix(ambient_accum.rgb, ambient_light, ddgi_keep);
 		}
 #endif
 	}
@@ -2276,6 +2375,29 @@ void fragment_shader(in SceneData scene_data) {
 			// Alpha is premultiplied.
 			indirect_specular_light = indirect_specular_light * (1.0 - ssr.a) + ssr.rgb;
 		}
+
+		// Planar reflections: the screen mirrored across a reflector plane (computed
+		// before this pass). They replace the incoming specular light like SSR, so the
+		// BRDF below weights them and no energy is counted twice. Only fragments on the
+		// reflector receive them: objects in front of it and the ground under
+		// transparent water don't.
+		if (bool(implementation_data.ss_effects_flags & SCREEN_SPACE_EFFECTS_FLAGS_USE_PLANAR_REFLECTIONS)) {
+			vec4 planar_params = textureLod(sampler2D(planar_reflection_params, SAMPLER_NEAREST_CLAMP), screen_uv, 0.0);
+			float fragment_depth = -vertex.z;
+			float depth_tolerance = planar_params.y + 0.002 * fragment_depth + 0.01;
+			if (planar_params.x > 0.0 && abs(fragment_depth - planar_params.x) <= depth_tolerance && roughness < planar_params.w) {
+				// Normal maps and waves move the lookup by how far the normal leans from the surface's.
+				vec2 lean = normal.xy - geo_normal.xy;
+				vec2 planar_uv = screen_uv + vec2(lean.x, -lean.y) * planar_params.z * 0.1;
+				vec4 planar = textureLod(sampler2D(planar_reflection_color, SAMPLER_LINEAR_CLAMP), planar_uv, 0.0);
+				if (planar.a < 0.01) {
+					planar = textureLod(sampler2D(planar_reflection_color, SAMPLER_LINEAR_CLAMP), screen_uv, 0.0);
+				}
+				float roughness_fade = 1.0 - smoothstep(planar_params.w * 0.6, planar_params.w, roughness);
+				// Color is premultiplied by alpha.
+				indirect_specular_light = indirect_specular_light * (1.0 - planar.a * roughness_fade) + planar.rgb * roughness_fade;
+			}
+		}
 	}
 #endif // AMBIENT_LIGHT_DISABLED
 
@@ -2351,13 +2473,13 @@ void fragment_shader(in SceneData scene_data) {
 #ifdef USE_LIGHTMAP
 		uint shadowmask_mode = LIGHTMAP_SHADOWMASK_MODE_NONE;
 
-		if (bool(instances.data[instance_index].flags & INSTANCE_FLAGS_USE_LIGHTMAP)) {
-			const uint ofs = instances.data[instance_index].gi_offset & 0xFFFF;
+		if (bool(SCENE_INSTANCE(flags) & INSTANCE_FLAGS_USE_LIGHTMAP)) {
+			const uint ofs = SCENE_INSTANCE(gi_offset) & 0xFFFF;
 			shadowmask_mode = lightmaps.data[ofs].flags;
 
 			if (shadowmask_mode != LIGHTMAP_SHADOWMASK_MODE_NONE) {
-				const uint slice = instances.data[instance_index].gi_offset >> 16;
-				const vec2 scaled_uv = uv2 * instances.data[instance_index].lightmap_uv_scale.zw + instances.data[instance_index].lightmap_uv_scale.xy;
+				const uint slice = SCENE_INSTANCE(gi_offset) >> 16;
+				const vec2 scaled_uv = uv2 * SCENE_INSTANCE(lightmap_uv_scale).zw + SCENE_INSTANCE(lightmap_uv_scale).xy;
 				const vec3 uvw = vec3(scaled_uv, float(slice));
 
 				if (sc_use_lightmap_bicubic_filter()) {
@@ -2381,11 +2503,11 @@ void fragment_shader(in SceneData scene_data) {
 			}
 #endif
 
-				if (!bool(directional_lights.data[i].mask & instances.data[instance_index].layer_mask)) {
+				if (!bool(directional_lights.data[i].mask & SCENE_INSTANCE(layer_mask))) {
 					continue; //not masked
 				}
 
-				if (directional_lights.data[i].bake_mode == LIGHT_BAKE_STATIC && bool(instances.data[instance_index].flags & INSTANCE_FLAGS_USE_LIGHTMAP)) {
+				if (directional_lights.data[i].bake_mode == LIGHT_BAKE_STATIC && bool(SCENE_INSTANCE(flags) & INSTANCE_FLAGS_USE_LIGHTMAP)) {
 					continue; // Statically baked light and object uses lightmap, skip
 				}
 
@@ -2635,11 +2757,11 @@ void fragment_shader(in SceneData scene_data) {
 				break;
 			}
 
-			if (!bool(directional_lights.data[i].mask & instances.data[instance_index].layer_mask)) {
+			if (!bool(directional_lights.data[i].mask & SCENE_INSTANCE(layer_mask))) {
 				continue; //not masked
 			}
 
-			if (directional_lights.data[i].bake_mode == LIGHT_BAKE_STATIC && bool(instances.data[instance_index].flags & INSTANCE_FLAGS_USE_LIGHTMAP)) {
+			if (directional_lights.data[i].bake_mode == LIGHT_BAKE_STATIC && bool(SCENE_INSTANCE(flags) & INSTANCE_FLAGS_USE_LIGHTMAP)) {
 				continue; // Statically baked light and object uses lightmap, skip
 			}
 
@@ -2786,11 +2908,11 @@ void fragment_shader(in SceneData scene_data) {
 
 				uint light_index = 32 * i + bit;
 
-				if (!bool(omni_lights.data[light_index].mask & instances.data[instance_index].layer_mask)) {
+				if (!bool(omni_lights.data[light_index].mask & SCENE_INSTANCE(layer_mask))) {
 					continue; //not masked
 				}
 
-				if (omni_lights.data[light_index].bake_mode == LIGHT_BAKE_STATIC && bool(instances.data[instance_index].flags & INSTANCE_FLAGS_USE_LIGHTMAP)) {
+				if (omni_lights.data[light_index].bake_mode == LIGHT_BAKE_STATIC && bool(SCENE_INSTANCE(flags) & INSTANCE_FLAGS_USE_LIGHTMAP)) {
 					continue; // Statically baked light and object uses lightmap, skip
 				}
 
@@ -2847,11 +2969,11 @@ void fragment_shader(in SceneData scene_data) {
 
 				uint light_index = 32 * i + bit;
 
-				if (!bool(spot_lights.data[light_index].mask & instances.data[instance_index].layer_mask)) {
+				if (!bool(spot_lights.data[light_index].mask & SCENE_INSTANCE(layer_mask))) {
 					continue; //not masked
 				}
 
-				if (spot_lights.data[light_index].bake_mode == LIGHT_BAKE_STATIC && bool(instances.data[instance_index].flags & INSTANCE_FLAGS_USE_LIGHTMAP)) {
+				if (spot_lights.data[light_index].bake_mode == LIGHT_BAKE_STATIC && bool(SCENE_INSTANCE(flags) & INSTANCE_FLAGS_USE_LIGHTMAP)) {
 					continue; // Statically baked light and object uses lightmap, skip
 				}
 
@@ -2908,11 +3030,11 @@ void fragment_shader(in SceneData scene_data) {
 
 				uint light_index = 32 * i + bit;
 
-				if (!bool(area_lights.data[light_index].mask & instances.data[instance_index].layer_mask)) {
+				if (!bool(area_lights.data[light_index].mask & SCENE_INSTANCE(layer_mask))) {
 					continue; //not masked
 				}
 
-				if (area_lights.data[light_index].bake_mode == LIGHT_BAKE_STATIC && bool(instances.data[instance_index].flags & INSTANCE_FLAGS_USE_LIGHTMAP)) {
+				if (area_lights.data[light_index].bake_mode == LIGHT_BAKE_STATIC && bool(SCENE_INSTANCE(flags) & INSTANCE_FLAGS_USE_LIGHTMAP)) {
 					continue; // Statically baked light and object uses lightmap, skip
 				}
 
@@ -3084,15 +3206,15 @@ void fragment_shader(in SceneData scene_data) {
 	// We encode the dynamic static into roughness.
 	// Values over 0.5 are dynamic, under 0.5 are static.
 	normal_roughness_output_buffer.w = normal_roughness_output_buffer.w * (127.0 / 255.0);
-	if (bool(instances.data[instance_index].flags & INSTANCE_FLAGS_DYNAMIC)) {
+	if (bool(SCENE_INSTANCE(flags) & INSTANCE_FLAGS_DYNAMIC)) {
 		normal_roughness_output_buffer.w = 1.0 - normal_roughness_output_buffer.w;
 	}
 	normal_roughness_output_buffer.w = normal_roughness_output_buffer.w;
 
 #ifdef MODE_RENDER_VOXEL_GI
-	if (bool(instances.data[instance_index].flags & INSTANCE_FLAGS_USE_VOXEL_GI)) { // process voxel_gi_instances
-		uint index1 = instances.data[instance_index].gi_offset & 0xFFFF;
-		uint index2 = instances.data[instance_index].gi_offset >> 16;
+	if (bool(SCENE_INSTANCE(flags) & INSTANCE_FLAGS_USE_VOXEL_GI)) { // process voxel_gi_instances
+		uint index1 = SCENE_INSTANCE(gi_offset) & 0xFFFF;
+		uint index2 = SCENE_INSTANCE(gi_offset) >> 16;
 		voxel_gi_buffer.x = index1 & 0xFFu;
 		voxel_gi_buffer.y = index2 & 0xFFu;
 	} else {

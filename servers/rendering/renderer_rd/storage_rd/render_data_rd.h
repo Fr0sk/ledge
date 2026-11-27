@@ -101,5 +101,17 @@ public:
 
 	/* RT-extra: AABB-culled instances/lights outside frustum for TLAS and light gathering. */
 	const PagedArray<RenderGeometryInstance *> *rt_instances = nullptr;
+
+	// GPU path for eligible instances (Forward+, Phase 2): the visible ones the
+	// camera cull listed apart, their scenario, and the camera's layers. When
+	// the renderer draws them on the GPU it sets gpu_instances_drawn; otherwise
+	// the CPU render list takes them with the other instances.
+	const PagedArray<RenderGeometryInstance *> *gpu_instances = nullptr;
+	const LocalVector<uint32_t> *gpu_slots = nullptr; // Their renderer slots.
+	uint64_t gpu_scenario = 0;
+	uint32_t gpu_visible_layers = 0;
+	bool gpu_instances_drawn = false;
 	const PagedArray<RID> *rt_lights = nullptr;
+	// Planar reflectors in the scenario (PlanarReflector3D), unculled; Forward+ selects the visible ones.
+	const LocalVector<RendererSceneRender::RenderPlanarReflection> *planar_reflections = nullptr;
 };

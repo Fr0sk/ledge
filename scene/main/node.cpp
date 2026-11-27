@@ -366,8 +366,9 @@ void Node::_propagate_enter_tree() {
 	}
 #endif
 
-	for (KeyValue<StringName, GroupData> &E : data.grouped) {
-		E.value.group = data.tree->add_to_group(E.key, this);
+	for (GroupEntry &E : data.grouped) {
+		E.data.group = data.tree->add_to_group(E.name, this);
+		E.data.position = E.data.group->nodes.size() - 1;
 	}
 
 	notification(NOTIFICATION_ENTER_TREE);
@@ -453,9 +454,9 @@ void Node::_propagate_exit_tree() {
 	}
 
 	// exit groups
-	for (KeyValue<StringName, GroupData> &E : data.grouped) {
-		data.tree->remove_from_group(E.key, this);
-		E.value.group = nullptr;
+	for (GroupEntry &E : data.grouped) {
+		data.tree->remove_from_group(E.name, this);
+		E.data.group = nullptr;
 	}
 
 	data.viewport = nullptr;
@@ -599,9 +600,9 @@ void Node::_move_child(Node *p_child, int p_index, bool p_ignore_end) {
 }
 
 void Node::_propagate_groups_dirty() {
-	for (const KeyValue<StringName, GroupData> &E : data.grouped) {
-		if (E.value.group) {
-			E.value.group->changed = true;
+	for (const GroupEntry &E : data.grouped) {
+		if (E.data.group) {
+			E.data.group->changed = true;
 		}
 	}
 
@@ -1807,8 +1808,22 @@ void Node::remove_child(RequiredParam<Node> p_child) {
 				data.internal_children_back_count_cache--;
 			} break;
 		}
-	} else {
-		data.children_cache_dirty = true;
+	} else if (!data.children_cache_dirty) {
+		// Leave a hole at the child's position, which the counters and its
+		// index give while the cache is valid: the next reader compacts the
+		// cache instead of rebuilding and sorting it.
+		uint32_t position = child->data.index;
+		if (child->data.internal_mode == INTERNAL_MODE_DISABLED) {
+			position += data.internal_children_front_count_cache;
+		} else if (child->data.internal_mode == INTERNAL_MODE_BACK) {
+			position += data.internal_children_front_count_cache + data.external_children_count_cache;
+		}
+		if (position < data.children_cache.size() && data.children_cache[position] == child) {
+			data.children_cache[position] = nullptr;
+			data.children_cache_first_hole = MIN(data.children_cache_first_hole, position);
+		} else {
+			data.children_cache_dirty = true;
+		}
 	}
 	bool success = data.children.erase(child->data.name);
 	ERR_FAIL_COND_MSG(!success, "Children name does not match parent name in hashtable, this is a bug.");
@@ -1824,7 +1839,49 @@ void Node::remove_child(RequiredParam<Node> p_child) {
 	}
 }
 
+void Node::_compact_children_cache() const {
+	// Drops the holes, keeping the order. Children before the first hole keep
+	// their indices; the ones after it get theirs again.
+	const uint32_t size = data.children_cache.size();
+	uint32_t write = data.children_cache_first_hole;
+	int front = 0;
+	int external = 0;
+	int back = 0;
+	for (uint32_t read = 0; read < size; read++) {
+		Node *child = data.children_cache[read];
+		if (!child) {
+			continue;
+		}
+		int index = 0;
+		switch (child->data.internal_mode) {
+			case INTERNAL_MODE_DISABLED: {
+				index = external++;
+			} break;
+			case INTERNAL_MODE_FRONT: {
+				index = front++;
+			} break;
+			case INTERNAL_MODE_BACK: {
+				index = back++;
+			} break;
+		}
+		if (read > data.children_cache_first_hole) {
+			child->data.index = index;
+			data.children_cache[write++] = child;
+		}
+	}
+	data.children_cache.resize(write);
+	data.internal_children_front_count_cache = front;
+	data.external_children_count_cache = external;
+	data.internal_children_back_count_cache = back;
+	data.children_cache_first_hole = UINT32_MAX;
+}
+
 void Node::_update_children_cache_impl() const {
+	if (!data.children_cache_dirty) {
+		_compact_children_cache();
+		return;
+	}
+	data.children_cache_first_hole = UINT32_MAX;
 	// Assign children
 	data.children_cache.resize(data.children.size());
 	int idx = 0;
@@ -2558,14 +2615,14 @@ NodePath Node::get_path() const {
 
 bool Node::is_in_group(const StringName &p_identifier) const {
 	ERR_THREAD_GUARD_V(false);
-	return data.grouped.has(p_identifier);
+	return _find_group(p_identifier) != UINT32_MAX;
 }
 
 void Node::add_to_group(const StringName &p_identifier, bool p_persistent) {
 	ERR_THREAD_GUARD
 	ERR_FAIL_COND_MSG(p_identifier.is_empty(), vformat("Cannot add node '%s' to a group with an empty name.", get_name()));
 
-	if (data.grouped.has(p_identifier)) {
+	if (_find_group(p_identifier) != UINT32_MAX) {
 		return;
 	}
 
@@ -2573,13 +2630,14 @@ void Node::add_to_group(const StringName &p_identifier, bool p_persistent) {
 
 	if (data.tree) {
 		gd.group = data.tree->add_to_group(p_identifier, this);
+		gd.position = gd.group->nodes.size() - 1;
 	} else {
 		gd.group = nullptr;
 	}
 
 	gd.persistent = p_persistent;
 
-	data.grouped[p_identifier] = gd;
+	data.grouped.push_back({ p_identifier, gd });
 	if (p_persistent) {
 		_emit_editor_state_changed();
 	}
@@ -2587,21 +2645,21 @@ void Node::add_to_group(const StringName &p_identifier, bool p_persistent) {
 
 void Node::remove_from_group(const StringName &p_identifier) {
 	ERR_THREAD_GUARD
-	HashMap<StringName, GroupData>::Iterator E = data.grouped.find(p_identifier);
+	const uint32_t index = _find_group(p_identifier);
 
-	if (!E) {
+	if (index == UINT32_MAX) {
 		return;
 	}
 
 #ifdef TOOLS_ENABLED
-	bool persistent = E->value.persistent;
+	bool persistent = data.grouped[index].data.persistent;
 #endif
 
 	if (data.tree) {
-		data.tree->remove_from_group(E->key, this);
+		data.tree->remove_from_group(data.grouped[index].name, this);
 	}
 
-	data.grouped.remove(E);
+	data.grouped.remove_at(index); // Keeps the order of the others.
 
 #ifdef TOOLS_ENABLED
 	if (persistent) {
@@ -2623,10 +2681,10 @@ TypedArray<StringName> Node::_get_groups() const {
 
 void Node::get_groups(List<GroupInfo> *p_groups) const {
 	ERR_THREAD_GUARD
-	for (const KeyValue<StringName, GroupData> &E : data.grouped) {
+	for (const GroupEntry &E : data.grouped) {
 		GroupInfo gi;
-		gi.name = E.key;
-		gi.persistent = E.value.persistent;
+		gi.name = E.name;
+		gi.persistent = E.data.persistent;
 		p_groups->push_back(gi);
 	}
 }
@@ -2635,8 +2693,8 @@ int Node::get_persistent_group_count() const {
 	ERR_THREAD_GUARD_V(0);
 	int count = 0;
 
-	for (const KeyValue<StringName, GroupData> &E : data.grouped) {
-		if (E.value.persistent) {
+	for (const GroupEntry &E : data.grouped) {
+		if (E.data.persistent) {
 			count += 1;
 		}
 	}
